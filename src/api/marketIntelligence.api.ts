@@ -18,25 +18,25 @@ const buildQueryParams = (filters?: Partial<FilterState>): Record<string, string
   const params: Record<string, string> = {};
   if (!filters) return params;
 
-  if (filters.country && filters.country !== 'cote_d_ivoire' && filters.country !== 'all') {
+  if (filters.country && filters.country !== 'all') {
     params.country = filters.country;
   }
-  if (filters.dateRange && filters.dateRange !== '30d') {
+  if (filters.dateRange && filters.dateRange !== 'all') {
     params.dateRange = filters.dateRange;
   }
-  if (filters.city && filters.city !== 'Abidjan' && filters.city !== 'Toutes les villes') {
+  if (filters.city && filters.city !== 'Toutes les villes' && filters.city !== 'all') {
     params.city = filters.city;
   }
-  if (filters.commune && filters.commune !== 'Toutes les communes') {
+  if (filters.commune && filters.commune !== 'Toutes les communes' && filters.commune !== 'all') {
     params.commune = filters.commune;
   }
-  if (filters.category && filters.category !== 'Toutes catégories') {
+  if (filters.category && filters.category !== 'Toutes catégories' && filters.category !== 'all') {
     params.category = filters.category;
   }
-  if (filters.brand && filters.brand !== 'Toutes marques') {
+  if (filters.brand && filters.brand !== 'Toutes marques' && filters.brand !== 'all') {
     params.brand = filters.brand;
   }
-  if (filters.posType && filters.posType !== 'Tous types') {
+  if (filters.posType && filters.posType !== 'Tous types' && filters.posType !== 'all') {
     params.posType = filters.posType;
   }
 

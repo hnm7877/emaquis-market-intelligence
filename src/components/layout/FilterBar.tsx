@@ -162,12 +162,20 @@ export function FilterBar({ filters, onFilterChange, onReset }: FilterBarProps) 
           >
             <SelectTrigger className="h-8 text-xs w-[155px] bg-background/60">
               <SelectValue placeholder="Pays">
-                {selectedCountryObj
+                {currentCountryCode === 'all'
+                  ? '🌍 Tous les pays (Global)'
+                  : selectedCountryObj
                   ? `${selectedCountryObj.flag} ${selectedCountryObj.name.replace(/_/g, ' ')}`
                   : (filters.country ? filters.country.replace(/_/g, ' ') : "🇨🇮 Côte d'Ivoire")}
               </SelectValue>
             </SelectTrigger>
             <SelectContent className="max-h-64">
+              <SelectItem value="all">
+                <span className="flex items-center gap-1.5">
+                  <span>🌍</span>
+                  <span className="truncate">Tous les pays (Global)</span>
+                </span>
+              </SelectItem>
               {countriesList.map((c) => (
                 <SelectItem key={c.code} value={c.code}>
                   <span className="flex items-center gap-1.5">

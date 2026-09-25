@@ -46,15 +46,33 @@ export default function MarketOverviewPage() {
     return `${rev.toLocaleString('fr-FR')} FCFA`;
   };
 
+  const getPeriodLabel = () => {
+    switch (filters.dateRange) {
+      case '7d':
+        return 'vs 7j précédents';
+      case '90d':
+        return 'vs 90j précédents';
+      case '12m':
+        return 'vs 12m précédents';
+      case 'all':
+        return 'vs historique';
+      case '30d':
+      default:
+        return 'vs 30j précédents';
+    }
+  };
+
+  const periodLabel = getPeriodLabel();
+
   const kpiMetrics: KpiMetric[] = [
     {
       id: 'kpi-pos',
       title: 'Points de Vente Actifs',
       value: `${kpis?.activePos ?? 0}`,
       numericValue: kpis?.activePos ?? 0,
-      changePercent: 12.5,
-      trend: 'up',
-      comparisonPeriod: 'vs 30j précédents',
+      changePercent: Math.abs(kpis?.posGrowth ?? 12.5),
+      trend: (kpis?.posGrowth ?? 12.5) >= 0 ? 'up' : 'down',
+      comparisonPeriod: periodLabel,
       description: 'Établissements enregistrant des flux réels',
       badge: 'Réseau certifié',
     },
@@ -63,9 +81,9 @@ export default function MarketOverviewPage() {
       title: 'Transactions Analysées',
       value: (kpis?.analyzedTransactions ?? 0).toLocaleString('fr-FR'),
       numericValue: kpis?.analyzedTransactions ?? 0,
-      changePercent: 18.4,
-      trend: 'up',
-      comparisonPeriod: 'vs période précédente',
+      changePercent: Math.abs(kpis?.transactionsGrowth ?? 18.4),
+      trend: (kpis?.transactionsGrowth ?? 18.4) >= 0 ? 'up' : 'down',
+      comparisonPeriod: periodLabel,
       description: 'Volume total de tickets de caisse consolidés',
       badge: 'Échantillon réel',
     },
@@ -76,7 +94,7 @@ export default function MarketOverviewPage() {
       numericValue: kpis?.analyzedProducts ?? 0,
       changePercent: 5.2,
       trend: 'up',
-      comparisonPeriod: 'vs 30j précédents',
+      comparisonPeriod: periodLabel,
       description: 'Boissons et articles FMCG actifs',
     },
     {
@@ -86,7 +104,7 @@ export default function MarketOverviewPage() {
       numericValue: kpis?.coveredZones ?? 0,
       changePercent: 14.0,
       trend: 'up',
-      comparisonPeriod: 'vs 30j précédents',
+      comparisonPeriod: periodLabel,
       description: 'Communes et villes analysées',
     },
     {
@@ -94,9 +112,9 @@ export default function MarketOverviewPage() {
       title: 'Volume de Ventes Observé',
       value: (kpis?.salesVolume ?? 0).toLocaleString('fr-FR'),
       numericValue: kpis?.salesVolume ?? 0,
-      changePercent: kpis?.growthRate ?? 11.4,
-      trend: 'up',
-      comparisonPeriod: 'vs 30j précédents',
+      changePercent: Math.abs(kpis?.volumeGrowth ?? kpis?.growthRate ?? 11.4),
+      trend: (kpis?.volumeGrowth ?? kpis?.growthRate ?? 11.4) >= 0 ? 'up' : 'down',
+      comparisonPeriod: periodLabel,
       description: 'Unités physiques de boissons consommées',
     },
     {
@@ -104,19 +122,19 @@ export default function MarketOverviewPage() {
       title: "Chiffre d'Affaires Observé",
       value: formatRevenue(kpis?.revenue),
       numericValue: kpis?.revenue ?? 0,
-      changePercent: kpis?.growthRate ?? 11.4,
-      trend: 'up',
-      comparisonPeriod: 'vs 30j précédents',
+      changePercent: Math.abs(kpis?.revenueGrowth ?? kpis?.growthRate ?? 11.4),
+      trend: (kpis?.revenueGrowth ?? kpis?.growthRate ?? 11.4) >= 0 ? 'up' : 'down',
+      comparisonPeriod: periodLabel,
       description: 'Chiffre consolidé échantillon',
     },
     {
       id: 'kpi-growth',
       title: 'Taux de Croissance Moyen',
-      value: `+${kpis?.growthRate ?? 11.4}%`,
+      value: `${(kpis?.growthRate ?? 11.4) >= 0 ? '+' : ''}${kpis?.growthRate ?? 11.4}%`,
       numericValue: kpis?.growthRate ?? 11.4,
-      changePercent: 2.3,
-      trend: 'up',
-      comparisonPeriod: 'accélération',
+      changePercent: Math.abs(kpis?.acceleration ?? 2.3),
+      trend: (kpis?.acceleration ?? 2.3) >= 0 ? 'up' : 'down',
+      comparisonPeriod: (kpis?.acceleration ?? 2.3) >= 0 ? 'accélération' : 'ralentissement',
       description: 'Progression globale de la demande',
     },
     {
@@ -124,8 +142,8 @@ export default function MarketOverviewPage() {
       title: 'Indice de Demande Global',
       value: `${kpis?.demandIndex ?? 124.6}`,
       numericValue: kpis?.demandIndex ?? 124.6,
-      changePercent: 5.8,
-      trend: 'up',
+      changePercent: +Math.abs((kpis?.demandIndex ?? 124.6) - 100).toFixed(1),
+      trend: (kpis?.demandIndex ?? 124.6) >= 100 ? 'up' : 'down',
       comparisonPeriod: 'Base 100',
       description: 'Tension de consommation sur le terrain',
     },

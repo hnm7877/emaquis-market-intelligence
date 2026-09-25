@@ -19,6 +19,11 @@ export const MarketKpisSchema = z.object({
   revenue: z.number().default(0),
   growthRate: z.number().default(0),
   demandIndex: z.number().default(0),
+  volumeGrowth: z.number().optional(),
+  revenueGrowth: z.number().optional(),
+  acceleration: z.number().optional(),
+  posGrowth: z.number().optional(),
+  transactionsGrowth: z.number().optional(),
 });
 
 export const MarketAlertSchema = z.object({
@@ -86,10 +91,29 @@ export const GeoZoneSchema = z.object({
   longitude: z.number(),
 });
 
+export type GeoZone = z.infer<typeof GeoZoneSchema>;
+
+export const EstablishmentMarkerSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  zone: z.string(),
+  city: z.string(),
+  country: z.string().default("Côte d'Ivoire"),
+  latitude: z.number(),
+  longitude: z.number(),
+  hasDirectGps: z.boolean().optional(),
+  volume: z.number().default(0),
+  revenue: z.number().default(0),
+  transactions: z.number().default(0),
+});
+
+export type EstablishmentMarker = z.infer<typeof EstablishmentMarkerSchema>;
+
 export const GeographyResponseSchema = z.object({
   country: z.string().default("Côte d'Ivoire"),
   totalAnalyzedPos: z.number().default(0),
   zones: z.array(GeoZoneSchema).default([]),
+  establishments: z.array(EstablishmentMarkerSchema).optional(),
 });
 
 export const ProductItemSchema = z.object({
