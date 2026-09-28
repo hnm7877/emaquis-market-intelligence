@@ -31,6 +31,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { formatVolumeValue, VolumeUnit } from '@/utils/volumeUnit';
+import { getBrandLogo } from '@/utils/brandLogos';
 
 // Enregistrement des modules Chart.js requis
 ChartJS.register(
@@ -409,11 +410,20 @@ export function BrandMarketShareCharts({ brands = [], volumeUnit = 'cols' }: Bra
                 />
                 {/* Badge central sur le Donut */}
                 {chartView === 'doughnut' && (
-                  <div className="absolute top-[40%] left-1/2 -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none hidden sm:block">
+                  <div className="absolute top-[40%] left-1/2 -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none hidden sm:flex flex-col items-center justify-center">
+                    {concentrationInsights?.top1 && (
+                      <div className="size-11 rounded-full bg-white dark:bg-white/95 p-1 shadow-md border border-amber-500/40 mb-1 flex items-center justify-center overflow-hidden">
+                        <img
+                          src={getBrandLogo(concentrationInsights.top1.key || concentrationInsights.top1.name) || '/brands/solibra.png'}
+                          alt={concentrationInsights.top1.name}
+                          className="max-h-full max-w-full object-contain"
+                        />
+                      </div>
+                    )}
                     <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
                       Leader Marché
                     </span>
-                    <div className="text-sm sm:text-base font-extrabold text-amber-400">
+                    <div className="text-xs sm:text-sm font-extrabold text-amber-400">
                       {concentrationInsights?.top1?.name || 'SOLIBRA'}
                     </div>
                     <span className="text-[11px] font-mono font-bold text-foreground">
@@ -452,13 +462,37 @@ export function BrandMarketShareCharts({ brands = [], volumeUnit = 'cols' }: Bra
 
         <CardContent className="space-y-3 pt-3 text-xs flex-1">
           {/* Indice Top 2 Concentration */}
-          <div className="p-3 rounded-xl bg-muted/40 border border-border/60 space-y-1.5">
+          <div className="p-3 rounded-xl bg-muted/40 border border-border/60 space-y-2">
             <div className="flex justify-between items-center text-muted-foreground">
               <span className="font-medium text-foreground text-[11px]">Duopole / Concentration Top 2 :</span>
               <Badge variant="secondary" className="font-mono font-bold text-xs bg-amber-500/10 text-amber-400 border-amber-500/30">
                 {concentrationInsights?.top2Share || 88.0}%
               </Badge>
             </div>
+
+            {/* Logos Top 1 & Top 2 */}
+            <div className="flex items-center gap-2 py-0.5">
+              {concentrationInsights?.top1 && (
+                <div className="h-7 px-2 rounded-lg bg-white dark:bg-white/95 border border-border/80 flex items-center justify-center shadow-2xs">
+                  <img
+                    src={getBrandLogo(concentrationInsights.top1.key || concentrationInsights.top1.name) || '/brands/solibra.png'}
+                    alt={concentrationInsights.top1.name}
+                    className="max-h-5 w-auto object-contain"
+                  />
+                </div>
+              )}
+              <span className="text-xs font-bold text-muted-foreground">+</span>
+              {concentrationInsights?.top2 && (
+                <div className="h-7 px-2 rounded-lg bg-white dark:bg-white/95 border border-border/80 flex items-center justify-center shadow-2xs">
+                  <img
+                    src={getBrandLogo(concentrationInsights.top2.key || concentrationInsights.top2.name) || '/brands/brassivoire.png'}
+                    alt={concentrationInsights.top2.name}
+                    className="max-h-5 w-auto object-contain"
+                  />
+                </div>
+              )}
+            </div>
+
             <p className="text-[11px] text-muted-foreground leading-relaxed">
               <strong>{concentrationInsights?.top1?.name}</strong> et <strong>{concentrationInsights?.top2?.name}</strong> captent l'essentiel de la demande débitée en maquis.
             </p>
@@ -492,13 +526,20 @@ export function BrandMarketShareCharts({ brands = [], volumeUnit = 'cols' }: Bra
             <div className="space-y-1">
               {activeBrands.slice(0, 4).map((b) => {
                 const color = BRAND_COLORS[b.key] || BRAND_COLORS.default;
+                const bLogo = getBrandLogo(b.key || b.name);
                 return (
                   <div
                     key={b.id}
-                    className="p-1.5 px-2 rounded-lg bg-background/60 border border-border/50 flex items-center justify-between text-[11px]"
+                    className="p-1.5 px-2 rounded-lg bg-background/60 border border-border/50 flex items-center justify-between text-[11px] hover:border-primary/40 transition-colors"
                   >
-                    <div className="flex items-center gap-1.5 truncate">
-                      <span className="size-2 rounded-full shrink-0" style={{ backgroundColor: color.border }} />
+                    <div className="flex items-center gap-2 truncate">
+                      {bLogo ? (
+                        <div className="size-6 rounded-md bg-white dark:bg-white/95 p-0.5 border border-border/60 flex items-center justify-center shrink-0 shadow-2xs">
+                          <img src={bLogo} alt={b.name} className="size-full object-contain" />
+                        </div>
+                      ) : (
+                        <span className="size-2 rounded-full shrink-0" style={{ backgroundColor: color.border }} />
+                      )}
                       <span className="font-semibold text-foreground truncate">{b.name}</span>
                     </div>
                     <span className="text-muted-foreground text-[10px] font-medium shrink-0 ml-1">

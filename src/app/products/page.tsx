@@ -39,6 +39,7 @@ import { useProductsQuery, useBrandsQuery, useCategoriesQuery } from '@/hooks/ma
 import { FilterBar } from '@/components/layout/FilterBar';
 import { useMarketFilterStore } from '@/stores/useMarketFilterStore';
 import { VOLUME_UNIT_OPTIONS, formatVolumeValue } from '@/utils/volumeUnit';
+import { getBrandLogo } from '@/utils/brandLogos';
 
 type SortField = 'volume' | 'revenue' | 'rotation' | 'growth' | 'risk' | 'name' | 'rank';
 type SortDirection = 'asc' | 'desc';
@@ -919,7 +920,14 @@ export default function ProductsPage() {
                                   {p.name}
                                 </div>
                                 <div className="text-[11px] text-muted-foreground flex items-center gap-1.5">
-                                  <span className="font-medium text-foreground/80 truncate max-w-[100px]">{p.brand}</span>
+                                  <span className="font-medium text-foreground/80 truncate max-w-[120px] flex items-center gap-1">
+                                    {getBrandLogo(p.brand) && (
+                                      <span className="size-3.5 rounded bg-white p-0.5 border border-border inline-flex items-center justify-center shrink-0">
+                                        <img src={getBrandLogo(p.brand)!} alt="" className="size-full object-contain" />
+                                      </span>
+                                    )}
+                                    <span>{p.brand}</span>
+                                  </span>
                                   {p.format && (
                                     <>
                                       <span>•</span>
@@ -1143,8 +1151,14 @@ export default function ProductsPage() {
                       <h3 className="font-bold text-foreground text-sm tracking-tight truncate group-hover:text-amber-400 transition-colors">
                         {p.name}
                       </h3>
-                      <div className="text-[11px] text-muted-foreground truncate mt-0.5">
-                        Marque : <span className="text-foreground font-medium">{p.brand}</span>
+                      <div className="text-[11px] text-muted-foreground truncate mt-0.5 flex items-center gap-1.5">
+                        <span>Marque :</span>
+                        {getBrandLogo(p.brand) && (
+                          <span className="size-4 rounded bg-white p-0.5 border border-border inline-flex items-center justify-center shrink-0">
+                            <img src={getBrandLogo(p.brand)!} alt="" className="size-full object-contain" />
+                          </span>
+                        )}
+                        <span className="text-foreground font-medium truncate">{p.brand}</span>
                       </div>
                     </div>
 
@@ -1285,8 +1299,15 @@ export default function ProductsPage() {
                       {selectedProduct.category}
                     </span>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Marque : <strong className="text-foreground">{selectedProduct.brand}</strong> • Format : {selectedProduct.format || 'Standard'}
+                  <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5 flex-wrap">
+                    {getBrandLogo(selectedProduct.brand) && (
+                      <span className="size-4.5 rounded bg-white p-0.5 border border-border inline-flex items-center justify-center shrink-0 shadow-2xs">
+                        <img src={getBrandLogo(selectedProduct.brand)!} alt="" className="size-full object-contain" />
+                      </span>
+                    )}
+                    <span>Marque : <strong className="text-foreground">{selectedProduct.brand}</strong></span>
+                    <span>•</span>
+                    <span>Format : {selectedProduct.format || 'Standard'}</span>
                   </p>
                 </div>
               </div>

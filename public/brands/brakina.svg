@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" width="200" height="60">
+  <rect width="200" height="60" rx="8" fill="#c2410c" />
+  <circle cx="30" cy="30" r="18" fill="#fbbf24" stroke="#ffffff" stroke-width="2"/>
+  <polygon points="30,17 33,25 42,25 35,30 38,39 30,34 22,39 25,30 18,25 27,25" fill="#c2410c"/>
+  <text x="60" y="38" font-family="Arial, sans-serif" font-weight="900" font-size="24" fill="#ffffff" letter-spacing="1">BRAKINA</text>
+</svg>

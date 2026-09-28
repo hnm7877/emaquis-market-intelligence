@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" width="200" height="60">
+  <rect width="200" height="60" rx="8" fill="#1e3a8a" />
+  <circle cx="32" cy="30" r="18" fill="#ffffff" />
+  <path d="M 14,30 A 18,18 0 0,1 50,30 Q 32,24 14,30 Z" fill="#dc2626" />
+  <path d="M 14,30 A 18,18 0 0,0 50,30 Q 32,36 14,30 Z" fill="#2563eb" />
+  <text x="64" y="38" font-family="'Helvetica Neue', Arial, sans-serif" font-weight="900" font-size="24" fill="#ffffff" font-style="italic" letter-spacing="1">pepsi</text>
+</svg>

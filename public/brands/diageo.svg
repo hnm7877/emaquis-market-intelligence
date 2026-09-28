@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" width="200" height="60">
+  <rect width="200" height="60" rx="8" fill="#18181b" />
+  <path d="M 24,18 Q 38,15 36,36 Q 34,44 26,44 Q 30,34 24,18 Z" fill="#eab308"/>
+  <text x="56" y="38" font-family="'Times New Roman', serif" font-weight="bold" font-size="22" fill="#ffffff" letter-spacing="1">DIAGEO</text>
+</svg>

@@ -28,6 +28,7 @@ import { FilterBar } from '@/components/layout/FilterBar';
 import { useMarketFilterStore } from '@/stores/useMarketFilterStore';
 import { formatVolumeValue } from '@/utils/volumeUnit';
 import { BrandMarketShareCharts } from '@/components/charts/BrandMarketShareCharts';
+import { getBrandLogo } from '@/utils/brandLogos';
 
 export default function BrandsPage() {
   const { filters, setFilter, resetFilters, volumeUnit } = useMarketFilterStore();
@@ -179,8 +180,15 @@ export default function BrandsPage() {
                 <Flame className="size-3.5" />
               </div>
             </div>
-            <div className="text-base sm:text-xl font-bold text-foreground tracking-tight truncate flex items-center gap-1.5">
-              <span>{marketMetrics.leader?.name || 'SOLIBRA'}</span>
+            <div className="text-base sm:text-xl font-bold text-foreground tracking-tight truncate flex items-center gap-2">
+              <div className="size-6 rounded-md bg-white p-0.5 border border-border/80 flex items-center justify-center shrink-0 shadow-2xs">
+                <img
+                  src={getBrandLogo(marketMetrics.leader?.key || marketMetrics.leader?.name) || '/brands/solibra.png'}
+                  alt=""
+                  className="size-full object-contain"
+                />
+              </div>
+              <span className="truncate">{marketMetrics.leader?.name || 'SOLIBRA'}</span>
               <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/40 text-[10px] font-mono font-bold px-1.5 py-0">
                 {marketMetrics.leader?.marketShare || 0}% PDM
               </Badge>
@@ -244,47 +252,74 @@ export default function BrandsPage() {
 
           const isLeader = rank === 1;
           const isChallenger = rank === 2;
+          const logoSrc = brand.logo || getBrandLogo(brand.key || brand.name);
 
           return (
             <Card
               key={brand.id || brand.key || brand.name}
-              className={`border transition-all duration-200 backdrop-blur-md relative overflow-hidden flex flex-col justify-between ${
+              className={`border transition-all duration-300 backdrop-blur-md relative overflow-hidden flex flex-col justify-between group ${
                 isLeader
-                  ? 'border-amber-500/40 bg-gradient-to-br from-card via-card/90 to-amber-950/10 shadow-lg shadow-amber-500/5 hover:border-amber-500/60'
+                  ? 'border-amber-500/50 bg-gradient-to-br from-card via-card/90 to-amber-950/15 shadow-xl shadow-amber-500/10 hover:border-amber-500/70'
                   : isChallenger
-                  ? 'border-blue-500/30 bg-card/75 hover:border-blue-500/50'
+                  ? 'border-emerald-500/40 bg-gradient-to-br from-card via-card/90 to-emerald-950/10 shadow-lg shadow-emerald-500/5 hover:border-emerald-500/60'
+                  : rank === 3
+                  ? 'border-red-500/30 bg-gradient-to-br from-card via-card/90 to-red-950/10 hover:border-red-500/50'
                   : 'border-border/80 bg-card/70 hover:border-primary/40'
               }`}
             >
+              {/* Filigrane / Watermark du logo de la marque en arrière-plan */}
+              {logoSrc && (
+                <div className="absolute -right-3 -bottom-3 opacity-[0.05] dark:opacity-[0.07] pointer-events-none select-none transition-opacity duration-300 group-hover:opacity-[0.10]">
+                  <img src={logoSrc} alt="" className="size-28 object-contain filter grayscale" />
+                </div>
+              )}
+
               <div>
-                <CardHeader className="pb-3 flex flex-row items-start justify-between gap-2">
-                  <div className="space-y-1 min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span
-                        className={`size-5 rounded-full flex items-center justify-center font-bold text-[10px] font-mono border ${
-                          isLeader
-                            ? 'bg-amber-500 text-black border-amber-400 shadow-xs'
-                            : isChallenger
-                            ? 'bg-slate-300/20 text-slate-200 border-slate-400/50'
-                            : rank === 3
-                            ? 'bg-amber-700/20 text-amber-500 border-amber-700/50'
-                            : 'bg-muted text-muted-foreground border-border'
-                        }`}
-                      >
-                        #{rank}
-                      </span>
-                      <CardTitle className="text-base font-bold tracking-tight text-foreground truncate">
-                        {brand.name}
-                      </CardTitle>
-                    </div>
-                    <CardDescription className="text-xs text-muted-foreground flex items-center gap-1.5 truncate">
-                      <span className="px-1.5 py-0.2 rounded bg-muted text-[10px] font-medium border border-border/60">
-                        {topCat}
-                      </span>
-                      {brand.productCount > 0 && (
-                        <span>• {brand.productCount} SKU(s) au catalogue</span>
+                <CardHeader className="pb-3 flex flex-row items-start justify-between gap-2.5 relative z-10">
+                  <div className="flex items-center gap-3 min-w-0">
+                    {/* Conteneur Logo de la Marque */}
+                    <div className="size-13 sm:size-14 rounded-2xl bg-white dark:bg-white/95 border border-border/80 p-2 shadow-sm flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform duration-300">
+                      {logoSrc ? (
+                        <img
+                          src={logoSrc}
+                          alt={brand.name}
+                          className="max-h-full max-w-full object-contain"
+                        />
+                      ) : (
+                        <div className="size-full rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-500 font-extrabold text-sm">
+                          {brand.name.substring(0, 2).toUpperCase()}
+                        </div>
                       )}
-                    </CardDescription>
+                    </div>
+
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span
+                          className={`size-5 rounded-full flex items-center justify-center font-bold text-[10px] font-mono border ${
+                            isLeader
+                              ? 'bg-amber-500 text-black border-amber-400 shadow-xs'
+                              : isChallenger
+                              ? 'bg-emerald-500 text-black border-emerald-400/80'
+                              : rank === 3
+                              ? 'bg-red-500 text-white border-red-400/80'
+                              : 'bg-muted text-muted-foreground border-border'
+                          }`}
+                        >
+                          #{rank}
+                        </span>
+                        <CardTitle className="text-base font-bold tracking-tight text-foreground truncate">
+                          {brand.name}
+                        </CardTitle>
+                      </div>
+                      <CardDescription className="text-xs text-muted-foreground flex items-center gap-1.5 truncate">
+                        <span className="px-1.5 py-0.2 rounded bg-muted text-[10px] font-medium border border-border/60">
+                          {topCat}
+                        </span>
+                        {brand.productCount > 0 && (
+                          <span>• {brand.productCount} SKU(s)</span>
+                        )}
+                      </CardDescription>
+                    </div>
                   </div>
 
                   {/* Market Share PDM Badge */}
@@ -293,6 +328,8 @@ export default function BrandsPage() {
                     className={`font-mono text-xs font-bold shrink-0 px-2 py-1 ${
                       isLeader
                         ? 'bg-amber-500 text-black shadow-xs shadow-amber-500/30 font-extrabold'
+                        : isChallenger
+                        ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
                         : 'bg-muted/80 text-foreground border-border/80'
                     }`}
                   >
