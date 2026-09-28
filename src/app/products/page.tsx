@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -11,12 +11,9 @@ import {
   LayoutGrid,
   List,
   TrendingUp,
-  TrendingDown,
   Award,
   DollarSign,
-  AlertTriangle,
   RotateCw,
-  Clock,
   Layers,
   Flame,
   ArrowUpDown,
@@ -27,7 +24,6 @@ import {
   MapPin,
   Sparkles,
   BarChart3,
-  CheckCircle2,
   RefreshCw,
   ShoppingBag,
   Download,
@@ -42,11 +38,19 @@ import {
 import { useProductsQuery, useBrandsQuery, useCategoriesQuery } from '@/hooks/market/useMarketQueries';
 import { FilterBar } from '@/components/layout/FilterBar';
 import { useMarketFilterStore } from '@/stores/useMarketFilterStore';
-import { VOLUME_UNIT_OPTIONS, formatVolumeValue, VolumeUnit } from '@/utils/volumeUnit';
+import { VOLUME_UNIT_OPTIONS, formatVolumeValue } from '@/utils/volumeUnit';
 
 type SortField = 'volume' | 'revenue' | 'rotation' | 'growth' | 'risk' | 'name' | 'rank';
 type SortDirection = 'asc' | 'desc';
 type SegmentFilter = 'ALL' | 'TOP_10' | 'GROWTH' | 'HIGH_RISK' | 'HIGH_ROTATION';
+
+// Helper de normalisation sans accent et insensible à la casse
+const normalizeText = (text: string) =>
+  (text || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
 
 export default function ProductsPage() {
   const { filters, setFilter, resetFilters, volumeUnit, setVolumeUnit } = useMarketFilterStore();
@@ -74,13 +78,12 @@ export default function ProductsPage() {
   // Requêtes API Market Intelligence
   const { data: apiProductsData, isLoading, refetch, isFetching } = useProductsQuery();
   const { data: apiBrandsData } = useBrandsQuery();
-  const { data: apiCategoriesData } = useCategoriesQuery();
 
   const productsList = useMemo(() => {
     return apiProductsData?.products || [];
   }, [apiProductsData]);
 
-  // Récupération dynamique et directe des marques réelles sans en rajouter d'artificielles
+  // Récupération dynamique et directe des marques réelles
   const dynamicBrands = useMemo(() => {
     const brandSet = new Set<string>();
     if (apiBrandsData?.brands?.length) {
@@ -100,8 +103,8 @@ export default function ProductsPage() {
   const dynamicCategories = useMemo(() => {
     const catMap = new Map<string, number>();
     productsList.forEach((p: any) => {
-      if (p.category) {
-        const c = p.category.trim();
+      const c = (p.category || '').trim();
+      if (c) {
         catMap.set(c, (catMap.get(c) || 0) + 1);
       }
     });
@@ -111,18 +114,38 @@ export default function ProductsPage() {
     return [{ name: 'ALL', count: productsList.length }, ...list];
   }, [productsList]);
 
-  // Filtrage combiné : Recherche + Marque + Catégorie + Segment Preset + Tri Dynamique
+  // Filtrage combiné : Recherche + Marque + Catégorie + Segment Preset + Tri
   const filtered = useMemo(() => {
-    let result = productsList.filter((p: any) => {
-      const matchSearch =
-        !search ||
-        (p.name || '').toLowerCase().includes(search.toLowerCase()) ||
-        (p.brand || '').toLowerCase().includes(search.toLowerCase()) ||
-        (p.category || '').toLowerCase().includes(search.toLowerCase()) ||
-        (p.format || '').toLowerCase().includes(search.toLowerCase());
+    const normSearch = normalizeText(search);
+    const normBrandFilter = normalizeText(filterBrand);
+    const normCatFilter = normalizeText(filterCategory);
 
-      const matchBrand = filterBrand === 'ALL' || p.brand?.toLowerCase() === filterBrand.toLowerCase();
-      const matchCat = filterCategory === 'ALL' || p.category?.toLowerCase() === filterCategory.toLowerCase();
+    let result = productsList.filter((p: any) => {
+      const pName = normalizeText(p.name);
+      const pBrand = normalizeText(p.brand);
+      const pCat = normalizeText(p.category);
+      const pFormat = normalizeText(p.format);
+
+      const matchSearch =
+        !normSearch ||
+        pName.includes(normSearch) ||
+        pBrand.includes(normSearch) ||
+        pCat.includes(normSearch) ||
+        pFormat.includes(normSearch);
+
+      const matchBrand =
+        filterBrand === 'ALL' ||
+        normBrandFilter === 'all' ||
+        pBrand === normBrandFilter ||
+        pBrand.includes(normBrandFilter) ||
+        normBrandFilter.includes(pBrand);
+
+      const matchCat =
+        filterCategory === 'ALL' ||
+        normCatFilter === 'all' ||
+        pCat === normCatFilter ||
+        pCat.includes(normCatFilter) ||
+        normCatFilter.includes(pCat);
 
       // Filtrage par segment d'intelligence
       let matchSegment = true;
@@ -167,7 +190,6 @@ export default function ProductsPage() {
       return sortDirection === 'asc' ? -comparison : comparison;
     });
 
-    // Si segment TOP_10 demandé, limiter aux 10 premiers
     if (selectedSegment === 'TOP_10') {
       result = result.slice(0, 10);
     }
@@ -180,21 +202,21 @@ export default function ProductsPage() {
     setCurrentPage(1);
   }, [search, filterBrand, filterCategory, selectedSegment, sortField, sortDirection, pageSize]);
 
-  // Totaux statistiques réels
-  const totalVolume = useMemo(() => {
-    return productsList.reduce((acc: number, p: any) => acc + (p.volume ?? (p as any).volumeSales ?? 0), 0);
-  }, [productsList]);
+  // Totaux statistiques contextuels
+  const currentVolume = useMemo(() => {
+    return filtered.reduce((acc: number, p: any) => acc + (p.volume ?? (p as any).volumeSales ?? 0), 0);
+  }, [filtered]);
 
-  const totalRevenue = useMemo(() => {
-    return productsList.reduce((acc: number, p: any) => acc + (p.revenue ?? 0), 0);
-  }, [productsList]);
+  const currentRevenue = useMemo(() => {
+    return filtered.reduce((acc: number, p: any) => acc + (p.revenue ?? 0), 0);
+  }, [filtered]);
 
-  const productsWithSales = useMemo(() => {
-    return productsList.filter((p: any) => (p.volume || 0) > 0).length;
-  }, [productsList]);
+  const currentProductsWithSales = useMemo(() => {
+    return filtered.filter((p: any) => (p.volume || 0) > 0).length;
+  }, [filtered]);
 
-  const topProduct = productsList.length > 0 ? productsList[0] : null;
-  const avgPrice = totalVolume > 0 ? Math.round(totalRevenue / totalVolume) : 850;
+  const currentTopProduct = filtered.length > 0 ? filtered[0] : null;
+  const currentAvgPrice = currentVolume > 0 ? Math.round(currentRevenue / currentVolume) : 850;
 
   // Pagination dynamique
   const totalPages = pageSize === 'all' ? 1 : Math.ceil(filtered.length / Number(pageSize)) || 1;
@@ -215,7 +237,7 @@ export default function ProductsPage() {
     }
   };
 
-  // Exportation CSV certifiée des données filtrées
+  // Exportation CSV
   const handleExportCSV = () => {
     if (!filtered || filtered.length === 0) return;
 
@@ -285,220 +307,225 @@ export default function ProductsPage() {
     resetFilters();
   };
 
+  const isFilteringActive = Boolean(
+    search || filterBrand !== 'ALL' || filterCategory !== 'ALL' || selectedSegment !== 'ALL'
+  );
+
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-12">
+    <div className="space-y-4 sm:space-y-6 max-w-7xl mx-auto pb-12" suppressHydrationWarning>
       {/* Page Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-border/60">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 pb-2 border-b border-border/60">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
-              <Package className="size-5 text-amber-500" />
-              Catalogue Produits &amp; Vélocité des Ventes
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-lg sm:text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
+              <Package className="size-5 text-amber-500 shrink-0" />
+              Catalogue Produits &amp; Débits
             </h1>
             <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-400 border-emerald-500/30 gap-1.5 py-0.5">
               <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              {isLoading ? 'Chargement en direct...' : `${productsWithSales} SKUs actifs débités`}
+              {isLoading ? 'Chargement...' : `${currentProductsWithSales} SKUs actifs`}
             </Badge>
           </div>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Données de ventes consolidées depuis GlobalSales, images Cloudinary certifiées, rotations et analyse par commune.
+          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1 sm:line-clamp-none">
+            Données de ventes consolidées depuis GlobalSales, rotations et analyse géographique.
           </p>
         </div>
 
         {/* Search, Export, Refresh & View Mode Switcher */}
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap w-full sm:w-auto justify-between sm:justify-end">
           {/* Recherche rapide */}
-          <div className="relative">
+          <div className="relative flex-1 sm:flex-none w-full sm:w-56 md:w-60">
             <Search className="size-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Rechercher produit, marque, format..."
+              placeholder="Rechercher produit, marque..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="h-8 text-xs w-60 pl-8 bg-background/80"
+              className="h-8 text-xs w-full pl-8 bg-background/80"
             />
             {search && (
               <button
                 onClick={() => setSearch('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                title="Effacer la recherche"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer"
+                title="Effacer"
               >
                 <X className="size-3" />
               </button>
             )}
           </div>
 
-          {/* Switcher Mode Tableau / Grille */}
-          <div className="flex items-center border border-border rounded-lg p-0.5 bg-muted/40">
-            <Button
-              variant={viewMode === 'table' ? 'secondary' : 'ghost'}
-              size="sm"
-              onClick={() => setViewMode('table')}
-              className="h-7 px-2.5 text-xs gap-1"
-            >
-              <List className="size-3.5" />
-              <span className="hidden sm:inline">Tableau</span>
-            </Button>
-            <Button
-              variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
-              size="sm"
-              onClick={() => setViewMode('grid')}
-              className="h-7 px-2.5 text-xs gap-1"
-            >
-              <LayoutGrid className="size-3.5" />
-              <span className="hidden sm:inline">Grille Images</span>
-            </Button>
-          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* Mode Tableau / Grille */}
+            <div className="flex items-center border border-border rounded-lg p-0.5 bg-muted/40">
+              <Button
+                variant={viewMode === 'table' ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('table')}
+                className="h-7 px-2 sm:px-2.5 text-xs gap-1"
+                aria-label="Mode Tableau"
+              >
+                <List className="size-3.5" />
+                <span className="hidden md:inline">Tableau</span>
+              </Button>
+              <Button
+                variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('grid')}
+                className="h-7 px-2 sm:px-2.5 text-xs gap-1"
+                aria-label="Mode Grille"
+              >
+                <LayoutGrid className="size-3.5" />
+                <span className="hidden md:inline">Grille</span>
+              </Button>
+            </div>
 
-          {/* Densité de ligne en mode tableau */}
-          {viewMode === 'table' && (
+            {/* Densité en mode tableau */}
+            {viewMode === 'table' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDensity(density === 'normal' ? 'compact' : 'normal')}
+                className={`h-7 px-2 text-xs gap-1 hidden sm:flex ${density === 'compact' ? 'bg-muted text-foreground' : 'text-muted-foreground'}`}
+                title={density === 'compact' ? 'Vue normale' : 'Vue compacte'}
+              >
+                <SlidersHorizontal className="size-3" />
+                <span className="hidden md:inline">{density === 'compact' ? 'Compact' : 'Normal'}</span>
+              </Button>
+            )}
+
+            {/* Bouton Export CSV */}
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setDensity(density === 'normal' ? 'compact' : 'normal')}
-              className={`h-7 px-2 text-xs gap-1 hidden md:flex ${density === 'compact' ? 'bg-muted text-foreground' : 'text-muted-foreground'}`}
-              title={density === 'compact' ? 'Passer en vue normale' : 'Passer en vue compacte'}
+              onClick={handleExportCSV}
+              disabled={filtered.length === 0}
+              className="h-7 px-2 sm:px-2.5 text-xs gap-1 border-border/80 hover:bg-amber-500/10 hover:text-amber-400 hover:border-amber-500/40 transition-colors"
+              title="Exporter CSV"
             >
-              <SlidersHorizontal className="size-3" />
-              <span>{density === 'compact' ? 'Compact' : 'Normal'}</span>
+              <Download className="size-3" />
+              <span className="hidden sm:inline">CSV</span>
             </Button>
-          )}
 
-          {/* Bouton Export CSV */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExportCSV}
-            disabled={filtered.length === 0}
-            className="h-7 px-2.5 text-xs gap-1.5 border-border/80 hover:bg-amber-500/10 hover:text-amber-400 hover:border-amber-500/40 transition-colors"
-            title="Exporter les produits filtrés au format CSV"
-          >
-            <Download className="size-3" />
-            <span className="hidden sm:inline">Export CSV</span>
-          </Button>
-
-          {/* Bouton Rafraîchir */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => refetch()}
-            disabled={isFetching}
-            className="h-7 px-2 text-xs gap-1"
-            title="Rafraîchir les données de vente"
-          >
-            <RefreshCw className={`size-3 ${isFetching ? 'animate-spin text-amber-500' : ''}`} />
-          </Button>
+            {/* Bouton Rafraîchir */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refetch()}
+              disabled={isFetching}
+              className="h-7 px-2 text-xs"
+              title="Rafraîchir"
+            >
+              <RefreshCw className={`size-3 ${isFetching ? 'animate-spin text-amber-500' : ''}`} />
+            </Button>
+          </div>
         </div>
       </div>
 
       {/* Global Filter Bar */}
       <FilterBar filters={filters} onFilterChange={setFilter} onReset={resetFilters} />
 
-      {/* Top 5 KPI Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        {/* Card 1: Volume Total Vendu */}
+      {/* Top 5 KPI Summary Cards (Grid Responsive) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
+        {/* Card 1: Volume */}
         <Card className="border border-border/70 bg-card/60 backdrop-blur-md relative overflow-hidden group hover:border-amber-500/40 transition-colors">
-          <CardContent className="p-3.5 space-y-1">
+          <CardContent className="p-3 sm:p-3.5 space-y-1">
             <div className="flex items-center justify-between text-muted-foreground">
-              <span className="text-xs font-medium">Volume Total Vendu</span>
-              <div className="p-1 rounded-md bg-amber-500/10 text-amber-500 group-hover:scale-110 transition-transform">
-                <TrendingUp className="size-3.5" />
+              <span className="text-[11px] sm:text-xs font-medium truncate">Volume Vendu</span>
+              <div className="p-1 rounded-md bg-amber-500/10 text-amber-500 shrink-0">
+                <TrendingUp className="size-3 sm:size-3.5" />
               </div>
             </div>
-            <div className="text-lg font-bold font-mono text-foreground tracking-tight">
-              {formatVolumeValue(totalVolume, volumeUnit, totalRevenue).formatted}
+            <div className="text-base sm:text-lg font-bold font-mono text-foreground tracking-tight truncate">
+              {formatVolumeValue(currentVolume, volumeUnit, currentRevenue).formatted}
             </div>
-            <div className="text-[11px] text-muted-foreground flex items-center justify-between">
-              <span>Unité: <strong className="text-foreground">{volumeUnit.toUpperCase()}</strong></span>
-              <span className="text-emerald-400 font-medium flex items-center gap-0.5">
-                <TrendingUp className="size-2.5" />
-                +14.2%
-              </span>
+            <div className="text-[10px] sm:text-[11px] text-muted-foreground flex items-center justify-between">
+              <span><strong className="text-foreground">{volumeUnit.toUpperCase()}</strong></span>
+              <span className="text-emerald-400 font-medium">+14.2%</span>
             </div>
           </CardContent>
         </Card>
 
-        {/* Card 2: Chiffre d'Affaires Global */}
+        {/* Card 2: CA */}
         <Card className="border border-border/70 bg-card/60 backdrop-blur-md relative overflow-hidden group hover:border-emerald-500/40 transition-colors">
-          <CardContent className="p-3.5 space-y-1">
+          <CardContent className="p-3 sm:p-3.5 space-y-1">
             <div className="flex items-center justify-between text-muted-foreground">
-              <span className="text-xs font-medium">Chiffre d'Affaires</span>
-              <div className="p-1 rounded-md bg-emerald-500/10 text-emerald-500 group-hover:scale-110 transition-transform">
-                <DollarSign className="size-3.5" />
+              <span className="text-[11px] sm:text-xs font-medium truncate">Chiffre d'Affaires</span>
+              <div className="p-1 rounded-md bg-emerald-500/10 text-emerald-500 shrink-0">
+                <DollarSign className="size-3 sm:size-3.5" />
               </div>
             </div>
-            <div className="text-lg font-bold font-mono text-foreground tracking-tight">
-              {totalRevenue >= 1000000
-                ? `${(totalRevenue / 1000000).toFixed(1)}M FCFA`
-                : `${totalRevenue.toLocaleString('fr-FR')} FCFA`}
+            <div className="text-base sm:text-lg font-bold font-mono text-foreground tracking-tight truncate">
+              {currentRevenue >= 1000000
+                ? `${(currentRevenue / 1000000).toFixed(1)}M FCFA`
+                : `${currentRevenue.toLocaleString('fr-FR')} F`}
             </div>
-            <div className="text-[11px] text-muted-foreground">
-              Débits certifiés GlobalSales
+            <div className="text-[10px] sm:text-[11px] text-muted-foreground truncate">
+              {isFilteringActive ? `${filtered.length} SKUs` : 'Débits réels'}
             </div>
           </CardContent>
         </Card>
 
-        {/* Card 3: Top SKU Leader */}
+        {/* Card 3: Top SKU */}
         <Card className="border border-border/70 bg-card/60 backdrop-blur-md relative overflow-hidden group hover:border-amber-500/40 transition-colors">
-          <CardContent className="p-3.5 space-y-1">
+          <CardContent className="p-3 sm:p-3.5 space-y-1">
             <div className="flex items-center justify-between text-muted-foreground">
-              <span className="text-xs font-medium">Top SKU Leader</span>
-              <div className="p-1 rounded-md bg-amber-500/10 text-amber-500 group-hover:scale-110 transition-transform">
-                <Award className="size-3.5" />
+              <span className="text-[11px] sm:text-xs font-medium truncate">Top SKU Leader</span>
+              <div className="p-1 rounded-md bg-amber-500/10 text-amber-500 shrink-0">
+                <Award className="size-3 sm:size-3.5" />
               </div>
             </div>
-            <div className="text-sm font-bold text-foreground truncate" title={topProduct?.name || '-'}>
-              {topProduct?.name || 'Aucun produit'}
+            <div className="text-xs sm:text-sm font-bold text-foreground truncate" title={currentTopProduct?.name || '-'}>
+              {currentTopProduct?.name || 'Aucun'}
             </div>
-            <div className="text-[11px] text-muted-foreground flex items-center justify-between">
-              <span className="truncate">{topProduct?.brand || '-'}</span>
+            <div className="text-[10px] sm:text-[11px] text-muted-foreground flex items-center justify-between">
+              <span className="truncate max-w-[60%]">{currentTopProduct?.brand || '-'}</span>
               <span className="font-mono font-semibold text-foreground">
-                {topProduct ? formatVolumeValue(topProduct.volume || 0, volumeUnit, topProduct.revenue).formatted : '-'}
+                {currentTopProduct ? formatVolumeValue(currentTopProduct.volume || 0, volumeUnit, currentTopProduct.revenue).formatted : '-'}
               </span>
             </div>
           </CardContent>
         </Card>
 
-        {/* Card 4: SKUs Actifs / Catalogue */}
+        {/* Card 4: SKUs Actifs */}
         <Card className="border border-border/70 bg-card/60 backdrop-blur-md relative overflow-hidden group hover:border-blue-500/40 transition-colors">
-          <CardContent className="p-3.5 space-y-1">
+          <CardContent className="p-3 sm:p-3.5 space-y-1">
             <div className="flex items-center justify-between text-muted-foreground">
-              <span className="text-xs font-medium">SKUs en Mouvement</span>
-              <div className="p-1 rounded-md bg-blue-500/10 text-blue-500 group-hover:scale-110 transition-transform">
-                <Layers className="size-3.5" />
+              <span className="text-[11px] sm:text-xs font-medium truncate">SKUs Débités</span>
+              <div className="p-1 rounded-md bg-blue-500/10 text-blue-500 shrink-0">
+                <Layers className="size-3 sm:size-3.5" />
               </div>
             </div>
-            <div className="text-lg font-bold font-mono text-foreground tracking-tight">
-              {productsWithSales} <span className="text-xs font-normal text-muted-foreground">/ {productsList.length}</span>
+            <div className="text-base sm:text-lg font-bold font-mono text-foreground tracking-tight">
+              {currentProductsWithSales} <span className="text-[11px] font-normal text-muted-foreground">/ {filtered.length}</span>
             </div>
-            <div className="text-[11px] text-muted-foreground">
-              {productsList.length > 0 ? `${Math.round((productsWithSales / productsList.length) * 100)}% taux d'activation` : '0%'}
+            <div className="text-[10px] sm:text-[11px] text-muted-foreground">
+              {filtered.length > 0 ? `${Math.round((currentProductsWithSales / filtered.length) * 100)}% activation` : '0%'}
             </div>
           </CardContent>
         </Card>
 
-        {/* Card 5: Panier & Rotation Moyenne */}
-        <Card className="border border-border/70 bg-card/60 backdrop-blur-md col-span-2 md:col-span-1 relative overflow-hidden group hover:border-purple-500/40 transition-colors">
-          <CardContent className="p-3.5 space-y-1">
+        {/* Card 5: Prix & Rotation */}
+        <Card className="border border-border/70 bg-card/60 backdrop-blur-md col-span-2 sm:col-span-1 relative overflow-hidden group hover:border-purple-500/40 transition-colors">
+          <CardContent className="p-3 sm:p-3.5 space-y-1">
             <div className="flex items-center justify-between text-muted-foreground">
-              <span className="text-xs font-medium">Prix Moyen / Bouteille</span>
-              <div className="p-1 rounded-md bg-purple-500/10 text-purple-500 group-hover:scale-110 transition-transform">
-                <RotateCw className="size-3.5" />
+              <span className="text-[11px] sm:text-xs font-medium truncate">Prix Moyen</span>
+              <div className="p-1 rounded-md bg-purple-500/10 text-purple-500 shrink-0">
+                <RotateCw className="size-3 sm:size-3.5" />
               </div>
             </div>
-            <div className="text-lg font-bold font-mono text-foreground tracking-tight">
-              {avgPrice.toLocaleString('fr-FR')} <span className="text-xs font-normal text-muted-foreground">FCFA</span>
+            <div className="text-base sm:text-lg font-bold font-mono text-foreground tracking-tight">
+              {currentAvgPrice.toLocaleString('fr-FR')} <span className="text-[11px] font-normal text-muted-foreground">FCFA</span>
             </div>
-            <div className="text-[11px] text-muted-foreground">
-              Rotation moy: ~14x / semaine
+            <div className="text-[10px] sm:text-[11px] text-muted-foreground">
+              Rot. moy: ~14x / sem
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Control Bar: Quick Segments, Categories, Volume Switcher & Sorting */}
-      <div className="space-y-2.5">
+      {/* Control Bar: Segments, Categories, Volume Switcher & Sorting */}
+      <div className="space-y-2 sm:space-y-2.5">
         {/* Quick Intelligence Segment Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-xs">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-xs -mx-1 px-1">
           <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider pr-1 flex items-center gap-1 shrink-0">
             <Zap className="size-3 text-amber-500" />
             Segments :
@@ -507,87 +534,91 @@ export default function ProductsPage() {
           <button
             type="button"
             onClick={() => setSelectedSegment('ALL')}
-            className={`px-2.5 py-1 rounded-lg border font-medium transition-all shrink-0 flex items-center gap-1 ${
+            className={`px-2.5 py-1 rounded-lg border font-medium transition-all shrink-0 flex items-center gap-1 cursor-pointer ${
               selectedSegment === 'ALL'
                 ? 'bg-foreground text-background border-foreground font-semibold shadow-xs'
                 : 'bg-muted/30 text-muted-foreground border-border/60 hover:bg-muted/60 hover:text-foreground'
             }`}
           >
-            <span>Tous les produits</span>
+            <span>Tous</span>
             <span className="text-[10px] opacity-75">({productsList.length})</span>
           </button>
 
           <button
             type="button"
-            onClick={() => setSelectedSegment('TOP_10')}
-            className={`px-2.5 py-1 rounded-lg border font-medium transition-all shrink-0 flex items-center gap-1 ${
+            onClick={() => setSelectedSegment(selectedSegment === 'TOP_10' ? 'ALL' : 'TOP_10')}
+            className={`px-2.5 py-1 rounded-lg border font-medium transition-all shrink-0 flex items-center gap-1 cursor-pointer ${
               selectedSegment === 'TOP_10'
                 ? 'bg-amber-500 text-black border-amber-500 font-semibold shadow-xs'
                 : 'bg-amber-500/10 text-amber-400 border-amber-500/30 hover:bg-amber-500/20'
             }`}
           >
             <Flame className="size-3" />
-            <span>Top Débits (Top 10)</span>
+            <span>Top 10</span>
           </button>
 
           <button
             type="button"
-            onClick={() => setSelectedSegment('GROWTH')}
-            className={`px-2.5 py-1 rounded-lg border font-medium transition-all shrink-0 flex items-center gap-1 ${
+            onClick={() => setSelectedSegment(selectedSegment === 'GROWTH' ? 'ALL' : 'GROWTH')}
+            className={`px-2.5 py-1 rounded-lg border font-medium transition-all shrink-0 flex items-center gap-1 cursor-pointer ${
               selectedSegment === 'GROWTH'
                 ? 'bg-emerald-500 text-black border-emerald-500 font-semibold shadow-xs'
                 : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
             }`}
           >
             <TrendingUp className="size-3" />
-            <span>Forte Croissance (≥15%)</span>
+            <span>Croissance (≥15%)</span>
           </button>
 
           <button
             type="button"
-            onClick={() => setSelectedSegment('HIGH_ROTATION')}
-            className={`px-2.5 py-1 rounded-lg border font-medium transition-all shrink-0 flex items-center gap-1 ${
+            onClick={() => setSelectedSegment(selectedSegment === 'HIGH_ROTATION' ? 'ALL' : 'HIGH_ROTATION')}
+            className={`px-2.5 py-1 rounded-lg border font-medium transition-all shrink-0 flex items-center gap-1 cursor-pointer ${
               selectedSegment === 'HIGH_ROTATION'
                 ? 'bg-blue-500 text-white border-blue-500 font-semibold shadow-xs'
                 : 'bg-blue-500/10 text-blue-400 border-blue-500/30 hover:bg-blue-500/20'
             }`}
           >
             <RotateCw className="size-3" />
-            <span>Rotation Rapide (≥10x/sem)</span>
+            <span>Rotation Rapide</span>
           </button>
 
           <button
             type="button"
-            onClick={() => setSelectedSegment('HIGH_RISK')}
-            className={`px-2.5 py-1 rounded-lg border font-medium transition-all shrink-0 flex items-center gap-1 ${
+            onClick={() => setSelectedSegment(selectedSegment === 'HIGH_RISK' ? 'ALL' : 'HIGH_RISK')}
+            className={`px-2.5 py-1 rounded-lg border font-medium transition-all shrink-0 flex items-center gap-1 cursor-pointer ${
               selectedSegment === 'HIGH_RISK'
                 ? 'bg-rose-500 text-white border-rose-500 font-semibold shadow-xs'
                 : 'bg-rose-500/10 text-rose-400 border-rose-500/30 hover:bg-rose-500/20'
             }`}
           >
             <ShieldAlert className="size-3" />
-            <span>Risque Rupture Élevé</span>
+            <span>Risque Rupture</span>
           </button>
         </div>
 
-        {/* Category Pills & Controls */}
-        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 p-3 rounded-xl border border-border/70 bg-card/50 backdrop-blur-sm">
-          {/* Category Filter Pills */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0 scrollbar-none">
-            {dynamicCategories.slice(0, 8).map((cat) => {
-              const active = (cat.name === 'ALL' && filterCategory === 'ALL') || filterCategory === cat.name;
+        {/* Categories Bar & Quick Sorting Dropdowns */}
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 p-2.5 sm:p-3 rounded-xl border border-border/70 bg-card/50 backdrop-blur-sm">
+          {/* Category Filter Pills (Scrollable) */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0 scrollbar-none w-full lg:max-w-[55%] shrink-0">
+            {dynamicCategories.map((cat) => {
+              const isAll = cat.name === 'ALL';
+              const active =
+                (isAll && (filterCategory === 'ALL' || !filterCategory)) ||
+                (!isAll && normalizeText(filterCategory) === normalizeText(cat.name));
+
               return (
                 <button
                   key={cat.name}
                   type="button"
-                  onClick={() => setFilterCategory(cat.name)}
-                  className={`text-xs px-2.5 py-1 rounded-lg border font-medium transition-all shrink-0 flex items-center gap-1.5 ${
+                  onClick={() => setFilterCategory(active && !isAll ? 'ALL' : cat.name)}
+                  className={`text-xs px-2.5 py-1 rounded-lg border font-medium transition-all shrink-0 flex items-center gap-1.5 cursor-pointer ${
                     active
-                      ? 'bg-amber-500 text-black border-amber-500 font-semibold shadow-xs'
+                      ? 'bg-amber-500 text-black border-amber-500 font-semibold shadow-xs scale-[1.02]'
                       : 'bg-muted/40 text-muted-foreground border-border hover:bg-muted/80 hover:text-foreground'
                   }`}
                 >
-                  <span>{cat.name === 'ALL' ? 'Toutes catégories' : cat.name}</span>
+                  <span>{isAll ? 'Toutes catégories' : cat.name}</span>
                   <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
                     active ? 'bg-black/20 text-black' : 'bg-muted text-muted-foreground'
                   }`}>
@@ -599,12 +630,9 @@ export default function ProductsPage() {
           </div>
 
           {/* Volume Unit Switcher & Brand Selector */}
-          <div className="flex items-center gap-2 flex-wrap justify-end">
-            {/* Volume Measurement Units Selector */}
-            <div className="flex items-center bg-muted/60 p-0.5 rounded-lg border border-border">
-              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-2 hidden sm:inline">
-                Unité:
-              </span>
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-between sm:justify-end w-full lg:w-auto shrink-0 pt-2 lg:pt-0 border-t border-border/40 lg:border-t-0">
+            {/* Unit Selector */}
+            <div className="flex items-center bg-muted/60 p-0.5 rounded-lg border border-border shrink-0">
               {VOLUME_UNIT_OPTIONS.map((opt) => {
                 const isActive = volumeUnit === opt.value;
                 return (
@@ -612,7 +640,7 @@ export default function ProductsPage() {
                     key={opt.id}
                     type="button"
                     onClick={() => setVolumeUnit(opt.value)}
-                    className={`h-6 px-2 text-[11px] rounded-md font-medium transition-all flex items-center gap-1 ${
+                    className={`h-6 px-1.5 sm:px-2 text-[11px] rounded-md font-medium transition-all flex items-center gap-1 cursor-pointer ${
                       isActive
                         ? 'bg-amber-500 text-black shadow-xs font-bold'
                         : 'text-muted-foreground hover:text-foreground hover:bg-muted'
@@ -620,19 +648,19 @@ export default function ProductsPage() {
                     title={opt.description}
                   >
                     <span>{opt.icon}</span>
-                    <span>{opt.shortLabel}</span>
+                    <span className="hidden sm:inline">{opt.shortLabel}</span>
                   </button>
                 );
               })}
             </div>
 
-            {/* Brand Filter Dropdown */}
+            {/* Brand Dropdown */}
             <select
               value={filterBrand}
               onChange={(e) => setFilterBrand(e.target.value)}
-              className="h-7 text-xs px-2.5 rounded-lg border border-border bg-background/80 text-foreground font-medium"
+              className="h-7 text-xs px-2 rounded-lg border border-border bg-background/80 text-foreground font-medium shrink-0 max-w-[130px] sm:max-w-none"
             >
-              <option value="ALL">Toutes les marques</option>
+              <option value="ALL">Toutes marques</option>
               {dynamicBrands
                 .filter((b) => b !== 'ALL')
                 .map((b) => (
@@ -643,8 +671,8 @@ export default function ProductsPage() {
             </select>
 
             {/* Tri Dropdown */}
-            <div className="flex items-center gap-1">
-              <ArrowUpDown className="size-3 text-muted-foreground" />
+            <div className="flex items-center gap-1 shrink-0">
+              <ArrowUpDown className="size-3 text-muted-foreground hidden sm:block" />
               <select
                 value={`${sortField}_${sortDirection}`}
                 onChange={(e) => {
@@ -652,19 +680,16 @@ export default function ProductsPage() {
                   setSortField(field as SortField);
                   setSortDirection(dir as SortDirection);
                 }}
-                className="h-7 text-xs px-2.5 rounded-lg border border-border bg-background/80 text-foreground font-medium"
+                className="h-7 text-xs px-2 rounded-lg border border-border bg-background/80 text-foreground font-medium"
               >
-                <option value="volume_desc">Volume débité ↓</option>
-                <option value="volume_asc">Volume débité ↑</option>
-                <option value="revenue_desc">Chiffre d'Affaires ↓</option>
-                <option value="revenue_asc">Chiffre d'Affaires ↑</option>
-                <option value="rotation_desc">Vitesse Rotation ↓</option>
-                <option value="rotation_asc">Vitesse Rotation ↑</option>
-                <option value="growth_desc">Progression % ↓</option>
-                <option value="growth_asc">Progression % ↑</option>
+                <option value="volume_desc">Volume ↓</option>
+                <option value="volume_asc">Volume ↑</option>
+                <option value="revenue_desc">CA FCFA ↓</option>
+                <option value="revenue_asc">CA FCFA ↑</option>
+                <option value="rotation_desc">Rotation ↓</option>
+                <option value="growth_desc">Croissance % ↓</option>
                 <option value="risk_desc">Risque Rupture ↓</option>
-                <option value="name_asc">Nom Produit (A-Z)</option>
-                <option value="name_desc">Nom Produit (Z-A)</option>
+                <option value="name_asc">Nom (A-Z)</option>
               </select>
             </div>
           </div>
@@ -673,41 +698,40 @@ export default function ProductsPage() {
 
       {/* Main Content View: Table or Grid */}
       {isLoading ? (
-        /* Skeleton Loading State */
         <div className="space-y-4">
           <div className="h-64 rounded-xl border border-border/70 bg-card/40 animate-pulse flex items-center justify-center text-muted-foreground text-xs">
             <RefreshCw className="size-5 animate-spin mr-2 text-amber-500" />
-            Synchronisation des ventes et des images en temps réel...
+            Synchronisation des ventes en temps réel...
           </div>
         </div>
       ) : viewMode === 'table' ? (
         /* ================= TABLE VIEW ================= */
         <Card className="border border-border/80 bg-card/60 backdrop-blur-md overflow-hidden shadow-sm">
-          <CardHeader className="py-3 px-4 border-b border-border/60 flex flex-row items-center justify-between">
+          <CardHeader className="py-2.5 sm:py-3 px-3 sm:px-4 border-b border-border/60 flex flex-row items-center justify-between">
             <div className="flex items-center gap-2">
-              <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-2">
-                <span>Classement SKU &amp; Performance Débit</span>
-                <Badge variant="secondary" className="text-[11px] font-mono font-medium">
+              <CardTitle className="text-xs sm:text-sm font-semibold text-foreground flex items-center gap-2">
+                <span>Classement SKU &amp; Débits</span>
+                <Badge variant="secondary" className="text-[10px] sm:text-[11px] font-mono font-medium">
                   {filtered.length} {filtered.length > 1 ? 'produits' : 'produit'}
                 </Badge>
               </CardTitle>
             </div>
-            <div className="flex items-center gap-3 text-xs text-muted-foreground font-mono">
-              <span>Unité: <strong className="text-amber-500 uppercase">{volumeUnit}</strong></span>
-              {(search || filterBrand !== 'ALL' || filterCategory !== 'ALL' || selectedSegment !== 'ALL') && (
+            <div className="flex items-center gap-2 sm:gap-3 text-xs text-muted-foreground font-mono">
+              <span className="hidden sm:inline">Unité: <strong className="text-amber-500 uppercase">{volumeUnit}</strong></span>
+              {isFilteringActive && (
                 <button
                   onClick={handleResetLocalFilters}
-                  className="text-xs text-amber-400 hover:underline flex items-center gap-1 font-sans"
+                  className="text-xs text-amber-400 hover:underline flex items-center gap-1 font-sans cursor-pointer"
                 >
                   <X className="size-3" />
-                  Effacer filtres
+                  Effacer
                 </button>
               )}
             </div>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
+            <div className="overflow-x-auto scrollbar-thin">
+              <table className="min-w-[850px] w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="border-b border-border/80 bg-muted/30 text-muted-foreground font-medium select-none">
                     {/* Rank */}
@@ -784,17 +808,17 @@ export default function ProductsPage() {
                       onClick={() => handleSort('rotation')}
                     >
                       <div className="flex items-center justify-end gap-1">
-                        <span>Rotation Hebdo</span>
+                        <span>Rotation</span>
                         {sortField === 'rotation' && (
                           sortDirection === 'desc' ? <ArrowDown className="size-3 text-amber-500" /> : <ArrowUp className="size-3 text-amber-500" />
                         )}
                       </div>
                     </th>
 
-                    {/* Reorder Frequency */}
+                    {/* Reorder */}
                     <th className="py-2.5 px-3 text-right">Réassort</th>
 
-                    {/* Stockout Risk */}
+                    {/* Risk */}
                     <th
                       className="py-2.5 px-3 text-center cursor-pointer hover:text-foreground transition-colors"
                       onClick={() => handleSort('risk')}
@@ -808,10 +832,10 @@ export default function ProductsPage() {
                     </th>
 
                     {/* Top Communes */}
-                    <th className="py-2.5 px-3">Top Communes Débitrices</th>
+                    <th className="py-2.5 px-3">Top Communes</th>
 
-                    {/* Actions */}
-                    <th className="py-2.5 px-3 text-center w-14">Action</th>
+                    {/* Action */}
+                    <th className="py-2.5 px-3 text-center w-12">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/40">
@@ -821,7 +845,7 @@ export default function ProductsPage() {
                         <ShoppingBag className="size-8 mx-auto mb-2 opacity-40 text-muted-foreground" />
                         <p className="font-semibold text-foreground">Aucun produit ne correspond à vos filtres</p>
                         <p className="text-[11px] mt-0.5 text-muted-foreground">
-                          Essayez de réinitialiser vos critères de recherche ou de changer de segment.
+                          Modifiez vos critères de recherche ou réinitialisez les filtres.
                         </p>
                         <Button
                           variant="outline"
@@ -830,7 +854,7 @@ export default function ProductsPage() {
                           className="mt-3 text-xs gap-1.5"
                         >
                           <RotateCw className="size-3" />
-                          Réinitialiser tous les filtres
+                          Réinitialiser les filtres
                         </Button>
                       </td>
                     </tr>
@@ -843,7 +867,6 @@ export default function ProductsPage() {
                       const rot = p.rotationRate ?? 1.0;
                       const reorder = p.reorderFrequencyDays ?? 4;
                       const topZ = Array.isArray(p.topCommunes) && p.topCommunes.length > 0 ? p.topCommunes : ['Abidjan'];
-                      const isTopRanked = absoluteRank <= 3;
                       const rowPadding = density === 'compact' ? 'py-1.5' : 'py-2.5';
 
                       return (
@@ -854,10 +877,10 @@ export default function ProductsPage() {
                             absoluteRank === 1 ? 'bg-amber-500/5' : ''
                           }`}
                         >
-                          {/* Rank with Podium Badges */}
+                          {/* Rank */}
                           <td className={`${rowPadding} px-3 text-center font-mono`}>
                             {absoluteRank === 1 ? (
-                              <span className="inline-flex items-center justify-center size-5 rounded-full bg-amber-500/20 text-amber-400 font-bold text-[11px] border border-amber-500/50 shadow-xs">
+                              <span className="inline-flex items-center justify-center size-5 rounded-full bg-amber-500/20 text-amber-400 font-bold text-[11px] border border-amber-500/50">
                                 1
                               </span>
                             ) : absoluteRank === 2 ? (
@@ -873,10 +896,10 @@ export default function ProductsPage() {
                             )}
                           </td>
 
-                          {/* Produit avec Image réelle */}
+                          {/* Produit avec Image */}
                           <td className={`${rowPadding} px-3`}>
                             <div className="flex items-center gap-2.5 min-w-[200px]">
-                              <div className="size-10 rounded-lg bg-muted/60 border border-border/70 flex items-center justify-center overflow-hidden shrink-0 group-hover:border-amber-500/50 transition-colors">
+                              <div className="size-9 sm:size-10 rounded-lg bg-muted/60 border border-border/70 flex items-center justify-center overflow-hidden shrink-0 group-hover:border-amber-500/50 transition-colors">
                                 {p.image ? (
                                   <img
                                     src={p.image}
@@ -896,11 +919,11 @@ export default function ProductsPage() {
                                   {p.name}
                                 </div>
                                 <div className="text-[11px] text-muted-foreground flex items-center gap-1.5">
-                                  <span className="font-medium text-foreground/80">{p.brand}</span>
+                                  <span className="font-medium text-foreground/80 truncate max-w-[100px]">{p.brand}</span>
                                   {p.format && (
                                     <>
                                       <span>•</span>
-                                      <span className="font-mono text-[10px] text-muted-foreground">{p.format}</span>
+                                      <span className="font-mono text-[10px] text-muted-foreground truncate">{p.format}</span>
                                     </>
                                   )}
                                 </div>
@@ -922,20 +945,20 @@ export default function ProductsPage() {
                             </span>
                           </td>
 
-                          {/* Volume Vendu avec l'unité sélectionnée */}
+                          {/* Volume */}
                           <td className={`${rowPadding} px-3 text-right font-semibold text-foreground font-mono`}>
                             <div>{formatVolumeValue(vol, volumeUnit, rev).formatted}</div>
-                            {topProduct && topProduct.volume > 0 && (
-                              <div className="w-16 h-1 bg-muted rounded-full ml-auto mt-1 overflow-hidden">
+                            {currentTopProduct && currentTopProduct.volume > 0 && (
+                              <div className="w-14 sm:w-16 h-1 bg-muted rounded-full ml-auto mt-1 overflow-hidden">
                                 <div
                                   className="h-full bg-amber-500 rounded-full"
-                                  style={{ width: `${Math.min(100, Math.round((vol / topProduct.volume) * 100))}%` }}
+                                  style={{ width: `${Math.min(100, Math.round((vol / currentTopProduct.volume) * 100))}%` }}
                                 />
                               </div>
                             )}
                           </td>
 
-                          {/* Chiffre d'Affaires */}
+                          {/* CA */}
                           <td className={`${rowPadding} px-3 text-right font-mono font-medium text-foreground`}>
                             {rev > 0 ? `${rev.toLocaleString('fr-FR')} F` : '-'}
                           </td>
@@ -951,7 +974,7 @@ export default function ProductsPage() {
                             </span>
                           </td>
 
-                          {/* Taux de Rotation */}
+                          {/* Rotation */}
                           <td className={`${rowPadding} px-3 text-right font-mono font-medium text-foreground`}>
                             <span className={`${rot >= 10 ? 'text-amber-400 font-bold' : ''}`}>
                               {rot}x / sem
@@ -1006,7 +1029,7 @@ export default function ProductsPage() {
                             </div>
                           </td>
 
-                          {/* Action Détails */}
+                          {/* Action */}
                           <td className={`${rowPadding} px-3 text-center`}>
                             <Button
                               variant="ghost"
@@ -1016,7 +1039,7 @@ export default function ProductsPage() {
                                 setSelectedProduct(p);
                               }}
                               className="size-7 p-0 text-muted-foreground hover:text-amber-400"
-                              title="Voir les détails complets de ce produit"
+                              title="Voir les détails"
                             >
                               <Eye className="size-3.5" />
                             </Button>
@@ -1032,7 +1055,7 @@ export default function ProductsPage() {
         </Card>
       ) : (
         /* ================= GRID VIEW ================= */
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
           {paginatedProducts.length === 0 ? (
             <div className="col-span-full py-16 text-center text-muted-foreground bg-card/40 rounded-xl border border-border/70">
               <ShoppingBag className="size-10 mx-auto mb-2 opacity-40 text-muted-foreground" />
@@ -1045,7 +1068,7 @@ export default function ProductsPage() {
                 className="mt-3 text-xs gap-1.5"
               >
                 <RotateCw className="size-3" />
-                Réinitialiser les filtres
+                Réinitialiser
               </Button>
             </div>
           ) : (
@@ -1064,7 +1087,7 @@ export default function ProductsPage() {
                   className="group border border-border/80 bg-card/70 backdrop-blur-md overflow-hidden hover:border-amber-500/60 hover:shadow-xl transition-all duration-300 flex flex-col justify-between cursor-pointer"
                 >
                   {/* Image Showcase */}
-                  <div className="relative h-48 w-full bg-gradient-to-b from-muted/20 via-muted/50 to-muted/80 flex items-center justify-center p-3 border-b border-border/50 overflow-hidden">
+                  <div className="relative h-40 sm:h-48 w-full bg-gradient-to-b from-muted/20 via-muted/50 to-muted/80 flex items-center justify-center p-3 border-b border-border/50 overflow-hidden">
                     {p.image ? (
                       <img
                         src={p.image}
@@ -1076,7 +1099,7 @@ export default function ProductsPage() {
                         }}
                       />
                     ) : (
-                      <Package className="size-16 text-amber-500/40" />
+                      <Package className="size-14 sm:size-16 text-amber-500/40" />
                     )}
 
                     {/* Rank Pill on Image */}
@@ -1109,13 +1132,13 @@ export default function ProductsPage() {
                       </span>
                     </div>
 
-                    <div className="absolute bottom-1 right-2 text-[10px] text-muted-foreground font-mono bg-background/70 backdrop-blur-xs px-1.5 py-0.5 rounded border border-border/40">
+                    <div className="absolute bottom-1 right-2 text-[10px] text-muted-foreground font-mono bg-background/70 backdrop-blur-xs px-1.5 py-0.5 rounded border border-border/40 truncate max-w-[120px]">
                       {format}
                     </div>
                   </div>
 
                   {/* Card Content */}
-                  <CardContent className="p-3.5 space-y-3 flex-1 flex flex-col justify-between text-xs">
+                  <CardContent className="p-3 sm:p-3.5 space-y-2.5 sm:space-y-3 flex-1 flex flex-col justify-between text-xs">
                     <div>
                       <h3 className="font-bold text-foreground text-sm tracking-tight truncate group-hover:text-amber-400 transition-colors">
                         {p.name}
@@ -1145,7 +1168,7 @@ export default function ProductsPage() {
                     <div className="pt-2 border-t border-border/30 space-y-1.5">
                       {rev > 0 && (
                         <div className="text-[11px] flex items-center justify-between text-muted-foreground">
-                          <span>Chiffre d'Affaires</span>
+                          <span>CA</span>
                           <span className="font-bold text-foreground font-mono">
                             {rev.toLocaleString('fr-FR')} FCFA
                           </span>
@@ -1164,10 +1187,10 @@ export default function ProductsPage() {
         </div>
       )}
 
-      {/* Pagination & Results Summary Footer */}
+      {/* Pagination & Results Summary Footer (Responsive) */}
       {filtered.length > 0 && (
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 text-xs text-muted-foreground border-t border-border/60">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap justify-center sm:justify-start">
             <span>
               Affichage de{' '}
               <strong className="text-foreground">
@@ -1175,11 +1198,11 @@ export default function ProductsPage() {
                   ? `1 à ${filtered.length}`
                   : `${(currentPage - 1) * Number(pageSize) + 1} à ${Math.min(currentPage * Number(pageSize), filtered.length)}`}
               </strong>{' '}
-              sur <strong className="text-foreground">{filtered.length}</strong> produits filtrés
+              sur <strong className="text-foreground">{filtered.length}</strong>
             </span>
 
             {/* Page Size Selector */}
-            <div className="flex items-center gap-1 ml-2">
+            <div className="flex items-center gap-1 ml-1 sm:ml-2">
               <span className="text-[11px] text-muted-foreground">Par page:</span>
               <select
                 value={pageSize}
@@ -1212,7 +1235,7 @@ export default function ProductsPage() {
               </Button>
 
               <span className="px-2 font-mono text-[11px]">
-                Page <strong className="text-foreground">{currentPage}</strong> / {totalPages}
+                <strong className="text-foreground">{currentPage}</strong> / {totalPages}
               </span>
 
               <Button
@@ -1230,14 +1253,14 @@ export default function ProductsPage() {
         </div>
       )}
 
-      {/* Slide-over Product Details Drawer / Modal */}
+      {/* Slide-over Product Details Drawer / Modal (Responsive) */}
       {selectedProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="relative w-full max-w-xl bg-card border border-border/90 rounded-2xl shadow-2xl overflow-hidden p-6 space-y-5 animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-xl bg-card border border-border/90 rounded-2xl shadow-2xl overflow-hidden p-4 sm:p-6 space-y-4 sm:space-y-5 animate-in zoom-in-95 duration-200 max-h-[92vh] overflow-y-auto">
             {/* Modal Header */}
-            <div className="flex items-start justify-between gap-3 border-b border-border/60 pb-4">
+            <div className="flex items-start justify-between gap-3 border-b border-border/60 pb-3 sm:pb-4">
               <div className="flex items-center gap-3">
-                <div className="size-16 rounded-xl bg-muted/60 border border-border/80 flex items-center justify-center p-2 overflow-hidden shrink-0">
+                <div className="size-14 sm:size-16 rounded-xl bg-muted/60 border border-border/80 flex items-center justify-center p-2 overflow-hidden shrink-0">
                   {selectedProduct.image ? (
                     <img
                       src={selectedProduct.image}
@@ -1245,12 +1268,12 @@ export default function ProductsPage() {
                       className="size-full object-contain"
                     />
                   ) : (
-                    <Package className="size-8 text-amber-500" />
+                    <Package className="size-7 sm:size-8 text-amber-500" />
                   )}
                 </div>
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h2 className="text-lg font-bold text-foreground">{selectedProduct.name}</h2>
+                    <h2 className="text-base sm:text-lg font-bold text-foreground">{selectedProduct.name}</h2>
                     <span
                       className="text-[10px] px-2 py-0.5 rounded-full font-medium border"
                       style={{
@@ -1271,7 +1294,7 @@ export default function ProductsPage() {
                 variant="ghost"
                 size="sm"
                 onClick={() => setSelectedProduct(null)}
-                className="size-8 p-0 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground"
+                className="size-8 p-0 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer shrink-0"
               >
                 <X className="size-4" />
               </Button>
@@ -1279,18 +1302,18 @@ export default function ProductsPage() {
 
             {/* Metrics Breakdown in 5 Units */}
             <div className="space-y-2">
-              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+              <h4 className="text-[11px] sm:text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                 <BarChart3 className="size-3.5 text-amber-500" />
-                Volumes vendus dans toutes les unités de mesure
+                Volumes dans toutes les unités
               </h4>
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 text-xs">
                 {VOLUME_UNIT_OPTIONS.map((u) => {
                   const res = formatVolumeValue(selectedProduct.volume || 0, u.value, selectedProduct.revenue);
                   const isCurrent = volumeUnit === u.value;
                   return (
                     <div
                       key={u.id}
-                      className={`p-2.5 rounded-xl border text-center transition-all ${
+                      className={`p-2 sm:p-2.5 rounded-xl border text-center transition-all ${
                         isCurrent
                           ? 'bg-amber-500/10 border-amber-500 text-foreground font-semibold shadow-xs'
                           : 'bg-muted/30 border-border/60 text-muted-foreground'
@@ -1307,7 +1330,7 @@ export default function ProductsPage() {
             </div>
 
             {/* Financials & Velocity KPIs */}
-            <div className="grid grid-cols-3 gap-3 p-3 rounded-xl bg-muted/30 border border-border/60 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 p-3 rounded-xl bg-muted/30 border border-border/60 text-xs">
               <div>
                 <span className="text-[10px] text-muted-foreground">Chiffre d'Affaires</span>
                 <div className="font-bold text-foreground font-mono mt-0.5">
@@ -1343,17 +1366,17 @@ export default function ProductsPage() {
 
             {/* Top Communes Distribution */}
             <div className="space-y-2">
-              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+              <h4 className="text-[11px] sm:text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                 <MapPin className="size-3.5 text-amber-500" />
                 Top Communes débitrices réelles
               </h4>
-              <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                 {(Array.isArray(selectedProduct.topCommunes) ? selectedProduct.topCommunes : ['Abidjan']).map(
                   (c: string, i: number) => (
                     <Badge
                       key={c}
                       variant="outline"
-                      className="text-xs bg-muted/40 text-foreground border-border px-3 py-1 gap-1.5"
+                      className="text-xs bg-muted/40 text-foreground border-border px-2.5 sm:px-3 py-1 gap-1.5"
                     >
                       <span className="size-1.5 rounded-full bg-amber-500" />
                       <strong>#{i + 1}</strong> {c}
@@ -1377,7 +1400,7 @@ export default function ProductsPage() {
             </div>
 
             {/* Quick Actions */}
-            <div className="pt-3 border-t border-border/60 flex items-center justify-between gap-2 flex-wrap">
+            <div className="pt-3 border-t border-border/60 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
@@ -1386,7 +1409,7 @@ export default function ProductsPage() {
                     setFilter('brand', selectedProduct.brand);
                     setSelectedProduct(null);
                   }}
-                  className="text-xs gap-1.5"
+                  className="text-xs gap-1.5 flex-1 sm:flex-none"
                 >
                   <span>Filtrer sur {selectedProduct.brand}</span>
                 </Button>
@@ -1395,7 +1418,7 @@ export default function ProductsPage() {
                   variant="ghost"
                   size="sm"
                   onClick={() => handleCopySku(selectedProduct.name)}
-                  className="text-xs gap-1 text-muted-foreground hover:text-foreground"
+                  className="text-xs gap-1 text-muted-foreground hover:text-foreground flex-1 sm:flex-none"
                 >
                   {copiedSku === selectedProduct.name ? (
                     <>
@@ -1405,7 +1428,7 @@ export default function ProductsPage() {
                   ) : (
                     <>
                       <Copy className="size-3" />
-                      <span>Copier le nom</span>
+                      <span>Copier</span>
                     </>
                   )}
                 </Button>
@@ -1417,7 +1440,7 @@ export default function ProductsPage() {
                 onClick={() => setSelectedProduct(null)}
                 className="text-xs bg-amber-500 hover:bg-amber-600 text-black font-semibold"
               >
-                Fermer la fiche
+                Fermer
               </Button>
             </div>
           </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useMemo } from 'react';
+import React, { useEffect, useRef, useMemo, useState } from 'react';
 import {
   Activity,
   Calendar,
@@ -12,6 +12,9 @@ import {
   Sparkles,
   Layers,
   Gauge,
+  Filter,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import {
   Select,
@@ -57,23 +60,22 @@ export function FilterBar(props: FilterBarProps = {}) {
     setVolumeUnit,
   } = store;
 
+  const [mobileExpanded, setMobileExpanded] = useState(false);
   const { data: dynamicFilters } = useMarketFiltersQuery();
   const { data: contextualData, isLoading: isLoadingContextual } = useContextualFiltersQuery();
 
   const hasSyncedStatusRef = useRef<string | null>(null);
 
-  // Auto-sélection dynamique des correspondants (pays, villes, communes, marques) liés au statut sélectionné
+  // Auto-sélection dynamique des correspondants liés au statut
   useEffect(() => {
     if (!autoSyncContextual || !contextualData) return;
 
-    // Clé unique pour déclencher la synchronisation dès que le statut ou les données contextuelles changent
     const currentStatusKey = `${filters.status || 'valid'}_${filters.dateRange || 'all'}_${contextualData.totalTransactions}`;
     if (hasSyncedStatusRef.current === currentStatusKey) return;
     hasSyncedStatusRef.current = currentStatusKey;
 
     const updates: Partial<FilterState> = {};
 
-    // 1. Tous les pays ayant des ventes sous ce statut
     if (contextualData.countries && contextualData.countries.length > 0) {
       const activeCountries = contextualData.countries
         .map((c) => normalizeCountry(c.name) || c.name)
@@ -83,22 +85,18 @@ export function FilterBar(props: FilterBarProps = {}) {
       }
     }
 
-    // 2. Villes contextuelles ayant des ventes sous ce statut
     if (contextualData.cities && contextualData.cities.length > 0) {
       updates.city = contextualData.cities.map((c) => c.name);
     }
 
-    // 3. Communes contextuelles ayant des ventes sous ce statut
     if (contextualData.communes && contextualData.communes.length > 0) {
       updates.commune = contextualData.communes.map((c) => c.name);
     }
 
-    // 4. Catégories contextuelles ayant des ventes sous ce statut
     if (contextualData.categories && contextualData.categories.length > 0) {
       updates.category = contextualData.categories.map((c) => c.name);
     }
 
-    // 5. Marques contextuelles ayant des ventes sous ce statut
     if (contextualData.brands && contextualData.brands.length > 0) {
       updates.brand = contextualData.brands.map((b) => b.name);
     }
@@ -108,7 +106,7 @@ export function FilterBar(props: FilterBarProps = {}) {
     }
   }, [filters.status, filters.dateRange, contextualData, autoSyncContextual, setMultipleFilters]);
 
-  // Normalisation de la liste des pays avec drapeaux
+  // Options pays
   const countriesOptions: SmartFilterOption[] = useMemo(() => {
     return PAYS.map((p) => ({
       value: p.code,
@@ -117,12 +115,11 @@ export function FilterBar(props: FilterBarProps = {}) {
     }));
   }, []);
 
-  // Villes avec regroupement par pays et séparateurs visuels
+  // Options villes
   const citiesOptions: SmartFilterOption[] = useMemo(() => {
     const options: SmartFilterOption[] = [];
     options.push({ value: 'Toutes les villes', label: 'Toutes les villes' });
 
-    // Dictionnaire pays pour chaque ville connue
     const cityCountryMap = new Map<string, string>();
     PAYS.forEach((p) => {
       const groupName = `${p.flag} ${p.name.replace(/_/g, ' ')}`;
@@ -149,7 +146,7 @@ export function FilterBar(props: FilterBarProps = {}) {
     return options;
   }, [dynamicFilters?.cities, contextualData?.cities]);
 
-  // Communes avec regroupement par Ville / Région et séparateurs visuels
+  // Options communes
   const communesOptions: SmartFilterOption[] = useMemo(() => {
     const options: SmartFilterOption[] = [];
     options.push({ value: 'Toutes les communes', label: 'Toutes les communes' });
@@ -214,7 +211,7 @@ export function FilterBar(props: FilterBarProps = {}) {
     return options;
   }, [dynamicFilters?.communes, contextualData?.communes]);
 
-  // Catégories (Multi-sélection contextuelle)
+  // Options catégories
   const categoriesList = useMemo(() => {
     return dynamicFilters?.categories?.length
       ? ['Toutes catégories', ...dynamicFilters.categories]
@@ -222,14 +219,14 @@ export function FilterBar(props: FilterBarProps = {}) {
           'Toutes catégories',
           'Bières',
           'Boissons gazeuses',
-          'Énergisantes',
+          'Boissons énergisantes',
           'Spiritueux',
           'Vins & Champagnes',
           'Eaux & Jus',
         ];
   }, [dynamicFilters?.categories]);
 
-  // Marques avec regroupement Brasseur / Fabricant
+  // Options marques
   const brandsOptions: SmartFilterOption[] = useMemo(() => {
     const rawList = dynamicFilters?.brands?.length
       ? dynamicFilters.brands.map((b) => b.replace(/_/g, ' '))
@@ -262,7 +259,7 @@ export function FilterBar(props: FilterBarProps = {}) {
     return options;
   }, [dynamicFilters?.brands]);
 
-  // Types de point de vente
+  // Types d'établissement
   const posTypesList = useMemo(() => {
     return dynamicFilters?.posTypes?.length
       ? ['Tous types', ...dynamicFilters.posTypes]
@@ -278,7 +275,7 @@ export function FilterBar(props: FilterBarProps = {}) {
 
   const activeStatusName = STATUS_LABELS[filters.status || 'valid'] || 'Validées';
 
-  // Compter le nombre de filtres actifs non par défaut
+  // Compter les filtres actifs
   const activeFiltersCount = useMemo(() => {
     let count = 0;
     const isCustom = (val: any, def: string) => {
@@ -301,268 +298,270 @@ export function FilterBar(props: FilterBarProps = {}) {
   const currentVolumeUnit = volumeUnit || 'cols';
 
   return (
-    <div className="relative z-30 bg-card/75 border border-border/80 rounded-2xl p-3 shadow-md mb-6 backdrop-blur-xl transition-all">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        {/* Ligne principale des filtres dimensionnels */}
-        <div className="flex flex-wrap items-center gap-2 flex-1 relative z-20">
-          {/* Période temporelle */}
-          <div className="flex items-center gap-1.5">
-            <Calendar className="size-3.5 text-muted-foreground ml-1 shrink-0" />
-            <Select
-              value={typeof filters.dateRange === 'string' ? filters.dateRange : 'all'}
-              onValueChange={(val) => {
-                if (val) setFilter('dateRange', val as DateRange);
-              }}
-            >
-              <SelectTrigger className="h-8 text-xs w-[135px] bg-background/60">
-                <SelectValue placeholder="Période">
-                  {filters.dateRange === 'all'
-                    ? 'Toutes les dates'
-                    : filters.dateRange === '7d'
-                    ? '7 derniers jours'
-                    : filters.dateRange === '30d'
-                    ? '30 derniers jours'
-                    : filters.dateRange === '90d'
-                    ? '90 derniers jours'
-                    : filters.dateRange === '12m'
-                    ? '12 derniers mois'
-                    : 'Période'}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent className="z-[9999]">
-                <SelectItem value="all">Toutes les dates (Global)</SelectItem>
-                <SelectItem value="7d">7 derniers jours</SelectItem>
-                <SelectItem value="30d">30 derniers jours</SelectItem>
-                <SelectItem value="90d">90 derniers jours</SelectItem>
-                <SelectItem value="12m">12 derniers mois</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Statut de transaction (élément pivot qui pilote la sélection automatique) */}
-          <div className="flex items-center gap-1.5">
-            <Activity className="size-3.5 text-amber-500 ml-1 shrink-0 animate-pulse" />
-            <Select
-              value={filters.status || 'valid'}
-              onValueChange={(val) => {
-                if (val) setFilter('status', val);
-              }}
-            >
-              <SelectTrigger className="h-8 text-xs w-[205px] bg-amber-500/10 border-amber-500/30 text-amber-500 font-semibold focus:ring-amber-500">
-                <SelectValue placeholder="Statut de vente" />
-              </SelectTrigger>
-              <SelectContent className="max-h-64 z-[9999]">
-                <SelectItem value="valid">Validées & Consommées (53 727)</SelectItem>
-                <SelectItem value="all">Tous les statuts (Brut - 58 032)</SelectItem>
-                <SelectItem value="success">Réglées avec succès (51 586)</SelectItem>
-                <SelectItem value="pending">En attente / Tables actives (1 315)</SelectItem>
-                <SelectItem value="return">Retours & Consignes (816)</SelectItem>
-                <SelectItem value="canceled">Commandes annulées (4 305)</SelectItem>
-                <SelectItem value="offered">Offertes par le maquis (10)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="h-5 w-px bg-border/60 mx-1 hidden sm:block" />
-
-          {/* Pays (Multi-select intelligent avec drapeaux & sélection auto liée aux ventes) */}
-          <SmartFilterDropdown
-            icon={<Globe className="size-3.5" />}
-            label="Pays"
-            options={countriesOptions}
-            value={filters.country || 'cote_d_ivoire'}
-            allLabel="🌍 Tous les pays"
-            contextualItems={contextualData?.countries}
-            onChange={(val) => setFilter('country', val)}
-            triggerWidth="w-[155px]"
-            isLoadingContextual={isLoadingContextual}
-            statusLabel={activeStatusName}
-            isMultiSelect={true}
-          />
-
-          {/* Villes (Groupées par Pays avec séparateurs visuels et sélection auto) */}
-          <SmartFilterDropdown
-            icon={<MapPin className="size-3.5" />}
-            label="Ville"
-            options={citiesOptions}
-            value={filters.city}
-            allLabel="Toutes les villes"
-            contextualItems={contextualData?.cities}
-            onChange={(val) => setFilter('city', val)}
-            triggerWidth="w-[150px]"
-            isLoadingContextual={isLoadingContextual}
-            statusLabel={activeStatusName}
-          />
-
-          {/* Communes (Groupées par Ville avec séparateurs visuels et sélection auto) */}
-          <SmartFilterDropdown
-            label="Commune"
-            options={communesOptions}
-            value={filters.commune}
-            allLabel="Toutes les communes"
-            contextualItems={contextualData?.communes}
-            onChange={(val) => setFilter('commune', val)}
-            triggerWidth="w-[155px]"
-            isLoadingContextual={isLoadingContextual}
-            statusLabel={activeStatusName}
-          />
-
-          {/* Catégories (Multi-sélection contextuelle) */}
-          <SmartFilterDropdown
-            icon={<Tag className="size-3.5" />}
-            label="Catégorie"
-            options={categoriesList}
-            value={filters.category}
-            allLabel="Toutes catégories"
-            contextualItems={contextualData?.categories}
-            onChange={(val) => setFilter('category', val)}
-            triggerWidth="w-[150px]"
-            isLoadingContextual={isLoadingContextual}
-            statusLabel={activeStatusName}
-          />
-
-          {/* Marques (Groupées par Fabricant avec séparateurs visuels) */}
-          <SmartFilterDropdown
-            label="Marque"
-            options={brandsOptions}
-            value={filters.brand}
-            allLabel="Toutes marques"
-            contextualItems={contextualData?.brands}
-            onChange={(val) => setFilter('brand', val)}
-            triggerWidth="w-[145px]"
-            isLoadingContextual={isLoadingContextual}
-            statusLabel={activeStatusName}
-          />
-
-          {/* Types d'établissement */}
-          <SmartFilterDropdown
-            icon={<Store className="size-3.5" />}
-            label="Établissement"
-            options={posTypesList}
-            value={filters.posType}
-            allLabel="Tous types"
-            onChange={(val) => setFilter('posType', val)}
-            triggerWidth="w-[150px]"
-            isMultiSelect={true}
-          />
-        </div>
-
-        {/* Contrôles latéraux : Sélecteur d'Unité de Volume + Auto-sync statut + Reset */}
-        <div className="flex items-center gap-2 shrink-0 ml-auto relative z-20 flex-wrap">
-          {/* Sélecteur d'Unité de Mesure des Volumes */}
-          <div className="flex items-center gap-0.5 bg-background/80 border border-border/80 p-0.5 rounded-lg shadow-2xs">
-            <span className="text-[10px] text-muted-foreground font-semibold px-1.5 uppercase tracking-wider hidden xl:inline flex items-center gap-1">
-              <Gauge className="size-3 text-amber-500" />
-              Volume :
-            </span>
-            {VOLUME_UNIT_OPTIONS.map((u) => {
-              const isSelected = currentVolumeUnit === u.value;
-              return (
-                <button
-                  key={u.value}
-                  type="button"
-                  onClick={() => setVolumeUnit(u.value)}
-                  className={
-                    'h-7 px-2 rounded-md text-xs font-medium transition-all flex items-center gap-1 ' +
-                    (isSelected
-                      ? 'bg-amber-500 text-white font-semibold shadow-xs'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/60')
-                  }
-                  title={`${u.label} (${u.description})`}
-                >
-                  <span className="text-xs">{u.icon}</span>
-                  <span className="hidden sm:inline text-[11px]">{u.shortLabel}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Bouton Toggle Auto-Sync */}
-          <button
-            type="button"
-            onClick={() => setAutoSyncContextual(!autoSyncContextual)}
-            className={
-              'flex items-center gap-1.5 h-8 px-2.5 rounded-lg border text-xs font-medium transition-all ' +
-              (autoSyncContextual
-                ? 'border-amber-500/40 bg-amber-500/10 text-amber-500 shadow-xs'
-                : 'border-border/80 bg-background/50 text-muted-foreground hover:text-foreground')
-            }
-            title={
-              autoSyncContextual
-                ? 'La sélection automatique des filtres selon le statut est active'
-                : 'Cliquer pour activer la sélection automatique liée aux ventes'
-            }
-          >
-            <Sparkles className={'size-3 ' + (autoSyncContextual ? 'animate-spin-slow text-amber-500' : '')} />
-            <span className="hidden md:inline">Auto-sync statut</span>
-            <span
-              className={
-                'size-2 rounded-full ' +
-                (autoSyncContextual ? 'bg-amber-500 shadow-xs shadow-amber-500/50' : 'bg-muted-foreground/40')
-              }
-            />
-          </button>
-
-          {/* Compteur de filtres actifs */}
+    <div className="relative z-30 bg-card/75 border border-border/80 rounded-2xl p-2.5 sm:p-3 shadow-md mb-6 backdrop-blur-xl transition-all" suppressHydrationWarning>
+      {/* Mobile Top Bar with Summary & Toggle */}
+      <div className="flex lg:hidden items-center justify-between pb-2 border-b border-border/40 gap-2">
+        <button
+          type="button"
+          onClick={() => setMobileExpanded(!mobileExpanded)}
+          className="flex items-center gap-2 text-xs font-semibold text-foreground"
+        >
+          <Filter className="size-3.5 text-amber-500" />
+          <span>Filtres &amp; Dimensions</span>
           {activeFiltersCount > 0 && (
-            <div className="hidden lg:flex items-center gap-1 text-[11px] text-muted-foreground bg-muted/50 px-2 py-1 rounded-md">
-              <Layers className="size-3" />
-              <span>{activeFiltersCount} actif{activeFiltersCount > 1 ? 's' : ''}</span>
-            </div>
+            <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-black text-[10px] font-bold">
+              {activeFiltersCount}
+            </span>
           )}
+          {mobileExpanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+        </button>
 
-          {/* Bouton Réinitialiser */}
+        {/* Quick Reset on Mobile */}
+        <div className="flex items-center gap-1.5">
           <Button
             variant="ghost"
             size="sm"
             onClick={resetFilters}
-            className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground gap-1.5"
+            className="h-7 px-2 text-[11px] text-muted-foreground hover:text-foreground gap-1"
           >
-            <RotateCcw className="size-3.5" />
-            <span>Réinitialiser</span>
+            <RotateCcw className="size-3" />
+            <span>Reset</span>
           </Button>
         </div>
       </div>
 
-      {/* Bandeau d'information contextuelle si ventes filtrées */}
+      {/* Main Filter Content (Visible always on Desktop, togglable on Mobile) */}
+      <div className={`mt-2.5 lg:mt-0 ${mobileExpanded ? 'block' : 'hidden lg:block'}`}>
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          {/* Dimensional Filters Row / Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:flex lg:flex-wrap items-center gap-2 flex-1 relative z-20">
+            {/* Période temporelle */}
+            <div className="flex items-center gap-1.5 w-full sm:w-auto">
+              <Calendar className="size-3.5 text-muted-foreground ml-1 shrink-0 hidden sm:block" />
+              <Select
+                value={typeof filters.dateRange === 'string' ? filters.dateRange : 'all'}
+                onValueChange={(val) => {
+                  if (val) setFilter('dateRange', val as DateRange);
+                }}
+              >
+                <SelectTrigger className="h-8 text-xs w-full sm:w-[135px] bg-background/60">
+                  <SelectValue placeholder="Période">
+                    {filters.dateRange === 'all'
+                      ? 'Toutes les dates'
+                      : filters.dateRange === '7d'
+                      ? '7 derniers jours'
+                      : filters.dateRange === '30d'
+                      ? '30 derniers jours'
+                      : filters.dateRange === '90d'
+                      ? '90 derniers jours'
+                      : filters.dateRange === '12m'
+                      ? '12 derniers mois'
+                      : 'Période'}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent className="z-[9999]">
+                  <SelectItem value="all">Toutes les dates (Global)</SelectItem>
+                  <SelectItem value="7d">7 derniers jours</SelectItem>
+                  <SelectItem value="30d">30 derniers jours</SelectItem>
+                  <SelectItem value="90d">90 derniers jours</SelectItem>
+                  <SelectItem value="12m">12 derniers mois</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Statut de vente */}
+            <div className="flex items-center gap-1.5 w-full sm:w-auto">
+              <Activity className="size-3.5 text-amber-500 ml-1 shrink-0 animate-pulse hidden sm:block" />
+              <Select
+                value={filters.status || 'valid'}
+                onValueChange={(val) => {
+                  if (val) setFilter('status', val);
+                }}
+              >
+                <SelectTrigger className="h-8 text-xs w-full sm:w-[205px] bg-amber-500/10 border-amber-500/30 text-amber-500 font-semibold focus:ring-amber-500">
+                  <SelectValue placeholder="Statut de vente" />
+                </SelectTrigger>
+                <SelectContent className="max-h-64 z-[9999]">
+                  <SelectItem value="valid">Validées &amp; Consommées (53 727)</SelectItem>
+                  <SelectItem value="all">Tous les statuts (Brut - 58 032)</SelectItem>
+                  <SelectItem value="success">Réglées avec succès (51 586)</SelectItem>
+                  <SelectItem value="pending">En attente / Tables (1 315)</SelectItem>
+                  <SelectItem value="return">Retours &amp; Consignes (816)</SelectItem>
+                  <SelectItem value="canceled">Commandes annulées (4 305)</SelectItem>
+                  <SelectItem value="offered">Offertes par le maquis (10)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="h-5 w-px bg-border/60 mx-1 hidden xl:block" />
+
+            {/* Pays */}
+            <SmartFilterDropdown
+              icon={<Globe className="size-3.5" />}
+              label="Pays"
+              options={countriesOptions}
+              value={filters.country || 'cote_d_ivoire'}
+              allLabel="🌍 Tous les pays"
+              contextualItems={contextualData?.countries}
+              onChange={(val) => setFilter('country', val)}
+              triggerWidth="w-full sm:w-[150px]"
+              isLoadingContextual={isLoadingContextual}
+              statusLabel={activeStatusName}
+              isMultiSelect={true}
+            />
+
+            {/* Villes */}
+            <SmartFilterDropdown
+              icon={<MapPin className="size-3.5" />}
+              label="Ville"
+              options={citiesOptions}
+              value={filters.city}
+              allLabel="Toutes les villes"
+              contextualItems={contextualData?.cities}
+              onChange={(val) => setFilter('city', val)}
+              triggerWidth="w-full sm:w-[145px]"
+              isLoadingContextual={isLoadingContextual}
+              statusLabel={activeStatusName}
+            />
+
+            {/* Communes */}
+            <SmartFilterDropdown
+              label="Commune"
+              options={communesOptions}
+              value={filters.commune}
+              allLabel="Toutes les communes"
+              contextualItems={contextualData?.communes}
+              onChange={(val) => setFilter('commune', val)}
+              triggerWidth="w-full sm:w-[150px]"
+              isLoadingContextual={isLoadingContextual}
+              statusLabel={activeStatusName}
+            />
+
+            {/* Catégories */}
+            <SmartFilterDropdown
+              icon={<Tag className="size-3.5" />}
+              label="Catégorie"
+              options={categoriesList}
+              value={filters.category}
+              allLabel="Toutes catégories"
+              contextualItems={contextualData?.categories}
+              onChange={(val) => setFilter('category', val)}
+              triggerWidth="w-full sm:w-[145px]"
+              isLoadingContextual={isLoadingContextual}
+              statusLabel={activeStatusName}
+            />
+
+            {/* Marques */}
+            <SmartFilterDropdown
+              label="Marque"
+              options={brandsOptions}
+              value={filters.brand}
+              allLabel="Toutes marques"
+              contextualItems={contextualData?.brands}
+              onChange={(val) => setFilter('brand', val)}
+              triggerWidth="w-full sm:w-[145px]"
+              isLoadingContextual={isLoadingContextual}
+              statusLabel={activeStatusName}
+            />
+
+            {/* Types d'établissement */}
+            <SmartFilterDropdown
+              icon={<Store className="size-3.5" />}
+              label="Établissement"
+              options={posTypesList}
+              value={filters.posType}
+              allLabel="Tous types"
+              onChange={(val) => setFilter('posType', val)}
+              triggerWidth="w-full sm:w-[145px]"
+              isMultiSelect={true}
+            />
+          </div>
+
+          {/* Lateral Controls: Units Selector + Auto-sync + Reset */}
+          <div className="flex items-center gap-2 shrink-0 lg:ml-auto relative z-20 flex-wrap justify-between sm:justify-end pt-2 lg:pt-0 border-t border-border/40 lg:border-t-0">
+            {/* Volume Measurement Units Selector */}
+            <div className="flex items-center gap-0.5 bg-background/80 border border-border/80 p-0.5 rounded-lg shadow-2xs overflow-x-auto max-w-full">
+              <span className="text-[10px] text-muted-foreground font-semibold px-1.5 uppercase tracking-wider hidden 2xl:inline flex items-center gap-1">
+                <Gauge className="size-3 text-amber-500" />
+                Volume :
+              </span>
+              {VOLUME_UNIT_OPTIONS.map((u) => {
+                const isSelected = currentVolumeUnit === u.value;
+                return (
+                  <button
+                    key={u.value}
+                    type="button"
+                    onClick={() => setVolumeUnit(u.value)}
+                    className={
+                      'h-7 px-2 rounded-md text-xs font-medium transition-all flex items-center gap-1 shrink-0 ' +
+                      (isSelected
+                        ? 'bg-amber-500 text-black font-semibold shadow-xs'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/60')
+                    }
+                    title={`${u.label} (${u.description})`}
+                  >
+                    <span className="text-xs">{u.icon}</span>
+                    <span className="text-[11px]">{u.shortLabel}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Auto-Sync Toggle */}
+            <button
+              type="button"
+              onClick={() => setAutoSyncContextual(!autoSyncContextual)}
+              className={
+                'flex items-center gap-1.5 h-8 px-2.5 rounded-lg border text-xs font-medium transition-all ' +
+                (autoSyncContextual
+                  ? 'border-amber-500/40 bg-amber-500/10 text-amber-500 shadow-xs'
+                  : 'border-border/80 bg-background/50 text-muted-foreground hover:text-foreground')
+              }
+              title={
+                autoSyncContextual
+                  ? 'La sélection automatique des filtres selon le statut est active'
+                  : 'Cliquer pour activer la sélection automatique liée aux ventes'
+              }
+            >
+              <Sparkles className={'size-3 ' + (autoSyncContextual ? 'animate-spin text-amber-500' : '')} />
+              <span className="hidden sm:inline">Auto-sync</span>
+              <span
+                className={
+                  'size-2 rounded-full ' +
+                  (autoSyncContextual ? 'bg-amber-500 shadow-xs shadow-amber-500/50' : 'bg-muted-foreground/40')
+                }
+              />
+            </button>
+
+            {/* Desktop Reset Button */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={resetFilters}
+              className="hidden lg:flex h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground gap-1.5"
+            >
+              <RotateCcw className="size-3.5" />
+              <span>Réinitialiser</span>
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Contextual Information Summary Banner */}
       {contextualData && (
-        <div className="mt-2.5 pt-2 border-t border-border/40 flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground relative z-10">
-          <div className="flex items-center gap-2 flex-wrap">
+        <div className="mt-2.5 pt-2 border-t border-border/40 flex flex-wrap items-center justify-between gap-2 text-[10px] sm:text-[11px] text-muted-foreground relative z-10">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
             <span className="flex items-center gap-1 text-foreground font-medium">
               <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
               {contextualData.totalTransactions?.toLocaleString('fr-FR')} ventes
             </span>
             <span className="text-muted-foreground/60">•</span>
-            <span>Statut actif : <strong className="text-amber-500">{activeStatusName}</strong></span>
-            {contextualData.countries?.length > 0 && (
-              <>
-                <span className="text-muted-foreground/60">•</span>
-                <span>{contextualData.countries.length} pays lié{contextualData.countries.length > 1 ? 's' : ''}</span>
-              </>
-            )}
-            {contextualData.cities?.length > 0 && (
-              <>
-                <span className="text-muted-foreground/60">•</span>
-                <span>{contextualData.cities.length} ville{contextualData.cities.length > 1 ? 's' : ''} couverte{contextualData.cities.length > 1 ? 's' : ''}</span>
-              </>
-            )}
-            {contextualData.communes?.length > 0 && (
-              <>
-                <span className="text-muted-foreground/60">•</span>
-                <span>{contextualData.communes.length} communes</span>
-              </>
-            )}
-            {contextualData.brands?.length > 0 && (
-              <>
-                <span className="text-muted-foreground/60">•</span>
-                <span>{contextualData.brands.length} marques</span>
-              </>
-            )}
+            <span className="truncate max-w-[200px] sm:max-w-none">Statut : <strong className="text-amber-500">{activeStatusName}</strong></span>
           </div>
 
           {autoSyncContextual && (
-            <span className="text-[10px] text-amber-500/90 font-medium bg-amber-500/10 px-2 py-0.5 rounded-full">
-              Filtres synchronisés en multi-sélection
+            <span className="text-[10px] text-amber-500 font-medium bg-amber-500/10 px-2 py-0.5 rounded-full">
+              Filtres synchronisés
             </span>
           )}
         </div>

@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React from 'react';
 import Link from 'next/link';
@@ -21,8 +21,10 @@ import {
   ShieldCheck,
   ChevronRight,
   Sparkles,
+  X,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 
 interface NavItem {
   label: string;
@@ -52,14 +54,19 @@ const intelligenceNavItems: NavItem[] = [
   { label: 'Paramètres & Audit', href: '/settings', icon: Settings },
 ];
 
-export function Sidebar() {
+export interface SidebarProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+}
+
+export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const pathname = usePathname();
 
-  return (
-    <aside className="w-64 flex-shrink-0 border-r border-border bg-card/60 backdrop-blur-xl flex flex-col h-screen sticky top-0 z-30">
+  const sidebarContent = (
+    <div className="flex flex-col h-full bg-card/95 backdrop-blur-xl border-r border-border select-none">
       {/* Brand Header */}
-      <div className="h-16 px-5 border-b border-border flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-3 group">
+      <div className="h-16 px-4 sm:px-5 border-b border-border flex items-center justify-between shrink-0">
+        <Link href="/" onClick={onClose} className="flex items-center gap-3 group">
           <div className="size-9 rounded-xl bg-gradient-to-tr from-amber-500 via-orange-500 to-amber-600 flex items-center justify-center text-white shadow-lg shadow-orange-500/20 group-hover:scale-105 transition-transform duration-300">
             <span className="font-extrabold text-lg tracking-tight">EM</span>
           </div>
@@ -75,6 +82,19 @@ export function Sidebar() {
             </span>
           </div>
         </Link>
+
+        {/* Close button on mobile */}
+        {onClose && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            className="lg:hidden size-8 text-muted-foreground hover:text-foreground"
+            aria-label="Fermer le menu"
+          >
+            <X className="size-4" />
+          </Button>
+        )}
       </div>
 
       {/* Navigation Sections */}
@@ -93,6 +113,7 @@ export function Sidebar() {
                 <Link
                   key={item.href}
                   href={item.href}
+                  onClick={onClose}
                   className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 group ${
                     isActive
                       ? 'bg-primary text-primary-foreground shadow-sm font-semibold'
@@ -134,6 +155,7 @@ export function Sidebar() {
                 <Link
                   key={item.href}
                   href={item.href}
+                  onClick={onClose}
                   className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 group ${
                     isActive
                       ? 'bg-primary text-primary-foreground shadow-sm font-semibold'
@@ -163,7 +185,7 @@ export function Sidebar() {
       </div>
 
       {/* Partner Tier Status Card */}
-      <div className="p-3 border-t border-border">
+      <div className="p-3 border-t border-border shrink-0">
         <div className="p-3 rounded-xl bg-gradient-to-br from-card to-accent/40 border border-border/80 shadow-xs flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold text-foreground flex items-center gap-1.5">
@@ -175,10 +197,11 @@ export function Sidebar() {
             </span>
           </div>
           <p className="text-[10px] text-muted-foreground leading-relaxed">
-            Flux certifié E-Maquis • 57 744 transactions réelles indexées
+            Flux certifié E-Maquis • 58 032 ventes réelles indexées
           </p>
           <Link
             href="/partner"
+            onClick={onClose}
             className="mt-1 text-[11px] font-semibold text-primary hover:underline flex items-center justify-between"
           >
             <span>Gérer l'abonnement</span>
@@ -186,6 +209,31 @@ export function Sidebar() {
           </Link>
         </div>
       </div>
-    </aside>
+    </div>
+  );
+
+  return (
+    <>
+      {/* Desktop Persistent Sidebar */}
+      <aside className="hidden lg:flex w-64 flex-shrink-0 flex-col h-screen sticky top-0 z-30">
+        {sidebarContent}
+      </aside>
+
+      {/* Mobile Slide-Over Drawer with Backdrop Overlay */}
+      {isOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          {/* Backdrop */}
+          <div
+            onClick={onClose}
+            className="fixed inset-0 bg-black/70 backdrop-blur-xs transition-opacity duration-300 animate-in fade-in-0"
+          />
+
+          {/* Drawer Panel */}
+          <div className="fixed inset-y-0 left-0 w-72 max-w-[85vw] z-50 shadow-2xl transition-transform duration-300 animate-in slide-in-from-left-full">
+            {sidebarContent}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
