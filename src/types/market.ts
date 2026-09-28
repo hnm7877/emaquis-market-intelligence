@@ -6,14 +6,21 @@ export type Category = string;
 export type Brand = string;
 export type PosType = string;
 
+export type MultiFilterValue = string | string[];
+
+export type VolumeUnit = 'cols' | 'litres' | 'hl' | 'casiers' | 'fcfa';
+
 export interface FilterState {
-  country?: Country;
+  country?: MultiFilterValue;
   dateRange: DateRange;
-  city: City;
-  commune: Commune;
-  category: Category;
-  brand: Brand;
-  posType: PosType;
+  city: MultiFilterValue;
+  commune: MultiFilterValue;
+  category: MultiFilterValue;
+  brand: MultiFilterValue;
+  posType: MultiFilterValue;
+  status?: string;
+  autoSyncContextual?: boolean;
+  volumeUnit?: VolumeUnit;
 }
 
 export interface DynamicFiltersMetadata {
@@ -174,4 +181,18 @@ export interface AiChatMessage {
     posCount: number;
     period: string;
   };
+}
+export interface ContextualFilterItem {
+  name: string;
+  count: number;
+  revenue?: number;
+}
+
+export interface ContextualFiltersData {
+  countries: ContextualFilterItem[];
+  cities: ContextualFilterItem[];
+  communes: ContextualFilterItem[];
+  categories: ContextualFilterItem[];
+  brands: ContextualFilterItem[];
+  totalTransactions: number;
 }

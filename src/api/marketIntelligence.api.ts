@@ -9,35 +9,58 @@ import {
   IProductsResponse,
   INetworkCoverage,
 } from '@/lib/validations/market.schemas';
-import { FilterState, DynamicFiltersMetadata } from '@/types/market';
+import { FilterState, DynamicFiltersMetadata, ContextualFiltersData } from '@/types/market';
 
 /**
  * Construit les query params à partir de l'état des filtres
  */
+const serializeValue = (val: any, defaultLabel = ''): string | undefined => {
+  if (!val) return undefined;
+  if (Array.isArray(val)) {
+    const valid = val.filter(
+      (item) => item && !String(item).toLowerCase().startsWith('tout') && item !== 'all' && item !== defaultLabel
+    );
+    return valid.length > 0 ? valid.join(',') : undefined;
+  }
+  if (
+    typeof val === 'string' &&
+    !val.toLowerCase().startsWith('tout') &&
+    val !== 'all' &&
+    val !== defaultLabel
+  ) {
+    return val;
+  }
+  return undefined;
+};
+
 const buildQueryParams = (filters?: Partial<FilterState>): Record<string, string> => {
   const params: Record<string, string> = {};
   if (!filters) return params;
 
-  if (filters.country && filters.country !== 'all') {
-    params.country = filters.country;
-  }
+  const country = serializeValue(filters.country, '');
+  if (country) params.country = country;
+
   if (filters.dateRange && filters.dateRange !== 'all') {
     params.dateRange = filters.dateRange;
   }
-  if (filters.city && filters.city !== 'Toutes les villes' && filters.city !== 'all') {
-    params.city = filters.city;
-  }
-  if (filters.commune && filters.commune !== 'Toutes les communes' && filters.commune !== 'all') {
-    params.commune = filters.commune;
-  }
-  if (filters.category && filters.category !== 'Toutes catégories' && filters.category !== 'all') {
-    params.category = filters.category;
-  }
-  if (filters.brand && filters.brand !== 'Toutes marques' && filters.brand !== 'all') {
-    params.brand = filters.brand;
-  }
-  if (filters.posType && filters.posType !== 'Tous types' && filters.posType !== 'all') {
-    params.posType = filters.posType;
+
+  const city = serializeValue(filters.city, 'Toutes les villes');
+  if (city) params.city = city;
+
+  const commune = serializeValue(filters.commune, 'Toutes les communes');
+  if (commune) params.commune = commune;
+
+  const category = serializeValue(filters.category, 'Toutes catégories');
+  if (category) params.category = category;
+
+  const brand = serializeValue(filters.brand, 'Toutes marques');
+  if (brand) params.brand = brand;
+
+  const posType = serializeValue(filters.posType, 'Tous types');
+  if (posType) params.posType = posType;
+
+  if (filters.status && filters.status !== 'valid') {
+    params.status = filters.status;
   }
 
   return params;
@@ -149,5 +172,15 @@ export const fetchDataCoverage = async (): Promise<INetworkCoverage> => {
  */
 export const fetchFiltersMetadata = async (): Promise<DynamicFiltersMetadata> => {
   const response = await axiosInstance.get('/market-intelligence/filters');
+  return response.data;
+};
+/**
+ * 11. Filtres contextuels dynamiques (suggestions basees sur le statut/periode courant)
+ */
+export const fetchContextualFilters = async (filters?: Partial<FilterState>): Promise<ContextualFiltersData> => {
+  const params: Record<string, string> = {};
+  if (filters?.status) params.status = filters.status;
+  if (filters?.dateRange && filters.dateRange !== 'all') params.dateRange = filters.dateRange;
+  const response = await axiosInstance.get('/market-intelligence/contextual-filters', { params });
   return response.data;
 };

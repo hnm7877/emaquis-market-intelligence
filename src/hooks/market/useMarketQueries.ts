@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import {
   fetchMarketOverview,
@@ -13,6 +13,7 @@ import {
   fetchPromotionsData,
   fetchDataCoverage,
   fetchFiltersMetadata,
+  fetchContextualFilters,
 } from '@/api/marketIntelligence.api';
 import { useMarketFilterStore } from '@/stores/useMarketFilterStore';
 import { useMarketRealtimeStore } from '@/stores/useMarketRealtimeStore';
@@ -30,6 +31,7 @@ export const marketQueryKeys = {
   promotions: () => [...marketQueryKeys.all, 'promotions'] as const,
   coverage: () => [...marketQueryKeys.all, 'coverage'] as const,
   filtersMetadata: () => [...marketQueryKeys.all, 'filters-metadata'] as const,
+  contextualFilters: (status: string, dateRange: string) => [...marketQueryKeys.all, 'contextual-filters', status, dateRange] as const,
 };
 
 /**
@@ -41,8 +43,9 @@ export function useMarketOverview() {
   return useQuery({
     queryKey: marketQueryKeys.overview(filters),
     queryFn: () => fetchMarketOverview(filters),
-    staleTime: 2 * 60 * 1000,
-    refetchOnWindowFocus: false,
+    staleTime: 10 * 1000,
+    refetchInterval: 15 * 1000,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -152,10 +155,28 @@ export function useMarketFiltersQuery() {
 }
 
 /**
- * 11. Hook WebSocket Live Feeds
+ * 11. Hook pour les filtres contextuels (suggestions dynamiques selon statut/periode)
+ */
+export function useContextualFiltersQuery() {
+  const filters = useMarketFilterStore((state) => state.filters);
+  const status = filters.status || 'valid';
+  const dateRange = filters.dateRange || 'all';
+
+  return useQuery({
+    queryKey: marketQueryKeys.contextualFilters(status, dateRange),
+    queryFn: () => fetchContextualFilters({ status, dateRange }),
+    staleTime: 10 * 1000,
+    refetchInterval: 20 * 1000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+/**
+ * 12. Hook WebSocket Live Feeds
  */
 export function useMarketLiveSocket() {
   const { setConnected, addLiveAlert, addLiveTransaction } = useMarketRealtimeStore();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -165,7 +186,12 @@ export function useMarketLiveSocket() {
     const handleConnect = () => setConnected(true);
     const handleDisconnect = () => setConnected(false);
     const handleAlert = (data: any) => addLiveAlert(data);
-    const handleNewSale = (data: any) => addLiveTransaction(data);
+    const handleNewSale = (data: any) => {
+      console.log('⚡ [MARKET LIVE] Vente reçue en direct:', data);
+      addLiveTransaction(data);
+      // Invalider immédiatement les caches React Query pour recalculer les statistiques
+      queryClient.invalidateQueries({ queryKey: marketQueryKeys.all });
+    };
 
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
@@ -178,5 +204,5 @@ export function useMarketLiveSocket() {
       socket.off('market:alert', handleAlert);
       socket.off('market:new-sale', handleNewSale);
     };
-  }, [setConnected, addLiveAlert, addLiveTransaction]);
+  }, [setConnected, addLiveAlert, addLiveTransaction, queryClient]);
 }

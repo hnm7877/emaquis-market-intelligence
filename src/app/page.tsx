@@ -25,9 +25,10 @@ import Link from 'next/link';
 import { useMarketFilterStore } from '@/stores/useMarketFilterStore';
 import { useMarketOverview, useMarketLiveSocket } from '@/hooks/market/useMarketQueries';
 import { PAYS } from '@/constants/countries';
+import { formatVolumeValue } from '@/utils/volumeUnit';
 
 export default function MarketOverviewPage() {
-  const { filters, setFilter, resetFilters } = useMarketFilterStore();
+  const { filters, setFilter, resetFilters, volumeUnit } = useMarketFilterStore();
   const { data: apiData, isLoading, isError } = useMarketOverview();
 
   // Active le listener WebSocket en arrière-plan
@@ -35,8 +36,9 @@ export default function MarketOverviewPage() {
 
   const kpis = apiData?.kpis;
 
-  const selectedCountryObj = PAYS.find((p) => p.code === filters.country);
-  const currentCountryName = selectedCountryObj?.name || (filters.country ? filters.country.replace(/_/g, ' ') : "Côte d'Ivoire");
+  const rawCountry = Array.isArray(filters.country) ? filters.country[0] : filters.country;
+  const selectedCountryObj = PAYS.find((p) => p.code === rawCountry);
+  const currentCountryName = selectedCountryObj?.name || (typeof rawCountry === 'string' ? rawCountry.replace(/_/g, ' ') : "Côte d'Ivoire");
 
   const formatRevenue = (rev?: number) => {
     if (!rev) return '0 FCFA';
@@ -63,6 +65,10 @@ export default function MarketOverviewPage() {
   };
 
   const periodLabel = getPeriodLabel();
+
+  // Conversion dynamique du KPI volume selon l'unité de mesure sélectionnée
+  const activeVolumeUnit = volumeUnit || 'cols';
+  const formattedKpiVolume = formatVolumeValue(kpis?.salesVolume ?? 0, activeVolumeUnit, kpis?.revenue);
 
   const kpiMetrics: KpiMetric[] = [
     {
@@ -109,13 +115,13 @@ export default function MarketOverviewPage() {
     },
     {
       id: 'kpi-volume',
-      title: 'Volume de Ventes Observé',
-      value: (kpis?.salesVolume ?? 0).toLocaleString('fr-FR'),
-      numericValue: kpis?.salesVolume ?? 0,
+      title: `Volume Observé (${formattedKpiVolume.unit})`,
+      value: formattedKpiVolume.formatted,
+      numericValue: formattedKpiVolume.value,
       changePercent: Math.abs(kpis?.volumeGrowth ?? kpis?.growthRate ?? 11.4),
       trend: (kpis?.volumeGrowth ?? kpis?.growthRate ?? 11.4) >= 0 ? 'up' : 'down',
       comparisonPeriod: periodLabel,
-      description: 'Unités physiques de boissons consommées',
+      description: `Consommation consolidée exprimée en ${formattedKpiVolume.unit}`,
     },
     {
       id: 'kpi-revenue',
@@ -182,12 +188,27 @@ export default function MarketOverviewPage() {
         </div>
       </div>
 
-      {/* Filter Bar */}
-      <FilterBar
-        filters={filters}
-        onFilterChange={setFilter}
-        onReset={resetFilters}
-      />
+      {/* Filter Bar avec Sélecteur d'Unité et Auto-sync */}
+      <FilterBar />
+
+      {/* Message d'info si filtre actif */}
+      {filters.status && filters.status !== 'valid' && (
+        <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center justify-between text-xs text-amber-500">
+          <div className="flex items-center gap-2">
+            <span className="size-2 rounded-full bg-amber-500 animate-ping" />
+            <span>
+              Filtre statut actif : <strong>{filters.status}</strong>. Les indicateurs et la carte thermique s'adaptent dynamiquement.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setFilter('status', 'valid')}
+            className="text-[11px] underline text-amber-400 hover:text-amber-300 font-medium"
+          >
+            Revenir aux ventes validées
+          </button>
+        </div>
+      )}
 
       {/* 8 KPIs Grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
@@ -206,7 +227,7 @@ export default function MarketOverviewPage() {
         </div>
       </div>
 
-      {/* Geographic Breakdown & Top Products */}
+      {/* Geographic Breakdown (Carte Thermique Snapchat + Histogramme) & Top Products */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <GeographicBarChart />
 
@@ -234,6 +255,8 @@ export default function MarketOverviewPage() {
                 const vol = p.volumeSales ?? p.volume ?? 0;
                 const growth = p.growthPercent ?? p.growth ?? 0;
                 const format = p.format || p.size || '65cl';
+                const formattedProdVol = formatVolumeValue(vol, activeVolumeUnit, p.revenue);
+
                 return (
                   <div key={p.id || idx} className="py-2.5 flex items-center justify-between gap-3 group hover:bg-muted/30 px-2 rounded-lg transition-colors">
                     <div className="flex items-center gap-3 min-w-0">
@@ -275,7 +298,7 @@ export default function MarketOverviewPage() {
                     </div>
                     <div className="text-right shrink-0">
                       <div className="font-semibold text-foreground font-mono">
-                        {vol.toLocaleString('fr-FR')} cols
+                        {formattedProdVol.formatted}
                       </div>
                       <div className="text-[11px] text-emerald-400 font-medium">
                         +{growth}%

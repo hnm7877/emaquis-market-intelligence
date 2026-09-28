@@ -13,6 +13,10 @@ export const FilterQuerySchema = z.object({
 export const MarketKpisSchema = z.object({
   activePos: z.number().default(0),
   analyzedTransactions: z.number().default(0),
+  rawTotalDocuments: z.number().optional(),
+  validatedTransactions: z.number().optional(),
+  canceledTransactions: z.number().optional(),
+  statusBreakdown: z.record(z.string(), z.number()).optional(),
   analyzedProducts: z.number().default(0),
   coveredZones: z.number().default(0),
   salesVolume: z.number().default(0),
@@ -24,7 +28,7 @@ export const MarketKpisSchema = z.object({
   acceleration: z.number().optional(),
   posGrowth: z.number().optional(),
   transactionsGrowth: z.number().optional(),
-});
+}).passthrough();
 
 export const MarketAlertSchema = z.object({
   id: z.string(),

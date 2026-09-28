@@ -30,6 +30,9 @@ export function normalizeCountry(country?: string): string | undefined {
   if (!trimmed) return undefined;
   const lower = trimmed.toLowerCase();
   const upper = trimmed.toUpperCase();
+  if (lower === 'rdc' || lower === 'r.d.c' || lower === 'drc' || lower === 'rd congo') {
+    return 'republique_democratique_congo';
+  }
   const cleanPhone = lower.startsWith('+') ? lower : `+${lower}`;
 
   const found = PAYS.find((c) => {

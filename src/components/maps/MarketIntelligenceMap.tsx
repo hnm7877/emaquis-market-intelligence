@@ -18,8 +18,10 @@ import {
   ArrowRight,
   Radio,
   Compass,
+  Mountain,
 } from 'lucide-react';
 import { useMarketFilterStore } from '@/stores/useMarketFilterStore';
+import { resolveZoneCoordinates } from '@/constants/coordinates';
 import 'leaflet/dist/leaflet.css';
 
 interface MarketIntelligenceMapProps {
@@ -30,6 +32,62 @@ interface MarketIntelligenceMapProps {
 
 type MapMode = 'volume' | 'revenue' | 'demand' | 'pos';
 
+interface BasemapStyle {
+  id: string;
+  name: string;
+  shortName: string;
+  icon: string;
+  url: string;
+  labelsUrl?: string;
+  attribution: string;
+  maxZoom: number;
+  description: string;
+}
+
+const BASEMAP_STYLES: BasemapStyle[] = [
+  {
+    id: 'dark',
+    name: 'Sombre Canvas',
+    shortName: 'Sombre',
+    icon: '🌙',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+    labelsUrl: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
+    attribution: '&copy; Esri &mdash; 100% Libre & Gratuit',
+    maxZoom: 16,
+    description: 'Style sombre haute lisibilité sans filigrane ni clé requise',
+  },
+  {
+    id: 'relief',
+    name: 'Relief & Topo',
+    shortName: 'Relief',
+    icon: '⛰️',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+    attribution: '&copy; Esri, USGS, NOAA &mdash; Gratuit',
+    maxZoom: 19,
+    description: 'Relief ombré, collines et topographie naturelle (100% gratuit)',
+  },
+  {
+    id: 'satellite',
+    name: 'Satellite Aérien',
+    shortName: 'Satellite',
+    icon: '🛰️',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    attribution: '&copy; Esri, Maxar &mdash; Gratuit',
+    maxZoom: 19,
+    description: 'Imagerie satellite haute définition réelle sans filigrane',
+  },
+  {
+    id: 'streets',
+    name: 'Rues & Monde',
+    shortName: 'Rues',
+    icon: '🗺️',
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '&copy; OpenStreetMap contributors &mdash; Libre',
+    maxZoom: 19,
+    description: 'Plan urbain mondial détaillé OpenStreetMap 100% libre',
+  },
+];
+
 export const MarketIntelligenceMap: React.FC<MarketIntelligenceMapProps> = ({
   zones = [],
   establishments = [],
@@ -37,10 +95,13 @@ export const MarketIntelligenceMap: React.FC<MarketIntelligenceMapProps> = ({
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
+  const baseLayerRef = useRef<any>(null);
+  const labelsLayerRef = useRef<any>(null);
   const layersGroupRef = useRef<any>(null);
   const { setFilter } = useMarketFilterStore();
 
   const [activeMode, setActiveMode] = useState<MapMode>('volume');
+  const [activeBasemap, setActiveBasemap] = useState<string>('dark');
   const [showEstablishments, setShowEstablishments] = useState(true);
   const [selectedZone, setSelectedZone] = useState<GeoZone | null>(null);
   const [selectedEst, setSelectedEst] = useState<EstablishmentMarker | null>(null);
@@ -54,9 +115,17 @@ export const MarketIntelligenceMap: React.FC<MarketIntelligenceMapProps> = ({
     const bounds: [number, number][] = [];
 
     // 1. Rendu des Zones géographiques (cercles proportionnels interactifs)
-    zones.forEach((z) => {
-      if (!z.latitude || !z.longitude) return;
-      bounds.push([z.latitude, z.longitude]);
+    zones.forEach((z, idx) => {
+      let lat = Number(z.latitude);
+      let lng = Number(z.longitude);
+
+      if (!lat || !lng || isNaN(lat) || isNaN(lng) || lat === 0) {
+        const resolved = resolveZoneCoordinates(z.zone, z.city, z.country, idx);
+        lat = resolved.latitude;
+        lng = resolved.longitude;
+      }
+
+      bounds.push([lat, lng]);
 
       let circleRadius = 18;
       let circleColor = '#f59e0b';
@@ -79,44 +148,53 @@ export const MarketIntelligenceMap: React.FC<MarketIntelligenceMapProps> = ({
         fillColor = circleColor;
         valueLabel = `${z.demandIndex} pts`;
       } else if (activeMode === 'pos') {
-        circleRadius = Math.max(16, Math.min(48, z.posCount * 2.8));
+        circleRadius = Math.max(16, Math.min(46, z.posCount * 3.2));
         circleColor = '#06b6d4';
         fillColor = '#06b6d4';
         valueLabel = `${z.posCount} POS`;
       }
 
-      // Cercle d'intensité avec halo
-      const circle = L.circleMarker([z.latitude, z.longitude], {
+      // Halo thermique extérieur
+      const halo = L.circleMarker([lat, lng], {
+        radius: circleRadius * 1.6,
+        fillColor: fillColor,
+        color: 'transparent',
+        weight: 0,
+        opacity: 0,
+        fillOpacity: 0.18,
+        interactive: false,
+      });
+      halo.addTo(group);
+
+      // Cercle principal
+      const circle = L.circleMarker([lat, lng], {
         radius: circleRadius,
         fillColor: fillColor,
-        color: circleColor,
-        weight: 2,
+        color: '#ffffff',
+        weight: 1.5,
         opacity: 0.9,
-        fillOpacity: 0.35,
+        fillOpacity: 0.72,
       });
 
-      // Infobulle riche au survol
-      const tooltipContent = `
-        <div style="background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(10px); padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.15); color: #fff; font-family: system-ui, sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.6); min-width: 170px;">
-          <div style="font-weight: 700; font-size: 13px; color: #f8fafc; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
-            <span>📍 ${z.zone}</span>
-            <span style="font-size: 10px; color: #94a3b8;">${z.city}</span>
+      // Tooltip interactif riche
+      circle.bindTooltip(
+        `
+        <div style="background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(10px); padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.15); color: #fff; font-family: system-ui, sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5); min-width: 180px;">
+          <div style="font-weight: 700; font-size: 13px; color: #f8fafc; margin-bottom: 4px;">📍 ${z.zone}</div>
+          <div style="font-size: 11px; color: #94a3b8;">${z.city} · ${z.country}</div>
+          <div style="font-size: 11px; color: #38bdf8; font-weight: 600; margin-top: 4px;">Volume : ${z.volume.toLocaleString('fr-FR')} cols</div>
+          <div style="font-size: 11px; color: #34d399;">CA Estimé : ${((z.revenue || z.volume * 800) / 1000000).toFixed(1)}M FCFA</div>
+          <div style="font-size: 11px; color: #fbbf24;">Établissements : ${z.posCount} maquis actifs</div>
+          <div style="font-size: 11px; color: ${z.growth >= 0 ? '#4ade80' : '#f87171'}; font-weight: 600; margin-top: 2px;">
+            Dynamique : ${z.growth >= 0 ? '+' : ''}${z.growth}%
           </div>
-          <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">Volume débité : <b style="color: #38bdf8;">${Math.round(z.volume).toLocaleString('fr-FR')} u.</b></div>
-          <div style="font-size: 11px; color: #94a3b8;">Chiffre d'Affaires : <b style="color: #34d399;">${((z.revenue || z.volume * 800) / 1000000).toFixed(1)}M FCFA</b></div>
-          <div style="font-size: 11px; color: #94a3b8;">Maquis Actifs : <b style="color: #fbbf24;">${z.posCount} POS</b></div>
-          <div style="font-size: 10px; color: #a855f7; margin-top: 6px; font-weight: 600; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 4px;">
-            ⚡ Cliquez pour afficher l'analyse détaillée
+          <div style="margin-top: 6px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.1); font-size: 10px; color: #f59e0b;">
+            👉 Cliquez pour filtrer cette zone
           </div>
         </div>
-      `;
-
-      circle.bindTooltip(tooltipContent, {
-        direction: 'top',
-        offset: [0, -10],
-        opacity: 1,
-        sticky: true,
-      });
+        `,
+        { direction: 'top', offset: [0, -circleRadius], opacity: 1, sticky: true }
+      );
 
       circle.on('click', () => {
         setSelectedZone(z);
@@ -125,7 +203,7 @@ export const MarketIntelligenceMap: React.FC<MarketIntelligenceMapProps> = ({
 
       circle.addTo(group);
 
-      // Badge visuel permanent au centre de la zone
+      // Badge texte visible directement sur la carte
       const textIcon = L.divIcon({
         className: 'zone-map-badge',
         html: `
@@ -141,7 +219,7 @@ export const MarketIntelligenceMap: React.FC<MarketIntelligenceMapProps> = ({
         iconSize: [0, 0],
       });
 
-      L.marker([z.latitude, z.longitude], { icon: textIcon }).addTo(group);
+      L.marker([lat, lng], { icon: textIcon }).addTo(group);
     });
 
     // 2. Rendu des Établissements individuels (Pins Maquis géolocalisés)
@@ -196,7 +274,11 @@ export const MarketIntelligenceMap: React.FC<MarketIntelligenceMapProps> = ({
     // Centrage adaptatif automatique
     if (bounds.length > 0) {
       try {
-        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
+        if (bounds.length === 1) {
+          map.setView(bounds[0], 13);
+        } else {
+          map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
+        }
       } catch (err) {
         // Fallback sans crash
       }
@@ -228,27 +310,22 @@ export const MarketIntelligenceMap: React.FC<MarketIntelligenceMapProps> = ({
 
       L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-      // Fond de carte sombre haute définition ESRI World Dark Gray (100% libre, sans filigrane ni clé API requise)
-      L.tileLayer(
-        'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
-        {
-          minZoom: 2,
-          maxZoom: 19,
-          maxNativeZoom: 16,
-          attribution: '&copy; Esri',
-        }
-      ).addTo(map);
+      // Fond de carte actif (100% gratuit, sans filigrane ni clé requise)
+      const currentStyle = BASEMAP_STYLES.find((b) => b.id === activeBasemap) || BASEMAP_STYLES[0];
+      const baseLayer = L.tileLayer(currentStyle.url, {
+        maxZoom: currentStyle.maxZoom,
+        attribution: currentStyle.attribution,
+      }).addTo(map);
 
-      // Calque de référence pour les étiquettes et repères géographiques nets
-      L.tileLayer(
-        'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
-        {
-          minZoom: 2,
-          maxZoom: 19,
-          maxNativeZoom: 16,
+      baseLayerRef.current = baseLayer;
+
+      if (currentStyle.labelsUrl) {
+        const labelsLayer = L.tileLayer(currentStyle.labelsUrl, {
+          maxZoom: currentStyle.maxZoom,
           opacity: 0.85,
-        }
-      ).addTo(map);
+        }).addTo(map);
+        labelsLayerRef.current = labelsLayer;
+      }
 
       const layersGroup = L.layerGroup().addTo(map);
       layersGroupRef.current = layersGroup;
@@ -260,9 +337,7 @@ export const MarketIntelligenceMap: React.FC<MarketIntelligenceMapProps> = ({
           mapInstanceRef.current.invalidateSize();
         }
       });
-      if (mapContainerRef.current) {
-        resizeObserver.observe(mapContainerRef.current);
-      }
+      resizeObserver.observe(mapContainerRef.current);
 
       renderLayers(L, map, layersGroup);
     }
@@ -276,119 +351,188 @@ export const MarketIntelligenceMap: React.FC<MarketIntelligenceMapProps> = ({
         mapInstanceRef.current = null;
       }
     };
-  }, [renderLayers]);
+  }, []);
 
-  // Mettre à jour les calques quand le mode ou les données changent
+  // Changement dynamique du relief / fond de carte sans recharger
   useEffect(() => {
-    if (!mapInstanceRef.current || !layersGroupRef.current) return;
-    import('leaflet').then((L) => {
-      renderLayers(L, mapInstanceRef.current, layersGroupRef.current);
-    });
+    if (!mapInstanceRef.current) return;
+
+    const switchBasemap = async () => {
+      const L = await import('leaflet');
+      const map = mapInstanceRef.current;
+      if (!map) return;
+
+      if (baseLayerRef.current) {
+        map.removeLayer(baseLayerRef.current);
+      }
+      if (labelsLayerRef.current) {
+        map.removeLayer(labelsLayerRef.current);
+        labelsLayerRef.current = null;
+      }
+
+      const currentStyle = BASEMAP_STYLES.find((b) => b.id === activeBasemap) || BASEMAP_STYLES[0];
+      const newLayer = L.tileLayer(currentStyle.url, {
+        maxZoom: currentStyle.maxZoom,
+        attribution: currentStyle.attribution,
+      }).addTo(map);
+
+      baseLayerRef.current = newLayer;
+
+      if (currentStyle.labelsUrl) {
+        const labelsLayer = L.tileLayer(currentStyle.labelsUrl, {
+          maxZoom: currentStyle.maxZoom,
+          opacity: 0.85,
+        }).addTo(map);
+        labelsLayerRef.current = labelsLayer;
+      }
+
+      if (layersGroupRef.current) {
+        layersGroupRef.current.bringToFront();
+      }
+    };
+
+    switchBasemap();
+  }, [activeBasemap]);
+
+  // Actualisation réactive des calques
+  useEffect(() => {
+    if (mapInstanceRef.current && layersGroupRef.current) {
+      import('leaflet').then((L) => {
+        renderLayers(L, mapInstanceRef.current, layersGroupRef.current);
+      });
+    }
   }, [zones, establishments, activeMode, showEstablishments, renderLayers]);
 
+  // Réinitialiser la vue et centrer
   const handleResetView = () => {
-    if (!mapInstanceRef.current || zones.length === 0) return;
-    const bounds: [number, number][] = zones
-      .filter((z) => z.latitude && z.longitude)
-      .map((z) => [z.latitude, z.longitude]);
-    if (bounds.length > 0) {
-      try {
+    if (mapInstanceRef.current && zones.length > 0) {
+      const bounds = zones
+        .filter((z) => z.latitude && z.longitude)
+        .map((z) => [z.latitude, z.longitude] as [number, number]);
+      if (bounds.length > 0) {
         mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50] });
-      } catch (e) {
-        mapInstanceRef.current.setView([5.36, -4.0083], 11);
       }
     }
   };
 
+  const handleApplyZoneFilter = (zoneName: string) => {
+    setFilter('commune', zoneName);
+    setSelectedZone(null);
+  };
+
   return (
-    <div className="relative w-full rounded-2xl overflow-hidden border border-border/80 bg-card/60 backdrop-blur-md shadow-2xl">
-      {/* Barre d'en-tête & Contrôles Brasseries */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 p-4 bg-background/85 border-b border-border/60 z-20 relative">
+    <div className="relative w-full rounded-2xl overflow-hidden border border-border/80 bg-card/60 backdrop-blur-md shadow-xl">
+      {/* Barre d'outils et Sélecteurs : Métrique & Relief */}
+      <div className="p-3.5 border-b border-border/80 bg-background/70 backdrop-blur-lg flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="p-2 rounded-xl bg-orange-500/10 border border-orange-500/20 text-orange-400">
-            <Beer className="size-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-bold text-foreground tracking-tight flex items-center gap-1.5">
-                Cartographie Intelligente du Débit de Boissons
-              </h2>
-              <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/30 gap-1 py-0">
-                <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                Live Hub
-              </Badge>
+          <div className="flex items-center gap-2">
+            <div className="size-8 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-500 flex items-center justify-center text-white shadow-md">
+              <Compass className="size-4" />
             </div>
-            <p className="text-xs text-muted-foreground">
-              {zones.length} zones consolidées · {totalPos} points de vente certifiés ·{' '}
-              {Math.round(totalVolume).toLocaleString('fr-FR')} unités débitées
-            </p>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-sm text-foreground">Cartographie Géostratégique</span>
+                <Badge variant="outline" className="text-[10px] px-2 py-0 border-emerald-500/40 text-emerald-400 font-mono">
+                  100% Libre & Gratuit
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {zones.length} communes analysées · {totalPos} maquis connectés · {totalVolume.toLocaleString('fr-FR')} cols
+              </p>
+            </div>
           </div>
         </div>
 
-        {/* Sélecteurs de Calques Métier Brasserie */}
-        <div className="flex flex-wrap items-center gap-1.5">
+        {/* Contrôles de métriques + Sélecteur de Relief */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Sélecteur de Relief (100% Gratuit / Zéro API Key / Zéro Filigrane) */}
+          <div className="flex items-center bg-muted/60 p-0.5 rounded-xl border border-border/80 shadow-2xs">
+            <span className="text-[10px] text-muted-foreground font-semibold px-1.5 hidden lg:inline flex items-center gap-1">
+              <Layers className="size-3 text-orange-500" />
+              Relief :
+            </span>
+            {BASEMAP_STYLES.map((style) => (
+              <button
+                key={style.id}
+                type="button"
+                onClick={() => setActiveBasemap(style.id)}
+                className={
+                  'h-7 px-2 rounded-lg text-xs font-medium transition-all flex items-center gap-1 ' +
+                  (activeBasemap === style.id
+                    ? 'bg-orange-500 text-white font-semibold shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/70')
+                }
+                title={`${style.name} • ${style.description} (100% gratuit sans clé API)`}
+              >
+                <span>{style.icon}</span>
+                <span className="hidden sm:inline">{style.shortName}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="h-4 w-px bg-border/80 mx-1 hidden sm:block" />
+
+          {/* Boutons de Mode Métrique */}
           <Button
             size="sm"
             variant={activeMode === 'volume' ? 'default' : 'outline'}
             onClick={() => setActiveMode('volume')}
-            className={`h-8 text-xs gap-1.5 ${activeMode === 'volume' ? 'bg-orange-500 hover:bg-orange-600 text-white' : 'bg-background/60'}`}
+            className={`h-7 text-xs gap-1.5 ${activeMode === 'volume' ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'bg-background/60'}`}
           >
-            <Beer className="size-3.5" />
-            Volume Débité
+            <Beer className="size-3" />
+            Volume
           </Button>
 
           <Button
             size="sm"
             variant={activeMode === 'revenue' ? 'default' : 'outline'}
             onClick={() => setActiveMode('revenue')}
-            className={`h-8 text-xs gap-1.5 ${activeMode === 'revenue' ? 'bg-purple-600 hover:bg-purple-700 text-white' : 'bg-background/60'}`}
+            className={`h-7 text-xs gap-1.5 ${activeMode === 'revenue' ? 'bg-purple-600 hover:bg-purple-700 text-white' : 'bg-background/60'}`}
           >
-            <DollarSign className="size-3.5" />
-            Chiffre d'Affaires
+            <DollarSign className="size-3" />
+            CA
           </Button>
 
           <Button
             size="sm"
             variant={activeMode === 'demand' ? 'default' : 'outline'}
             onClick={() => setActiveMode('demand')}
-            className={`h-8 text-xs gap-1.5 ${activeMode === 'demand' ? 'bg-rose-500 hover:bg-rose-600 text-white' : 'bg-background/60'}`}
+            className={`h-7 text-xs gap-1.5 ${activeMode === 'demand' ? 'bg-rose-500 hover:bg-rose-600 text-white' : 'bg-background/60'}`}
           >
-            <Zap className="size-3.5" />
-            Tension Demande
+            <Zap className="size-3" />
+            Tension
           </Button>
 
           <Button
             size="sm"
             variant={activeMode === 'pos' ? 'default' : 'outline'}
             onClick={() => setActiveMode('pos')}
-            className={`h-8 text-xs gap-1.5 ${activeMode === 'pos' ? 'bg-cyan-600 hover:bg-cyan-700 text-white' : 'bg-background/60'}`}
+            className={`h-7 text-xs gap-1.5 ${activeMode === 'pos' ? 'bg-cyan-600 hover:bg-cyan-700 text-white' : 'bg-background/60'}`}
           >
-            <Store className="size-3.5" />
-            Densité Maquis
+            <Store className="size-3" />
+            POS
           </Button>
-
-          <div className="h-4 w-px bg-border/80 mx-1 hidden sm:block" />
 
           {/* Toggle Maquis Individuels */}
           <Button
             size="sm"
             variant={showEstablishments ? 'secondary' : 'ghost'}
             onClick={() => setShowEstablishments(!showEstablishments)}
-            className="h-8 text-xs gap-1.5 bg-background/60"
+            className="h-7 text-xs gap-1 bg-background/60"
             title="Afficher ou masquer les marqueurs de maquis individuels"
           >
-            <Layers className="size-3.5" />
-            {showEstablishments ? 'Maquis : Visibles' : 'Maquis : Masqués'}
+            <Layers className="size-3" />
+            <span>{showEstablishments ? 'Pins ON' : 'Pins OFF'}</span>
           </Button>
 
           <Button
             size="sm"
             variant="ghost"
             onClick={handleResetView}
-            className="h-8 px-2 text-muted-foreground hover:text-foreground"
+            className="h-7 px-2 text-muted-foreground hover:text-foreground"
             title="Recentrer la carte"
           >
-            <Maximize2 className="size-3.5" />
+            <Maximize2 className="size-3" />
           </Button>
         </div>
       </div>
@@ -410,165 +554,126 @@ export const MarketIntelligenceMap: React.FC<MarketIntelligenceMapProps> = ({
             </div>
             <div className="flex items-center gap-2">
               <span className="size-3 rounded-full bg-amber-500 shadow-sm" />
-              <span>Consommation modérée (10k-50k)</span>
+              <span>Consommation soutenue (10k-50k u.)</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="size-3 rounded-full bg-blue-500 shadow-sm" />
-              <span>Flux régulier (&lt; 10k u.)</span>
+              <span>Zone en consolidation (&lt; 10k u.)</span>
             </div>
-            {showEstablishments && (
-              <div className="pt-1.5 border-t border-border/60 space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="size-3 rounded-full border border-emerald-400 bg-slate-900 flex items-center justify-center text-[8px]">
-                    🍺
-                  </span>
-                  <span>Maquis avec GPS Direct</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="size-3 rounded-full border border-amber-400 bg-slate-900 flex items-center justify-center text-[8px]">
-                    🍺
-                  </span>
-                  <span>Maquis (Adresse commune)</span>
-                </div>
-              </div>
-            )}
+          </div>
+          <div className="pt-1.5 border-t border-border/60 text-[10px] text-muted-foreground flex items-center justify-between">
+            <span>Fond : {BASEMAP_STYLES.find((b) => b.id === activeBasemap)?.name}</span>
+            <span className="text-emerald-400 font-mono">100% Free</span>
           </div>
         </div>
 
-        {/* Tiroir d'Analyse Détaillée (Zone ou Établissement sélectionné) */}
-        {(selectedZone || selectedEst) && (
-          <div className="absolute top-4 right-4 z-[400] w-80 md:w-96 bg-background/95 backdrop-blur-xl border border-border/80 rounded-2xl shadow-2xl p-4 animate-in fade-in slide-in-from-right duration-200 max-h-[92%] overflow-y-auto">
-            <div className="flex items-start justify-between pb-3 border-b border-border/60">
+        {/* Panneau Popover Détail Zone sélectionnée */}
+        {selectedZone && (
+          <div className="absolute top-4 right-4 z-[400] w-80 bg-background/95 backdrop-blur-xl border border-border/80 rounded-2xl p-4 shadow-2xl animate-in fade-in-0 slide-in-from-top-2 duration-200">
+            <div className="flex items-start justify-between gap-2 border-b border-border/60 pb-3">
               <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Badge variant="outline" className="bg-orange-500/10 text-orange-400 border-orange-500/30 text-[10px] py-0">
-                    {selectedZone ? 'Zone de Débit' : 'Établissement Enregistré'}
+                <div className="flex items-center gap-2">
+                  <h4 className="font-bold text-sm text-foreground">{selectedZone.zone}</h4>
+                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                    {selectedZone.city}
                   </Badge>
-                  {selectedEst?.hasDirectGps ? (
-                    <Badge variant="outline" className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30 text-[10px] py-0">
-                      GPS Direct
-                    </Badge>
-                  ) : selectedEst ? (
-                    <Badge variant="outline" className="bg-amber-500/10 text-amber-400 border-amber-500/30 text-[10px] py-0">
-                      Geocodé Commune
-                    </Badge>
-                  ) : null}
                 </div>
-                <h3 className="text-base font-bold text-foreground mt-1">
-                  {selectedZone?.zone || selectedEst?.name}
-                </h3>
-                <p className="text-xs text-muted-foreground flex items-center gap-1">
-                  <MapPin className="size-3 text-muted-foreground" />
-                  {selectedZone?.city || selectedEst?.city}, {selectedZone?.country || selectedEst?.country}
+                <p className="text-xs text-muted-foreground mt-0.5">{selectedZone.country}</p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setSelectedZone(null)}
+                className="size-6 rounded-full hover:bg-muted"
+              >
+                <X className="size-3.5" />
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5 my-3 text-xs">
+              <div className="p-2.5 rounded-xl bg-muted/40 border border-border/60">
+                <span className="text-muted-foreground text-[11px] block">Volume Consommé</span>
+                <span className="font-bold text-sm text-foreground font-mono">
+                  {selectedZone.volume.toLocaleString('fr-FR')} cols
+                </span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-muted/40 border border-border/60">
+                <span className="text-muted-foreground text-[11px] block">Chiffre d'Affaires</span>
+                <span className="font-bold text-sm text-emerald-400 font-mono">
+                  {((selectedZone.revenue || selectedZone.volume * 800) / 1000000).toFixed(1)}M FCFA
+                </span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-muted/40 border border-border/60">
+                <span className="text-muted-foreground text-[11px] block">Maquis Connectés</span>
+                <span className="font-bold text-sm text-cyan-400 font-mono">
+                  {selectedZone.posCount} POS
+                </span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-muted/40 border border-border/60">
+                <span className="text-muted-foreground text-[11px] block">Indice Demande</span>
+                <span className="font-bold text-sm text-amber-400 font-mono">
+                  {selectedZone.demandIndex} / 100
+                </span>
+              </div>
+            </div>
+
+            <Button
+              size="sm"
+              onClick={() => handleApplyZoneFilter(selectedZone.zone)}
+              className="w-full text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-white gap-2 shadow-md"
+            >
+              <span>Filtrer les analyses sur {selectedZone.zone}</span>
+              <ArrowRight className="size-3.5" />
+            </Button>
+          </div>
+        )}
+
+        {/* Panneau Popover Détail Établissement sélectionné */}
+        {selectedEst && (
+          <div className="absolute top-4 right-4 z-[400] w-80 bg-background/95 backdrop-blur-xl border border-border/80 rounded-2xl p-4 shadow-2xl animate-in fade-in-0 slide-in-from-top-2 duration-200">
+            <div className="flex items-start justify-between gap-2 border-b border-border/60 pb-3">
+              <div>
+                <h4 className="font-bold text-sm text-foreground flex items-center gap-1.5">
+                  <span>🏪</span>
+                  <span>{selectedEst.name}</span>
+                </h4>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {selectedEst.zone} · {selectedEst.city}
                 </p>
               </div>
               <Button
                 variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setSelectedZone(null);
-                  setSelectedEst(null);
-                }}
-                className="size-7 p-0 rounded-full hover:bg-muted"
+                size="icon"
+                onClick={() => setSelectedEst(null)}
+                className="size-6 rounded-full hover:bg-muted"
               >
-                <X className="size-4" />
+                <X className="size-3.5" />
               </Button>
             </div>
 
-            {/* Métriques d'Impact pour Brasseries */}
-            <div className="grid grid-cols-2 gap-2 my-3">
-              <div className="p-2.5 rounded-xl bg-card border border-border/60">
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Volume Débité</span>
-                <div className="text-sm font-bold text-foreground mt-0.5">
-                  {Math.round(selectedZone?.volume || selectedEst?.volume || 0).toLocaleString('fr-FR')} u.
-                </div>
-                <span className="text-[10px] text-emerald-400 flex items-center gap-0.5 mt-0.5">
-                  <TrendingUp className="size-2.5" /> +{selectedZone?.growth || 12.5}%
+            <div className="space-y-2 my-3 text-xs">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span>Volume débité :</span>
+                <span className="font-bold text-foreground font-mono">{selectedEst.volume.toLocaleString('fr-FR')} cols</span>
+              </div>
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span>Chiffre d'Affaires :</span>
+                <span className="font-bold text-emerald-400 font-mono">{(selectedEst.revenue / 1000).toFixed(0)}k FCFA</span>
+              </div>
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span>Statut géolocalisation :</span>
+                <span className="text-[10px] font-medium text-emerald-400">
+                  {selectedEst.hasDirectGps ? '📍 Coordonnées GPS directes' : '📌 Géocodage adresse'}
                 </span>
-              </div>
-
-              <div className="p-2.5 rounded-xl bg-card border border-border/60">
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Chiffre d'Affaires</span>
-                <div className="text-sm font-bold text-foreground mt-0.5">
-                  {(((selectedZone?.revenue || selectedEst?.revenue || (selectedZone?.volume || 0) * 800)) / 1000000).toFixed(1)}M FCFA
-                </div>
-                <span className="text-[10px] text-muted-foreground mt-0.5">Consolidé terrain</span>
-              </div>
-
-              <div className="p-2.5 rounded-xl bg-card border border-border/60">
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                  {selectedZone ? 'Points de Vente' : 'Tickets Consolidés'}
-                </span>
-                <div className="text-sm font-bold text-foreground mt-0.5">
-                  {selectedZone?.posCount ? `${selectedZone.posCount} POS` : `${selectedEst?.transactions || 0} tickets`}
-                </div>
-                <span className="text-[10px] text-muted-foreground mt-0.5">Échantillon vérifié</span>
-              </div>
-
-              <div className="p-2.5 rounded-xl bg-card border border-border/60">
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Indice de Demande</span>
-                <div className="text-sm font-bold text-rose-400 mt-0.5 flex items-center gap-1">
-                  <Flame className="size-3.5" />
-                  {selectedZone?.demandIndex || 115} pts
-                </div>
-                <span className="text-[10px] text-muted-foreground mt-0.5">Forte consommation</span>
               </div>
             </div>
 
-            {/* Combat des Brasseries (Parts de marché estimées sur la zone) */}
-            <div className="p-3 rounded-xl bg-muted/40 border border-border/60 space-y-2 mb-3">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-foreground flex items-center gap-1.5">
-                  <Beer className="size-3.5 text-orange-400" />
-                  Parts de Marché Brasseries
-                </span>
-                <Badge variant="outline" className="text-[9px] bg-background/50 py-0">Échantillon Réel</Badge>
-              </div>
-
-              {/* Barre de répartition visuelle */}
-              <div className="w-full h-2 rounded-full overflow-hidden flex bg-muted">
-                <div className="bg-amber-500 h-full" style={{ width: '58%' }} title="Solibra : 58%" />
-                <div className="bg-emerald-500 h-full" style={{ width: '32%' }} title="Brassivoire : 32%" />
-                <div className="bg-purple-500 h-full" style={{ width: '10%' }} title="Autres / Import : 10%" />
-              </div>
-
-              <div className="grid grid-cols-3 gap-1 text-[10px] text-muted-foreground pt-1">
-                <div>
-                  <div className="flex items-center gap-1">
-                    <span className="size-2 rounded-full bg-amber-500" />
-                    <span className="font-medium text-foreground">Solibra</span>
-                  </div>
-                  <span className="text-[9px]">58% (Bock, Beaufort)</span>
-                </div>
-                <div>
-                  <div className="flex items-center gap-1">
-                    <span className="size-2 rounded-full bg-emerald-500" />
-                    <span className="font-medium text-foreground">Brassivoire</span>
-                  </div>
-                  <span className="text-[9px]">32% (Heineken, Ivoire)</span>
-                </div>
-                <div>
-                  <div className="flex items-center gap-1">
-                    <span className="size-2 rounded-full bg-purple-500" />
-                    <span className="font-medium text-foreground">Autres</span>
-                  </div>
-                  <span className="text-[9px]">10% (Vins, Sodas)</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Bouton d'action pour filtrer */}
             <Button
               size="sm"
-              className="w-full h-8 text-xs bg-orange-500 hover:bg-orange-600 text-white gap-1.5 font-medium"
-              onClick={() => {
-                const targetZone = selectedZone?.zone || selectedEst?.zone;
-                const targetCity = selectedZone?.city || selectedEst?.city;
-                if (targetZone) setFilter('commune', targetZone);
-                if (targetCity) setFilter('city', targetCity);
-              }}
+              onClick={() => handleApplyZoneFilter(selectedEst.zone)}
+              className="w-full text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white gap-2 shadow-md"
             >
-              Filtrer les analyses sur {selectedZone?.zone || selectedEst?.zone}
+              <span>Voir toute la zone {selectedEst.zone}</span>
               <ArrowRight className="size-3.5" />
             </Button>
           </div>

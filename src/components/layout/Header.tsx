@@ -38,7 +38,7 @@ export function Header({ onOpenAiChat, onOpenExport }: HeaderProps) {
         {/* Sample Status Pill */}
         <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs font-medium">
           <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span>Échantillon Certifié : <strong>57 744</strong> ventes E-Maquis</span>
+          <span>Échantillon Certifié : <strong>58 032</strong> ventes E-Maquis</span>
         </div>
 
         {/* DeerFlow AI Assistant Trigger Button */}
