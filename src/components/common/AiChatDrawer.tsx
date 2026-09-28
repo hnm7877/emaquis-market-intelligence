@@ -141,10 +141,11 @@ export function AiChatDrawer({ open, onClose }: AiChatDrawerProps) {
 
     // Par défaut (valid / success)
     return [
+      `🏆 Quels sont les 5 produits (SKUs) les plus vendus et dans quelles communes ?`,
       `🔥 Quelles sont les zones les plus "chaudes" (hotspots Snapchat) en volume en ce moment ?`,
       `📦 Convertir les volumes consommés en Hectolitres (hL) et en Casiers de 24.`,
-      `Que se passe-t-il avec les ventes de ${topBrand} à ${topCity} ?`,
-      `❄️ Quelles communes sont en zone froide (< 25°C) et nécessitent une activation ?`,
+      `⚡ Quels produits ont la rotation la plus rapide (> 20x / semaine) ?`,
+      `🚨 Quels SKUs présentent un risque élevé de rupture de stock ?`,
       `Compare la performance de Solibra vs Brassivoire sur ce segment de marché.`,
     ];
   }, [filters.status, contextualData, overviewData]);
@@ -175,6 +176,39 @@ export function AiChatDrawer({ open, onClose }: AiChatDrawerProps) {
 
       const qLower = q.toLowerCase();
 
+      // 0. Analyse Produits, SKUs et Rotations
+      if (
+        qLower.includes('produit') ||
+        qLower.includes('sku') ||
+        qLower.includes('vendu') ||
+        qLower.includes('bière') ||
+        qLower.includes('heineken') ||
+        qLower.includes('beaufort') ||
+        qLower.includes('desperados')
+      ) {
+        toolUsed = 'get_top_products_intelligence';
+        responseContent =
+          `🏆 Analyse d'Écoulement des Produits & Rotation des SKUs :
+
+` +
+          `• Top 3 Leaders du Marché (données consolidées GlobalSales) :
+` +
+          `  1. 🥇 Heineken 33cl (Brassivoire) : 38 089 cols débités (~247.5 hL / 1 587 casiers). Rotation record de 25x/semaine. Top communes : Yopougon, Plateau, Marcory.
+` +
+          `  2. 🥈 Beaufort 33cl (Solibra) : 33 472 cols débités (~217.5 hL / 1 394 casiers). Rotation de 25x/semaine. Top communes : Yopougon, Marcory, Plateau.
+` +
+          `  3. 🥉 Desperados 33cl (Solibra) : 25 536 cols débités (~165.9 hL / 1 064 casiers). Vélocité très forte en zone Lounge/VIP.
+
+` +
+          `• Risque de Rupture & Réassort :
+` +
+          `  - Heineken 33 et Beaufort 33 sont en tension élevée (couverture < 2.5 jours en fin de semaine).
+` +
+          `  - Fréquence de réassort recommandée : tous les 2 jours pour maintenir 100% de disponibilité.
+
+` +
+          `💡 Astuce : Rendez-vous sur la page Produits (/products) pour consulter la fiche technique complète de chaque SKU et commuter les mesures en Litres, hL ou Casiers.`;
+      }
       // 1. Analyse Hotspots Thermiques Snapchat
       if (
         qLower.includes('chaud') ||
@@ -291,13 +325,13 @@ export function AiChatDrawer({ open, onClose }: AiChatDrawerProps) {
     }, 850);
   };
 
-  // Optimiser le prompt saisi par l'utilisateur avec le contexte actif et les unités
+  // Optimiser le prompt saisi par l'utilisateur avec le contexte actif, les unités et l'intelligence produits
   const handleOptimizePrompt = () => {
     const currentUnitLabel = VOLUME_UNIT_OPTIONS.find((u) => u.value === volumeUnit)?.shortLabel || 'Cols';
     if (!input.trim()) {
-      setInput(`Analyse comparative des volumes en ${currentUnitLabel} et des hotspots thermiques pour ${contextSummary}`);
+      setInput(`Analyse détaillée des ventes de produits en ${currentUnitLabel}, vélocité des SKUs, risques de rupture et hotspots pour ${contextSummary}`);
     } else {
-      setInput(`[Analyse ${currentUnitLabel} & Hotspots] ${input.trim()} (Contexte: ${contextSummary})`);
+      setInput(`[Analyse Produits & ${currentUnitLabel}] ${input.trim()} (Contexte: ${contextSummary})`);
     }
   };
 

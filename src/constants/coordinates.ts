@@ -7,6 +7,7 @@ export const GEO_COORDINATES: Record<string, { lat: number; lng: number; country
   abobo: { lat: 5.4164, lng: -4.0159, country: "Côte d'Ivoire", city: 'Abidjan' },
   marcory: { lat: 5.3045, lng: -3.9842, country: "Côte d'Ivoire", city: 'Abidjan' },
   koumassi: { lat: 5.3012, lng: -3.9489, country: "Côte d'Ivoire", city: 'Abidjan' },
+  kooumassi: { lat: 5.3012, lng: -3.9489, country: "Côte d'Ivoire", city: 'Abidjan' },
   treichville: { lat: 5.3006, lng: -4.0094, country: "Côte d'Ivoire", city: 'Abidjan' },
   adjame: { lat: 5.3551, lng: -4.0242, country: "Côte d'Ivoire", city: 'Abidjan' },
   adjamé: { lat: 5.3551, lng: -4.0242, country: "Côte d'Ivoire", city: 'Abidjan' },
@@ -73,6 +74,39 @@ export const GEO_COORDINATES: Record<string, { lat: number; lng: number; country
   // --- Bénin ---
   cotonou: { lat: 6.3703, lng: 2.3912, country: 'Bénin', city: 'Cotonou' },
   cadjehoun: { lat: 6.3567, lng: 2.3989, country: 'Bénin', city: 'Cotonou' },
+
+  // --- Autres Villes de Côte d'Ivoire (Base de données) ---
+  toumodi: { lat: 6.5572, lng: -5.0178, country: "Côte d'Ivoire", city: 'Toumodi' },
+  daoukro: { lat: 7.0592, lng: -3.9631, country: "Côte d'Ivoire", city: 'Daoukro' },
+  ndouci: { lat: 5.8906, lng: -4.7733, country: "Côte d'Ivoire", city: "N'Douci" },
+  adiake: { lat: 5.3044, lng: -3.3039, country: "Côte d'Ivoire", city: 'Adiaké' },
+  adzope: { lat: 6.1069, lng: -3.8619, country: "Côte d'Ivoire", city: 'Adzopé' },
+  oume: { lat: 6.5333, lng: -5.5167, country: "Côte d'Ivoire", city: 'Oumé' },
+  taabo: { lat: 6.2239, lng: -5.0833, country: "Côte d'Ivoire", city: 'Taabo' },
+  seguela: { lat: 7.9611, lng: -6.6731, country: "Côte d'Ivoire", city: 'Séguéla' },
+
+  // --- Guinée ---
+  conakry: { lat: 9.6412, lng: -13.5784, country: 'Guinée', city: 'Conakry' },
+  coyah: { lat: 9.7042, lng: -13.3833, country: 'Guinée', city: 'Coyah' },
+  forecariah: { lat: 9.4306, lng: -13.0889, country: 'Guinée', city: 'Forécariah' },
+
+  // --- Mali ---
+  bamako: { lat: 12.6392, lng: -8.0029, country: 'Mali', city: 'Bamako' },
+  kayes: { lat: 14.4469, lng: -11.4444, country: 'Mali', city: 'Kayes' },
+
+  // --- Togo ---
+  lome: { lat: 6.1375, lng: 1.2123, country: 'Togo', city: 'Lomé' },
+  kpalime: { lat: 6.9039, lng: 0.6306, country: 'Togo', city: 'Kpalimé' },
+
+  // --- Niger ---
+  niamey: { lat: 13.5116, lng: 2.1254, country: 'Niger', city: 'Niamey' },
+
+  // --- Bénin (complément) ---
+  abomey_calavi: { lat: 6.4485, lng: 2.3557, country: 'Bénin', city: 'Abomey-Calavi' },
+  abomeycalavi: { lat: 6.4485, lng: 2.3557, country: 'Bénin', city: 'Abomey-Calavi' },
+  porto_novo: { lat: 6.4969, lng: 2.6289, country: 'Bénin', city: 'Porto-Novo' },
+  portonovo: { lat: 6.4969, lng: 2.6289, country: 'Bénin', city: 'Porto-Novo' },
+  bohicon: { lat: 7.1783, lng: 2.0667, country: 'Bénin', city: 'Bohicon' },
 };
 
 export function normalizeGeoKey(val?: string): string {

@@ -257,33 +257,69 @@ export function GeographicBarChart({ data }: GeographicBarChartProps) {
     return SEASONS.find((s) => s.id === selectedSeason) || SEASONS[0];
   }, [selectedSeason]);
 
+  // Normalisation robuste pour multi-sélections (accents, apostrophes, ponctuation)
+  const cleanKey = (val?: string) =>
+    (val || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]/g, '');
+
+  const parseFilterList = (val: any): string[] => {
+    if (!val) return [];
+    if (Array.isArray(val)) {
+      return val
+        .flatMap((v) => (typeof v === 'string' ? v.split(',') : [v]))
+        .map((s) => cleanKey(String(s)))
+        .filter((s) => s && s !== 'all' && s !== 'tous' && !s.startsWith('tout'));
+    }
+    if (typeof val === 'string') {
+      return val
+        .split(',')
+        .map((s) => cleanKey(s))
+        .filter((s) => s && s !== 'all' && s !== 'tous' && !s.startsWith('tout'));
+    }
+    return [];
+  };
+
   // Filtrage automatique selon les filtres sélectionnés (pays, villes, communes)
   const filteredZones = useMemo(() => {
+    const countryFilters = parseFilterList(filters.country);
+    const cityFilters = parseFilterList(filters.city);
+    const communeFilters = parseFilterList(filters.commune);
+
     return rawZones.filter((z: any) => {
       // 1. Filtre Pays
-      if (filters.country && filters.country !== 'all' && !filters.country.includes('all')) {
-        const countryFilters = Array.isArray(filters.country) ? filters.country : [filters.country];
-        const zCountry = (z.country || "Côte d'Ivoire").toLowerCase();
-        const matchesCountry = countryFilters.some((cf: string) => {
-          const normCf = cf.toLowerCase().replace(/_/g, ' ');
-          return zCountry.includes(normCf) || normCf.includes(zCountry);
+      if (countryFilters.length > 0) {
+        const zCountry = cleanKey(z.country || "Côte d'Ivoire");
+        const matchesCountry = countryFilters.some((cf) => {
+          return (
+            zCountry.includes(cf) ||
+            cf.includes(zCountry) ||
+            (cf.includes('congo') && (zCountry.includes('congo') || zCountry.includes('rdc'))) ||
+            (cf.includes('rdc') && zCountry.includes('congo'))
+          );
         });
         if (!matchesCountry) return false;
       }
 
       // 2. Filtre Ville
-      if (filters.city && filters.city !== 'all' && !filters.city.includes('all')) {
-        const cityFilters = Array.isArray(filters.city) ? filters.city : [filters.city];
-        const zCity = (z.city || 'Abidjan').toLowerCase();
-        const matchesCity = cityFilters.some((cf: string) => zCity.includes(cf.toLowerCase()));
+      if (cityFilters.length > 0) {
+        const zCity = cleanKey(z.city || '');
+        const zZone = cleanKey(z.zone || z.commune || '');
+        const matchesCity = cityFilters.some(
+          (cf) => zCity.includes(cf) || cf.includes(zCity) || zZone.includes(cf) || cf.includes(zZone)
+        );
         if (!matchesCity) return false;
       }
 
       // 3. Filtre Commune
-      if (filters.commune && filters.commune !== 'all' && !filters.commune.includes('all') && !filters.commune.includes('Toutes les communes')) {
-        const communeFilters = Array.isArray(filters.commune) ? filters.commune : [filters.commune];
-        const zCommune = (z.zone || z.commune || '').toLowerCase();
-        const matchesCommune = communeFilters.some((cf: string) => zCommune.includes(cf.toLowerCase()));
+      if (communeFilters.length > 0) {
+        const zCommune = cleanKey(z.zone || z.commune || '');
+        const zCity = cleanKey(z.city || '');
+        const matchesCommune = communeFilters.some(
+          (cf) => zCommune.includes(cf) || cf.includes(zCommune) || zCity.includes(cf) || cf.includes(zCity)
+        );
         if (!matchesCommune) return false;
       }
 
@@ -562,8 +598,13 @@ export function GeographicBarChart({ data }: GeographicBarChartProps) {
       }
 
       // Conserver les calques de données au premier plan
+      if (baseLayerRef.current) {
+        baseLayerRef.current.bringToBack();
+      }
       if (layersGroupRef.current) {
-        layersGroupRef.current.bringToFront();
+        layersGroupRef.current.eachLayer((l: any) => {
+          if (typeof l.bringToFront === 'function') l.bringToFront();
+        });
       }
     };
 

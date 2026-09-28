@@ -386,8 +386,13 @@ export const MarketIntelligenceMap: React.FC<MarketIntelligenceMapProps> = ({
         labelsLayerRef.current = labelsLayer;
       }
 
+      if (baseLayerRef.current) {
+        baseLayerRef.current.bringToBack();
+      }
       if (layersGroupRef.current) {
-        layersGroupRef.current.bringToFront();
+        layersGroupRef.current.eachLayer((l: any) => {
+          if (typeof l.bringToFront === 'function') l.bringToFront();
+        });
       }
     };
 
