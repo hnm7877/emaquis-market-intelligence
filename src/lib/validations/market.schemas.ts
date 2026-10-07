@@ -146,6 +146,9 @@ export const GeographyResponseSchema = z.object({
   comparisonLabel: z.string().optional(),
   zones: z.array(GeoZoneSchema).default([]),
   establishments: z.array(EstablishmentMarkerSchema).optional(),
+  unlocated: z
+    .object({ posCount: z.number(), volume: z.number(), revenue: z.number() })
+    .optional(),
 });
 
 export const ProductItemSchema = z.object({
@@ -202,6 +205,10 @@ export const NetworkCoverageSchema = z.object({
     registeredEstablishments: z.number(),
     activeEstablishments: z.number().optional(),
     localizedEstablishments: z.number().optional(),
+    typedEstablishments: z.number().optional(),
+    establishmentTypes: z
+      .array(z.object({ value: z.string(), label: z.string(), count: z.number() }))
+      .optional(),
     totalAnalyzedTransactions: z.number(),
     catalogProductsCount: z.number(),
     catalogCategoriesCount: z.number(),

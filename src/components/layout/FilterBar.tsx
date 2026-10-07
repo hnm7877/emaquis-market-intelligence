@@ -261,16 +261,8 @@ export function FilterBar(props: FilterBarProps = {}) {
 
   // Types d'établissement
   const posTypesList = useMemo(() => {
-    return dynamicFilters?.posTypes?.length
-      ? ['Tous types', ...dynamicFilters.posTypes]
-      : [
-          'Tous types',
-          'Maquis traditionnel',
-          'Bar VIP / Lounge',
-          'Restaurant',
-          'Hôtel',
-          'Dépôt / Grossiste',
-        ];
+    // Types fournis par l'API (type renseigné par l'établissement, sinon déduit du nom)
+    return ['Tous types', ...(dynamicFilters?.posTypes ?? []).filter((t) => t !== 'Tous types')];
   }, [dynamicFilters?.posTypes]);
 
   const activeStatusName = STATUS_LABELS[filters.status || 'valid'] || 'Validées';

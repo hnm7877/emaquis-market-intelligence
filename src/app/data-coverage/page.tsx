@@ -106,6 +106,27 @@ export default function DataCoveragePage() {
         </Card>
       </div>
 
+      <Card className="p-4 border border-border/80 bg-card/70 space-y-2.5 text-xs">
+        <div className="flex items-center gap-2 text-foreground font-semibold">
+          <Store className="size-4 text-orange-500" />
+          <span>Types d&apos;établissement renseignés</span>
+        </div>
+        <p className="text-muted-foreground">
+          {fmt(overview?.typedEstablishments)} établissement(s) actif(s) sur{' '}
+          {fmt(overview?.activeEstablishments)} ont renseigné leur type (inscription ou réglages). Pour les autres, le
+          type est déduit du nom de l&apos;établissement dans les filtres.
+        </p>
+        {(overview?.establishmentTypes?.length ?? 0) > 0 && (
+          <div className="flex flex-wrap gap-2 pt-1">
+            {overview?.establishmentTypes?.map((t) => (
+              <span key={t.value} className="px-2 py-0.5 rounded-md border border-border/60 bg-background/60">
+                {t.label} : <strong className="text-foreground">{t.count}</strong>
+              </span>
+            ))}
+          </div>
+        )}
+      </Card>
+
       <Card className="p-6 border border-border/80 bg-card/70 space-y-3 text-xs leading-relaxed backdrop-blur-xs">
         <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-2">
           <CheckCircle2 className="size-4 text-emerald-500" />

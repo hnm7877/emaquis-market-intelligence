@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getAuthToken, redirectToLogin } from '@/lib/auth';
 
 const baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
 
@@ -13,11 +14,9 @@ export const axiosInstance = axios.create({
 // Intercepteur pour injecter automatiquement le token JWT si disponible
 axiosInstance.interceptors.request.use(
   (config) => {
-    if (typeof window !== 'undefined') {
-      const token = localStorage.getItem('token') || localStorage.getItem('access_token');
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }
+    const token = getAuthToken();
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
     if (process.env.NODE_ENV !== 'production') {
       console.log(`[API REQUEST] ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`, config.params || '');
@@ -36,7 +35,14 @@ axiosInstance.interceptors.response.use(
     return response;
   },
   (error) => {
-    console.error('[API ERROR]', error.response?.status, error.response?.data || error.message);
+    const status = error.response?.status;
+    console.error('[API ERROR]', status, error.response?.data || error.message);
+    // Session absente, expirée ou compte non autorisé : retour à la connexion
+    // (les routes de connexion OTP ne déclenchent pas de redirection)
+    const url: string = error.config?.url || '';
+    if ((status === 401 || status === 403) && url.startsWith('/market-intelligence')) {
+      redirectToLogin(status === 403 ? 'forbidden' : 'expired');
+    }
     return Promise.reject(error);
   }
 );

@@ -14,6 +14,8 @@ import {
   fetchDataCoverage,
   fetchFiltersMetadata,
   fetchContextualFilters,
+  fetchAuditLogs,
+  fetchSyncStatus,
 } from '@/api/marketIntelligence.api';
 import { useMarketFilterStore } from '@/stores/useMarketFilterStore';
 import { useMarketRealtimeStore } from '@/stores/useMarketRealtimeStore';
@@ -28,7 +30,9 @@ export const marketQueryKeys = {
   categories: (filters?: any) => [...marketQueryKeys.all, 'categories', filters] as const,
   trends: (filters?: unknown) => [...marketQueryKeys.all, 'trends', filters] as const,
   stock: (filters?: unknown) => [...marketQueryKeys.all, 'stock', filters] as const,
-  promotions: () => [...marketQueryKeys.all, 'promotions'] as const,
+  promotions: (filters?: unknown) => [...marketQueryKeys.all, 'promotions', filters] as const,
+  auditLogs: () => [...marketQueryKeys.all, 'audit-logs'] as const,
+  syncStatus: () => [...marketQueryKeys.all, 'sync-status'] as const,
   coverage: () => [...marketQueryKeys.all, 'coverage'] as const,
   filtersMetadata: () => [...marketQueryKeys.all, 'filters-metadata'] as const,
   contextualFilters: (status: string, dateRange: string) => [...marketQueryKeys.all, 'contextual-filters', status, dateRange] as const,
@@ -130,9 +134,10 @@ export function useStockIntelligenceQuery() {
  * 8. Hook pour l'impact des promotions
  */
 export function usePromotionsQuery() {
+  const filters = useMarketFilterStore((state) => state.filters);
   return useQuery({
-    queryKey: marketQueryKeys.promotions(),
-    queryFn: fetchPromotionsData,
+    queryKey: marketQueryKeys.promotions(filters),
+    queryFn: () => fetchPromotionsData(filters),
     staleTime: 10 * 60 * 1000,
   });
 }
@@ -210,4 +215,27 @@ export function useMarketLiveSocket() {
       socket.off('market:new-sale', handleNewSale);
     };
   }, [setConnected, addLiveAlert, addLiveTransaction, queryClient]);
+}
+/**
+ * 13. Journal d'audit des accès Market Intelligence
+ */
+export function useAuditLogsQuery() {
+  return useQuery({
+    queryKey: marketQueryKeys.auditLogs(),
+    queryFn: () => fetchAuditLogs(50),
+    staleTime: 30 * 1000,
+  });
+}
+
+/**
+ * 14. État de la synchronisation stock / promotions
+ */
+export function useSyncStatusQuery() {
+  return useQuery({
+    queryKey: marketQueryKeys.syncStatus(),
+    queryFn: fetchSyncStatus,
+    staleTime: 10 * 1000,
+    // Rafraîchissement pendant un import initial en cours
+    refetchInterval: (query) => (query.state.data?.backfill?.running ? 5000 : false),
+  });
 }

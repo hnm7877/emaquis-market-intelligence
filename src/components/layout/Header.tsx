@@ -7,11 +7,16 @@ import {
   Search,
   Bot,
   Menu,
+  LogOut,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useDataCoverageQuery, useMarketOverview } from '@/hooks/market/useMarketQueries';
+import { useQuery } from '@tanstack/react-query';
+import { fetchMarketSession } from '@/api/marketIntelligence.api';
+import { closeMarketSocket } from '@/api/socket';
+import { redirectToLogin } from '@/lib/auth';
 import { formatGrowth } from '@/utils/metrics';
 
 interface HeaderProps {
@@ -22,6 +27,16 @@ interface HeaderProps {
 
 export function Header({ onOpenAiChat, onOpenExport, onToggleSidebar }: HeaderProps) {
   const [showAlertsDropdown, setShowAlertsDropdown] = useState(false);
+  const { data: session } = useQuery({
+    queryKey: ['market', 'session'],
+    queryFn: fetchMarketSession,
+    staleTime: 10 * 60 * 1000,
+  });
+  const sessionLabel = session?.subject ?? '…';
+  const handleLogout = () => {
+    closeMarketSocket();
+    redirectToLogin();
+  };
   const { data: coverage } = useDataCoverageQuery();
   const totalSales = coverage?.networkOverview?.totalAnalyzedTransactions;
 
@@ -121,13 +136,25 @@ export function Header({ onOpenAiChat, onOpenExport, onToggleSidebar }: HeaderPr
 
         {/* User / Partner Profile Pill */}
         <div className="flex items-center gap-2 pl-1.5 sm:pl-2 border-l border-border">
-          <div className="size-7 sm:size-8 rounded-full bg-gradient-to-tr from-amber-600 to-amber-800 border border-border flex items-center justify-center text-[11px] sm:text-xs font-semibold text-white">
-            CI
+          <div className="size-7 sm:size-8 rounded-full bg-gradient-to-tr from-amber-600 to-amber-800 border border-border flex items-center justify-center text-[11px] sm:text-xs font-semibold text-white uppercase">
+            {sessionLabel.slice(0, 2)}
           </div>
           <div className="hidden 2xl:flex flex-col text-left">
-            <span className="text-xs font-semibold text-foreground leading-none">Brasserie Partenaire</span>
-            <span className="text-[10px] text-muted-foreground leading-none mt-1">Analyste FMCG</span>
+            <span className="text-xs font-semibold text-foreground leading-none truncate max-w-[160px]">{sessionLabel}</span>
+            <span className="text-[10px] text-muted-foreground leading-none mt-1">
+              {session?.kind === 'admin' ? 'Administrateur E-Maquis' : session ? 'Compte administrateur' : ''}
+            </span>
           </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleLogout}
+            className="size-8 text-muted-foreground hover:text-foreground"
+            aria-label="Se déconnecter"
+            title="Se déconnecter"
+          >
+            <LogOut className="size-4" />
+          </Button>
         </div>
       </div>
     </header>

@@ -150,8 +150,9 @@ export const fetchStockIntelligenceData = async (filters?: Partial<FilterState>)
 /**
  * 8. Impact Promotionnel & Uplift
  */
-export const fetchPromotionsData = async () => {
-  const response = await axiosInstance.get('/market-intelligence/promotions');
+export const fetchPromotionsData = async (filters?: Partial<FilterState>) => {
+  const params = buildQueryParams(filters);
+  const response = await axiosInstance.get('/market-intelligence/promotions', { params });
   return response.data;
 };
 
@@ -184,5 +185,70 @@ export const fetchContextualFilters = async (filters?: Partial<FilterState>): Pr
   if (filters?.status) params.status = filters.status;
   if (filters?.dateRange && filters.dateRange !== 'all') params.dateRange = filters.dateRange;
   const response = await axiosInstance.get('/market-intelligence/contextual-filters', { params });
+  return response.data;
+};
+/**
+ * 12. Connexion administrateur par code OTP (endpoints existants de l'API E-Maquis)
+ */
+export const requestAdminOtp = async (email: string): Promise<void> => {
+  await axiosInstance.post('/user/admin/request-otp', { email });
+};
+
+export const verifyAdminOtp = async (email: string, otp: string): Promise<{ access_token: string }> => {
+  const response = await axiosInstance.post('/user/admin/verify-otp', { email, otp });
+  return response.data;
+};
+
+/** Identité de la session courante (vérifie que le token donne accès à Market Intelligence) */
+export const fetchMarketSession = async (): Promise<{ kind: string; subject: string }> => {
+  const response = await axiosInstance.get('/market-intelligence/me');
+  return response.data;
+};
+
+/**
+ * 13. Journal d'audit et synchronisation stock / promotions
+ */
+export interface MarketAuditLogEntry {
+  _id: string;
+  subject: string;
+  kind: string;
+  action: string;
+  endpoint: string;
+  filters: Record<string, string>;
+  status: string;
+  created_at: string;
+}
+
+export const fetchAuditLogs = async (limit = 50): Promise<MarketAuditLogEntry[]> => {
+  const response = await axiosInstance.get('/market-intelligence/audit-logs', { params: { limit } });
+  return response.data;
+};
+
+export interface MarketSyncStatus {
+  enabled: boolean;
+  productStates: number;
+  establishmentsWithStockData: number;
+  lastSyncAt: string | null;
+  stockMovements: number;
+  promotionPeriods: number;
+  activePromotions: number;
+  backfill: {
+    running: boolean;
+    startedAt: string | null;
+    finishedAt: string | null;
+    tenantsTotal: number;
+    tenantsDone: number;
+    productsSynced: number;
+    errors: number;
+  };
+}
+
+export const fetchSyncStatus = async (): Promise<MarketSyncStatus> => {
+  const response = await axiosInstance.get('/market-intelligence/sync/status');
+  return response.data;
+};
+
+export const startSyncBackfill = async (): Promise<MarketSyncStatus['backfill']> => {
+  const response = await axiosInstance.post('/market-intelligence/sync/backfill', {});
   return response.data;
 };

@@ -120,6 +120,13 @@ export default function GeographyPage() {
           <p className="text-xs text-muted-foreground mt-1">
             Visualisation géospatiale haute précision pour brasseries et distributeurs : intensité des débits, parts de marché locales et couverture terrain.
           </p>
+          {(apiGeoData?.unlocated?.posCount ?? 0) > 0 && (
+            <p className="text-[11px] text-amber-400 mt-1">
+              {apiGeoData?.unlocated?.posCount} établissement(s) sans GPS ni adresse déclarée (
+              {Math.round(apiGeoData?.unlocated?.volume ?? 0).toLocaleString('fr-FR')} u.) : comptés à part, non
+              placés sur la carte.
+            </p>
+          )}
         </div>
 
         {/* Barre de recherche et raccourcis */}

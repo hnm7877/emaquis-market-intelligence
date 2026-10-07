@@ -3,7 +3,6 @@ import { MarketAlert } from '@/types/market';
 
 export interface LiveSaleTransaction {
   id: string;
-  establishmentName: string;
   city: string;
   commune: string;
   amount: number;
