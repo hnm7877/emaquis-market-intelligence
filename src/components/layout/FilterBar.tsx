@@ -32,13 +32,13 @@ import { PAYS, normalizeCountry } from '@/constants/countries';
 import { VOLUME_UNIT_OPTIONS } from '@/utils/volumeUnit';
 
 const STATUS_LABELS: Record<string, string> = {
-  valid: 'Validées & Consommées (53 727)',
-  all: 'Tous les statuts (Brut - 58 032)',
-  success: 'Réglées avec succès (51 586)',
-  pending: 'En attente / Tables actives (1 315)',
-  return: 'Retours & Consignes (816)',
-  canceled: 'Commandes annulées (4 305)',
-  offered: 'Offertes par le maquis (10)',
+  valid: 'Validées & Consommées',
+  all: 'Tous les statuts (brut)',
+  success: 'Réglées avec succès',
+  pending: 'En attente / Tables actives',
+  return: 'Retours & Consignes',
+  canceled: 'Commandes annulées',
+  offered: 'Offertes par le maquis',
 };
 
 export interface FilterBarProps {
@@ -382,13 +382,13 @@ export function FilterBar(props: FilterBarProps = {}) {
                   <SelectValue placeholder="Statut de vente" />
                 </SelectTrigger>
                 <SelectContent className="max-h-64 z-[9999]">
-                  <SelectItem value="valid">Validées &amp; Consommées (53 727)</SelectItem>
-                  <SelectItem value="all">Tous les statuts (Brut - 58 032)</SelectItem>
-                  <SelectItem value="success">Réglées avec succès (51 586)</SelectItem>
-                  <SelectItem value="pending">En attente / Tables (1 315)</SelectItem>
-                  <SelectItem value="return">Retours &amp; Consignes (816)</SelectItem>
-                  <SelectItem value="canceled">Commandes annulées (4 305)</SelectItem>
-                  <SelectItem value="offered">Offertes par le maquis (10)</SelectItem>
+                  <SelectItem value="valid">Validées &amp; Consommées</SelectItem>
+                  <SelectItem value="all">Tous les statuts (brut)</SelectItem>
+                  <SelectItem value="success">Réglées avec succès</SelectItem>
+                  <SelectItem value="pending">En attente / Tables</SelectItem>
+                  <SelectItem value="return">Retours &amp; Consignes</SelectItem>
+                  <SelectItem value="canceled">Commandes annulées</SelectItem>
+                  <SelectItem value="offered">Offertes par le maquis</SelectItem>
                 </SelectContent>
               </Select>
             </div>

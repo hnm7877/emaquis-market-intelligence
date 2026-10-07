@@ -24,6 +24,7 @@ import {
   X,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { useDataCoverageQuery } from '@/hooks/market/useMarketQueries';
 import { Button } from '@/components/ui/button';
 
 interface NavItem {
@@ -49,7 +50,7 @@ const mainNavItems: NavItem[] = [
 
 const intelligenceNavItems: NavItem[] = [
   { label: 'Agent IA DeerFlow', href: '/ai-intelligence', icon: Bot, badge: 'IA' },
-  { label: 'Couverture Réseau', href: '/data-coverage', icon: Database, badge: '57k+' },
+  { label: 'Couverture Réseau', href: '/data-coverage', icon: Database },
   { label: 'Portail Partenaire', href: '/partner', icon: Building2 },
   { label: 'Paramètres & Audit', href: '/settings', icon: Settings },
 ];
@@ -60,6 +61,8 @@ export interface SidebarProps {
 }
 
 export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
+  const { data: coverage } = useDataCoverageQuery();
+  const totalSales = coverage?.networkOverview?.totalAnalyzedTransactions;
   const pathname = usePathname();
 
   const sidebarContent = (
@@ -197,7 +200,8 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
             </span>
           </div>
           <p className="text-[10px] text-muted-foreground leading-relaxed">
-            Flux certifié E-Maquis • 58 032 ventes réelles indexées
+            Base globale E-Maquis •{' '}
+            {typeof totalSales === 'number' ? `${totalSales.toLocaleString('fr-FR')} ventes indexées` : 'chargement…'}
           </p>
           <Link
             href="/partner"

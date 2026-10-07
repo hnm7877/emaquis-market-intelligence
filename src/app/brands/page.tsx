@@ -29,6 +29,7 @@ import { useMarketFilterStore } from '@/stores/useMarketFilterStore';
 import { formatVolumeValue } from '@/utils/volumeUnit';
 import { BrandMarketShareCharts } from '@/components/charts/BrandMarketShareCharts';
 import { getBrandLogo } from '@/utils/brandLogos';
+import { formatGrowth, growthColorClass, growthBadgeClass } from '@/utils/metrics';
 
 export default function BrandsPage() {
   const { filters, setFilter, resetFilters, volumeUnit } = useMarketFilterStore();
@@ -166,7 +167,7 @@ export default function BrandsPage() {
             </div>
             <div className="text-[10px] sm:text-[11px] text-muted-foreground flex items-center justify-between">
               <span>Toutes marques confondues</span>
-              <span className="text-emerald-400 font-medium">+100% réel</span>
+              <span className="text-muted-foreground font-medium">ventes observées</span>
             </div>
           </CardContent>
         </Card>
@@ -194,7 +195,7 @@ export default function BrandsPage() {
               </Badge>
             </div>
             <div className="text-[10px] sm:text-[11px] text-muted-foreground truncate">
-              Fief : <strong className="text-foreground">{marketMetrics.leader?.fiefTerritorial || 'Yopougon'}</strong>
+              Fief : <strong className="text-foreground">{marketMetrics.leader?.fiefTerritorial || 'n/d'}</strong>
             </div>
           </CardContent>
         </Card>
@@ -212,7 +213,7 @@ export default function BrandsPage() {
               {marketMetrics.avgPenetration}% <span className="text-xs font-normal text-muted-foreground">taux moyen</span>
             </div>
             <div className="text-[10px] sm:text-[11px] text-muted-foreground flex items-center justify-between">
-              <span>Base : {marketMetrics.leader?.totalPosCount || 64} points de vente</span>
+              <span>Base : {marketMetrics.leader?.totalPosCount ?? 'n/d'} points de vente</span>
               <span className="text-blue-400 font-medium">Indexé</span>
             </div>
           </CardContent>
@@ -241,12 +242,12 @@ export default function BrandsPage() {
           const vol = brand.volume || 0;
           const rev = brand.revenue || 0;
           const share = brand.marketShare || 0;
-          const growth = brand.growth ?? brand.growthPercent ?? 0;
+          const growth = brand.growth ?? brand.growthPercent ?? null;
           const pen = brand.penetrationRate || 0;
           const activePos = brand.activePosCount || 0;
-          const totalPos = brand.totalPosCount || 64;
+          const totalPos = brand.totalPosCount || 0;
           const topCat = brand.topCategory || 'Boissons';
-          const fief = brand.fiefTerritorial || brand.strongestZone || 'Abidjan, Yopougon';
+          const fief = brand.fiefTerritorial || brand.strongestZone || 'Non établi';
           const topProds = brand.topProducts || [];
           const rank = idx + 1;
 
@@ -363,15 +364,12 @@ export default function BrandsPage() {
                       <span>Croissance périodique :</span>
                       <span
                         className={`font-semibold flex items-center gap-1 ${
-                          growth >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                          growthColorClass(growth)
                         }`}
                       >
-                        {growth >= 0 ? (
-                          <TrendingUp className="size-3" />
-                        ) : (
-                          <TrendingDown className="size-3" />
-                        )}
-                        {growth >= 0 ? `+${growth}%` : `${growth}%`}
+                        {(growth ?? 0) > 0 && <TrendingUp className="size-3" />}
+                        {(growth ?? 0) < 0 && <TrendingDown className="size-3" />}
+                        {formatGrowth(growth)}
                       </span>
                     </div>
 

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   BarChart,
   Bar,
@@ -13,7 +13,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { GEOGRAPHY_DATA } from '@/data/mockMarketData';
+import { formatGrowth, growthColorClass, isAvailable } from '@/utils/metrics';
 import { useGeographyQuery } from '@/hooks/market/useMarketQueries';
 import { useMarketFilterStore } from '@/stores/useMarketFilterStore';
 import { formatVolumeValue, VOLUME_UNIT_OPTIONS } from '@/utils/volumeUnit';
@@ -49,8 +49,8 @@ interface ZonePoint {
   seasonalVolume: number;
   revenue: number;
   posCount: number;
-  demandIndex: number;
-  growth: number;
+  demandIndex: number | null;
+  growth: number | null;
   latitude: number;
   longitude: number;
   intensity: number; // 15 (calme) à 98 (brûlant)
@@ -127,7 +127,6 @@ interface SeasonOption {
   label: string;
   shortLabel: string;
   icon: string;
-  factor: number;
   description: string;
 }
 
@@ -137,32 +136,28 @@ const SEASONS: SeasonOption[] = [
     label: 'Toutes saisons (Consolidé)',
     shortLabel: 'Global',
     icon: '📅',
-    factor: 1.0,
-    description: 'Consommation globale moyenne consolidée',
+    description: 'Toutes les ventes observées sur la période filtrée',
   },
   {
     id: 'festive',
     label: 'Période Festive (Nov - Jan)',
     shortLabel: 'Fêtes (Nov-Jan)',
     icon: '🎉',
-    factor: 1.35,
-    description: 'Pic annuel de fin d\'année, forte affluence maquis & terrasses (+35%)',
+    description: 'Ventes réellement observées en novembre, décembre et janvier',
   },
   {
     id: 'dry',
     label: 'Saison Sèche (Fév - Mai)',
     shortLabel: 'Saison Sèche',
     icon: '☀️',
-    factor: 1.2,
-    description: 'Forte chaleur, pic de consommation désaltérante & bières (+20%)',
+    description: 'Ventes réellement observées de février à mai',
   },
   {
     id: 'rainy',
     label: 'Saison des Pluies (Juin - Oct)',
     shortLabel: 'Pluies (Juin-Oct)',
     icon: '🌧️',
-    factor: 0.85,
-    description: 'Ralentissement extérieur, consommation concentrée en intérieur (-15%)',
+    description: 'Ventes réellement observées de juin à octobre',
   },
 ];
 
@@ -248,8 +243,7 @@ export function GeographicBarChart({ data }: GeographicBarChartProps) {
   // Données de base
   const rawZones = useMemo(() => {
     if (data && data.length > 0) return data;
-    if (apiGeoData?.zones && apiGeoData.zones.length > 0) return apiGeoData.zones;
-    return GEOGRAPHY_DATA;
+    return apiGeoData?.zones ?? [];
   }, [data, apiGeoData?.zones]);
 
   // Facteur saisonnier actif
@@ -327,11 +321,20 @@ export function GeographicBarChart({ data }: GeographicBarChartProps) {
     });
   }, [rawZones, filters.country, filters.city, filters.commune]);
 
+  // Volume réel de la zone pour la saison sélectionnée (ventilation mensuelle calculée par l'API)
+  const seasonalVolumeOf = useCallback(
+    (z: { volume?: number; seasonalVolumes?: Partial<Record<SeasonMode, number>> }): number => {
+      if (selectedSeason === 'all') return Math.round(Number(z.volume) || 0);
+      return Math.round(Number(z.seasonalVolumes?.[selectedSeason as Exclude<SeasonMode, 'all'>]) || 0);
+    },
+    [selectedSeason],
+  );
+
   // Calcul du volume maximal tenant compte de la saison
   const maxSeasonalVolume = useMemo(() => {
-    const vols = filteredZones.map((z: any) => (Number(z.volume) || 0) * activeSeasonConfig.factor);
+    const vols = filteredZones.map((z: any) => seasonalVolumeOf(z));
     return Math.max(...vols, 1);
-  }, [filteredZones, activeSeasonConfig.factor]);
+  }, [filteredZones, seasonalVolumeOf]);
 
   // Points thermiques formatés avec coordonnées GPS résolues avec précision
   const zonePoints: ZonePoint[] = useMemo(() => {
@@ -341,11 +344,12 @@ export function GeographicBarChart({ data }: GeographicBarChartProps) {
       const country = z.country || "Côte d'Ivoire";
 
       const baseVolume = Math.round(Number(z.volume) || 0);
-      const seasonalVolume = Math.round(baseVolume * activeSeasonConfig.factor);
-      const revenue = Math.round(Number(z.revenue) || seasonalVolume * 800);
-      const posCount = Number(z.posCount) || 1;
-      const demandIndex = Number(z.demandIndex) || 100;
-      const growth = Number(z.growth || z.growthPercent) || 12;
+      const seasonalVolume = seasonalVolumeOf(z);
+      const revenue = Math.round(Number(z.revenue) || 0);
+      const posCount = Number(z.posCount) || 0;
+      const demandIndex = isAvailable(z.demandIndex) ? z.demandIndex : null;
+      const growthRaw = z.growth ?? z.growthPercent;
+      const growth = isAvailable(growthRaw) ? growthRaw : null;
 
       // Résolution GPS précise sans chevauchement via le dictionnaire officiel
       let latitude = Number(z.latitude);
@@ -381,7 +385,7 @@ export function GeographicBarChart({ data }: GeographicBarChartProps) {
         tier: thermalProps.tier,
       };
     });
-  }, [filteredZones, activeSeasonConfig.factor, maxSeasonalVolume]);
+  }, [filteredZones, seasonalVolumeOf, maxSeasonalVolume]);
 
   // Données pour l'histogramme Recharts
   const chartData = useMemo(() => {
@@ -504,7 +508,7 @@ export function GeographicBarChart({ data }: GeographicBarChartProps) {
               Chiffre d'Affaires : <b style="color: #34d399;">${(zp.revenue / 1000000).toFixed(1)}M FCFA</b>
             </div>
             <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">
-              Établissements : <b style="color: #38bdf8;">${zp.posCount} POS</b> · Indice : <b>${zp.demandIndex}</b>
+              Établissements : <b style="color: #38bdf8;">${zp.posCount} POS</b> · Indice : <b>${zp.demandIndex ?? "n/d"}</b>
             </div>
             <div style="font-size: 10px; color: #a1a1aa; margin-top: 2px;">
               Région : ${zp.city} · ${zp.country}
@@ -845,7 +849,7 @@ export function GeographicBarChart({ data }: GeographicBarChartProps) {
                     </strong>
                   </div>
                   <div className="flex items-center justify-between text-muted-foreground">
-                    <span>Chiffre d'Affaires :</span>
+                    <span>Chiffre d'Affaires (période) :</span>
                     <strong className="text-emerald-500 font-mono">
                       {(selectedZone.revenue / 1000000).toFixed(1)}M FCFA
                     </strong>
@@ -924,8 +928,12 @@ export function GeographicBarChart({ data }: GeographicBarChartProps) {
                               Volume Saison : <strong>{d.formattedVolume.toLocaleString('fr-FR')} {d.unitLabel}</strong>
                             </p>
                             <p className="text-muted-foreground">Points de vente : {d.posCount} établissements</p>
-                            <p className="text-foreground">Indice Demande : {d.demandIndex} / 100</p>
-                            <p className="text-emerald-500 font-semibold">Croissance : +{d.growthPercent}%</p>
+                            <p className="text-foreground">
+                              Indice Demande : {isAvailable(d.demandIndex) ? `${d.demandIndex} (base 100)` : 'n/d'}
+                            </p>
+                            <p className={`font-semibold ${growthColorClass(d.growthPercent)}`}>
+                              Croissance : {formatGrowth(d.growthPercent)}
+                            </p>
                           </div>
                         );
                       }

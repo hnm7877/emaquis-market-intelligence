@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import { CATEGORIES_DATA } from '@/data/mockMarketData';
 import { CategoryDistributionChart } from '@/components/charts/CategoryDistributionChart';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -24,6 +23,7 @@ import {
 import { useCategoriesQuery } from '@/hooks/market/useMarketQueries';
 import { FilterBar } from '@/components/layout/FilterBar';
 import { useMarketFilterStore } from '@/stores/useMarketFilterStore';
+import { formatGrowth, growthColorClass, growthBadgeClass } from '@/utils/metrics';
 
 export default function CategoriesPage() {
   const { filters, setFilter, resetFilters } = useMarketFilterStore();
@@ -31,9 +31,7 @@ export default function CategoriesPage() {
   const [viewMode, setViewMode] = useState<'grid' | 'table' | 'chart'>('grid');
   const [search, setSearch] = useState('');
 
-  const categoriesList: any[] = apiCategoriesData?.categories?.length
-    ? apiCategoriesData.categories
-    : CATEGORIES_DATA;
+  const categoriesList: any[] = apiCategoriesData?.categories ?? [];
 
   // Filtrage local par recherche
   const filtered = categoriesList.filter((c: any) =>
@@ -185,12 +183,12 @@ export default function CategoriesPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {filtered.map((cat: any) => {
             const share = cat.volumeShare ?? cat.sharePercent ?? 0;
-            const growth = cat.growth ?? cat.growthPercent ?? 0;
+            const growth = cat.growth ?? cat.growthPercent ?? null;
             const vol = cat.volume ?? 0;
             const rev = cat.revenue ?? 0;
             const color = cat.color || '#f59e0b';
             const skusCount = cat.productsCount || 0;
-            const pos = cat.posPenetration || 40;
+            const pos = cat.posPenetration ?? 0;
 
             return (
               <Card
@@ -232,12 +230,10 @@ export default function CategoriesPage() {
                   <div className="absolute top-2 right-2">
                     <span
                       className={`text-[10px] font-bold px-2 py-0.5 rounded-full backdrop-blur-md border ${
-                        growth >= 0
-                          ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                          : 'bg-rose-500/20 text-rose-400 border-rose-500/30'
+                        growthBadgeClass(growth)
                       }`}
                     >
-                      {growth >= 0 ? `+${growth}%` : `${growth}%`}
+                      {formatGrowth(growth)}
                     </span>
                   </div>
 
@@ -330,7 +326,7 @@ export default function CategoriesPage() {
                 <tbody className="divide-y divide-border/40">
                   {filtered.map((cat: any) => {
                     const share = cat.volumeShare ?? cat.sharePercent ?? 0;
-                    const growth = cat.growth ?? cat.growthPercent ?? 0;
+                    const growth = cat.growth ?? cat.growthPercent ?? null;
                     const vol = cat.volume ?? 0;
                     const rev = cat.revenue ?? 0;
                     const color = cat.color || '#f59e0b';
@@ -386,15 +382,15 @@ export default function CategoriesPage() {
                           {rev.toLocaleString('fr-FR')} FCFA
                         </td>
                         <td className="py-2.5 px-3 text-right font-mono text-muted-foreground">
-                          {cat.posPenetration || 40}%
+                          {cat.posPenetration ?? 0}%
                         </td>
                         <td className="py-2.5 px-3 text-right">
                           <span
                             className={`font-medium ${
-                              growth >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                              growthColorClass(growth)
                             }`}
                           >
-                            {growth >= 0 ? `+${growth}%` : `${growth}%`}
+                            {formatGrowth(growth)}
                           </span>
                         </td>
                       </tr>
@@ -424,7 +420,7 @@ export default function CategoriesPage() {
             <CardContent className="pt-0 space-y-3 text-xs">
               {categoriesList.slice(0, 8).map((cat: any) => {
                 const share = cat.volumeShare ?? cat.sharePercent ?? 0;
-                const growth = cat.growth ?? cat.growthPercent ?? 0;
+                const growth = cat.growth ?? cat.growthPercent ?? null;
                 const vol = cat.volume ?? 0;
                 const color = cat.color || '#f59e0b';
 
@@ -455,10 +451,10 @@ export default function CategoriesPage() {
                       </span>
                       <span
                         className={`text-[11px] font-semibold ${
-                          growth >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                          growthColorClass(growth)
                         }`}
                       >
-                        {growth >= 0 ? `+${growth}%` : `${growth}%`}
+                        {formatGrowth(growth)}
                       </span>
                     </div>
                   </div>

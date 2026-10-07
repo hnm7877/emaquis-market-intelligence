@@ -44,7 +44,8 @@ export interface KpiMetric {
   title: string;
   value: string;
   numericValue: number;
-  changePercent: number;
+  /** null = variation non calculable (affichée « n/d ») */
+  changePercent: number | null;
   trend: 'up' | 'down' | 'neutral';
   comparisonPeriod: string;
   description: string;
@@ -66,8 +67,8 @@ export interface CategoryPerformance {
   revenue?: number;
   sharePercent?: number;
   volumeShare?: number;
-  growthPercent?: number;
-  growth?: number;
+  growthPercent?: number | null;
+  growth?: number | null;
   avgPrice?: number;
   color: string;
   image?: string | null;
@@ -95,8 +96,8 @@ export interface ProductPerformance {
   volumeSales: number;
   volume?: number;
   revenue?: number;
-  growthPercent: number;
-  growth?: number;
+  growthPercent: number | null;
+  growth?: number | null;
   rotationRate: number;
   reorderFrequencyDays: number;
   stockoutRisk: 'Faible' | 'Modéré' | 'Élevé' | 'LOW' | 'MEDIUM' | 'HIGH';
@@ -110,7 +111,7 @@ export interface BrandPerformance {
   logoText?: string;
   marketShare: number;
   volume: number;
-  growthPercent: number;
+  growthPercent: number | null;
   penetrationRate: number;
   topCategory: string;
   strongestZone: string;
@@ -124,8 +125,8 @@ export interface GeographicZonePerformance {
   posCount: number;
   volume: number;
   sharePercent?: number;
-  growthPercent: number;
-  demandIndex: number;
+  growthPercent: number | null;
+  demandIndex: number | null;
   topProduct?: string;
   topCategory?: string;
   latitude?: number;

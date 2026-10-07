@@ -26,8 +26,8 @@ export const marketQueryKeys = {
   products: (filters: any) => [...marketQueryKeys.all, 'products', filters] as const,
   brands: (filters?: any) => [...marketQueryKeys.all, 'brands', filters] as const,
   categories: (filters?: any) => [...marketQueryKeys.all, 'categories', filters] as const,
-  trends: () => [...marketQueryKeys.all, 'trends'] as const,
-  stock: () => [...marketQueryKeys.all, 'stock'] as const,
+  trends: (filters?: unknown) => [...marketQueryKeys.all, 'trends', filters] as const,
+  stock: (filters?: unknown) => [...marketQueryKeys.all, 'stock', filters] as const,
   promotions: () => [...marketQueryKeys.all, 'promotions'] as const,
   coverage: () => [...marketQueryKeys.all, 'coverage'] as const,
   filtersMetadata: () => [...marketQueryKeys.all, 'filters-metadata'] as const,
@@ -52,38 +52,41 @@ export function useMarketOverview() {
 /**
  * 2. Hook pour les données géographiques
  */
-export function useGeographyQuery() {
+export function useGeographyQuery(enabled = true) {
   const filters = useMarketFilterStore((state) => state.filters);
 
   return useQuery({
     queryKey: marketQueryKeys.geography(filters),
     queryFn: () => fetchGeographyData(filters),
     staleTime: 5 * 60 * 1000,
+    enabled,
   });
 }
 
 /**
  * 3. Hook pour les données produits avec images Produitglobal
  */
-export function useProductsQuery() {
+export function useProductsQuery(enabled = true) {
   const filters = useMarketFilterStore((state) => state.filters);
 
   return useQuery({
     queryKey: marketQueryKeys.products(filters),
     queryFn: () => fetchProductsData(filters),
     staleTime: 3 * 60 * 1000,
+    enabled,
   });
 }
 
 /**
  * 4. Hook pour les marques
  */
-export function useBrandsQuery() {
+export function useBrandsQuery(enabled = true) {
   const filters = useMarketFilterStore((state) => state.filters);
   return useQuery({
     queryKey: marketQueryKeys.brands(filters),
     queryFn: () => fetchBrandsData(filters),
     staleTime: 5 * 60 * 1000,
+    enabled,
   });
 }
 
@@ -103,9 +106,10 @@ export function useCategoriesQuery() {
  * 6. Hook pour les tendances de consommation
  */
 export function useTrendsQuery() {
+  const filters = useMarketFilterStore((state) => state.filters);
   return useQuery({
-    queryKey: marketQueryKeys.trends(),
-    queryFn: fetchTrendsData,
+    queryKey: marketQueryKeys.trends(filters),
+    queryFn: () => fetchTrendsData(filters),
     staleTime: 5 * 60 * 1000,
   });
 }
@@ -114,9 +118,10 @@ export function useTrendsQuery() {
  * 7. Hook pour le stock intelligence
  */
 export function useStockIntelligenceQuery() {
+  const filters = useMarketFilterStore((state) => state.filters);
   return useQuery({
-    queryKey: marketQueryKeys.stock(),
-    queryFn: fetchStockIntelligenceData,
+    queryKey: marketQueryKeys.stock(filters),
+    queryFn: () => fetchStockIntelligenceData(filters),
     staleTime: 3 * 60 * 1000,
   });
 }

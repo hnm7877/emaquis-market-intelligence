@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { useMarketFilterStore } from '@/stores/useMarketFilterStore';
 import { resolveZoneCoordinates } from '@/constants/coordinates';
+import { formatGrowth, isAvailable } from '@/utils/metrics';
 import 'leaflet/dist/leaflet.css';
 
 interface MarketIntelligenceMapProps {
@@ -108,7 +109,7 @@ export const MarketIntelligenceMap: React.FC<MarketIntelligenceMapProps> = ({
 
   // Statistiques calculées pour l'en-tête
   const totalVolume = zones.reduce((s, z) => s + (z.volume || 0), 0);
-  const totalPos = zones.reduce((s, z) => s + (z.posCount || 0), 0) || establishments.length || 64;
+  const totalPos = zones.reduce((s, z) => s + (z.posCount || 0), 0) || establishments.length || 0;
 
   const renderLayers = useCallback((L: any, map: any, group: any) => {
     group.clearLayers();
@@ -137,16 +138,17 @@ export const MarketIntelligenceMap: React.FC<MarketIntelligenceMapProps> = ({
         circleColor = z.volume > 50000 ? '#10b981' : z.volume > 10000 ? '#f59e0b' : '#3b82f6';
         fillColor = circleColor;
       } else if (activeMode === 'revenue') {
-        const rev = z.revenue || z.volume * 800;
+        const rev = z.revenue || 0;
         circleRadius = Math.max(16, Math.min(50, Math.sqrt(rev) * 0.003));
         circleColor = '#8b5cf6';
         fillColor = '#8b5cf6';
         valueLabel = `${(rev / 1000000).toFixed(1)}M FCFA`;
       } else if (activeMode === 'demand') {
-        circleRadius = Math.max(16, Math.min(46, (z.demandIndex - 80) * 0.85));
-        circleColor = z.demandIndex >= 120 ? '#ef4444' : z.demandIndex >= 105 ? '#f97316' : '#06b6d4';
+        const demand = isAvailable(z.demandIndex) ? z.demandIndex : null;
+        circleRadius = demand !== null ? Math.max(16, Math.min(46, (demand - 80) * 0.85)) : 16;
+        circleColor = demand === null ? '#64748b' : demand >= 120 ? '#ef4444' : demand >= 105 ? '#f97316' : '#06b6d4';
         fillColor = circleColor;
-        valueLabel = `${z.demandIndex} pts`;
+        valueLabel = demand !== null ? `${demand} pts` : 'n/d';
       } else if (activeMode === 'pos') {
         circleRadius = Math.max(16, Math.min(46, z.posCount * 3.2));
         circleColor = '#06b6d4';
@@ -183,10 +185,10 @@ export const MarketIntelligenceMap: React.FC<MarketIntelligenceMapProps> = ({
           <div style="font-weight: 700; font-size: 13px; color: #f8fafc; margin-bottom: 4px;">📍 ${z.zone}</div>
           <div style="font-size: 11px; color: #94a3b8;">${z.city} · ${z.country}</div>
           <div style="font-size: 11px; color: #38bdf8; font-weight: 600; margin-top: 4px;">Volume : ${z.volume.toLocaleString('fr-FR')} cols</div>
-          <div style="font-size: 11px; color: #34d399;">CA Estimé : ${((z.revenue || z.volume * 800) / 1000000).toFixed(1)}M FCFA</div>
+          <div style="font-size: 11px; color: #34d399;">CA observé : ${((z.revenue || 0) / 1000000).toFixed(1)}M FCFA</div>
           <div style="font-size: 11px; color: #fbbf24;">Établissements : ${z.posCount} maquis actifs</div>
-          <div style="font-size: 11px; color: ${z.growth >= 0 ? '#4ade80' : '#f87171'}; font-weight: 600; margin-top: 2px;">
-            Dynamique : ${z.growth >= 0 ? '+' : ''}${z.growth}%
+          <div style="font-size: 11px; color: ${!isAvailable(z.growth) ? '#94a3b8' : z.growth >= 0 ? '#4ade80' : '#f87171'}; font-weight: 600; margin-top: 2px;">
+            Dynamique : ${formatGrowth(z.growth)}
           </div>
           <div style="margin-top: 6px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.1); font-size: 10px; color: #f59e0b;">
             👉 Cliquez pour filtrer cette zone
@@ -605,7 +607,7 @@ export const MarketIntelligenceMap: React.FC<MarketIntelligenceMapProps> = ({
               <div className="p-2.5 rounded-xl bg-muted/40 border border-border/60">
                 <span className="text-muted-foreground text-[11px] block">Chiffre d'Affaires</span>
                 <span className="font-bold text-sm text-emerald-400 font-mono">
-                  {((selectedZone.revenue || selectedZone.volume * 800) / 1000000).toFixed(1)}M FCFA
+                  {((selectedZone.revenue || 0) / 1000000).toFixed(1)}M FCFA
                 </span>
               </div>
               <div className="p-2.5 rounded-xl bg-muted/40 border border-border/60">
@@ -617,7 +619,7 @@ export const MarketIntelligenceMap: React.FC<MarketIntelligenceMapProps> = ({
               <div className="p-2.5 rounded-xl bg-muted/40 border border-border/60">
                 <span className="text-muted-foreground text-[11px] block">Indice Demande</span>
                 <span className="font-bold text-sm text-amber-400 font-mono">
-                  {selectedZone.demandIndex} / 100
+                  {isAvailable(selectedZone.demandIndex) ? `${selectedZone.demandIndex} (base 100)` : 'n/d'}
                 </span>
               </div>
             </div>

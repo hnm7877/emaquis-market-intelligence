@@ -269,8 +269,8 @@ export function BrandMarketShareCharts({ brands = [], volumeUnit = 'cols' }: Bra
               return [
                 `• Volume : ${volFormatted} (${volumeUnit.toUpperCase()})`,
                 `• Chiffre d'Affaires : ${revFormatted}`,
-                `• Pénétration : ${item.penetrationRate}% (${item.activePosCount || 0}/${item.totalPosCount || 64} débits)`,
-                `• Fief : ${item.fiefTerritorial || 'Abidjan'}`,
+                `• Pénétration : ${item.penetrationRate}% (${item.activePosCount || 0}/${item.totalPosCount ?? 'n/d'} débits)`,
+                `• Fief : ${item.fiefTerritorial || 'Non établi'}`,
               ];
             },
           },
@@ -466,7 +466,7 @@ export function BrandMarketShareCharts({ brands = [], volumeUnit = 'cols' }: Bra
             <div className="flex justify-between items-center text-muted-foreground">
               <span className="font-medium text-foreground text-[11px]">Duopole / Concentration Top 2 :</span>
               <Badge variant="secondary" className="font-mono font-bold text-xs bg-amber-500/10 text-amber-400 border-amber-500/30">
-                {concentrationInsights?.top2Share || 88.0}%
+                {concentrationInsights ? `${concentrationInsights.top2Share}%` : "n/d"}
               </Badge>
             </div>
 

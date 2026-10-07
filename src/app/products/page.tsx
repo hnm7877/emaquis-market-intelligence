@@ -40,6 +40,7 @@ import { FilterBar } from '@/components/layout/FilterBar';
 import { useMarketFilterStore } from '@/stores/useMarketFilterStore';
 import { VOLUME_UNIT_OPTIONS, formatVolumeValue } from '@/utils/volumeUnit';
 import { getBrandLogo } from '@/utils/brandLogos';
+import { formatGrowth, growthColorClass, growthBadgeClass } from '@/utils/metrics';
 
 type SortField = 'volume' | 'revenue' | 'rotation' | 'growth' | 'risk' | 'name' | 'rank';
 type SortDirection = 'asc' | 'desc';
@@ -261,7 +262,7 @@ export default function ProductsPage() {
       const vol = p.volume ?? (p as any).volumeSales ?? 0;
       const rev = p.revenue ?? 0;
       const formattedVol = formatVolumeValue(vol, volumeUnit, rev).formatted;
-      const topZ = Array.isArray(p.topCommunes) && p.topCommunes.length > 0 ? p.topCommunes.join(' | ') : 'Abidjan';
+      const topZ = Array.isArray(p.topCommunes) && p.topCommunes.length > 0 ? p.topCommunes.join(' | ') : '';
 
       return [
         idx + 1,
@@ -271,9 +272,9 @@ export default function ProductsPage() {
         `"${(p.format || '').replace(/"/g, '""')}"`,
         `"${formattedVol}"`,
         rev,
-        p.growth || 0,
-        p.rotationRate || 1.0,
-        p.reorderFrequencyDays || 4,
+        p.growth ?? 'n/d',
+        p.rotationRate ?? 0,
+        p.reorderFrequencyDays ?? '',
         p.stockoutRisk || 'LOW',
         `"${topZ}"`,
       ];
@@ -440,7 +441,7 @@ export default function ProductsPage() {
             </div>
             <div className="text-[10px] sm:text-[11px] text-muted-foreground flex items-center justify-between">
               <span><strong className="text-foreground">{volumeUnit.toUpperCase()}</strong></span>
-              <span className="text-emerald-400 font-medium">+14.2%</span>
+              <span className="text-muted-foreground font-medium">ventes observées</span>
             </div>
           </CardContent>
         </Card>
@@ -864,10 +865,10 @@ export default function ProductsPage() {
                       const absoluteRank = pageSize === 'all' ? idx + 1 : (currentPage - 1) * Number(pageSize) + idx + 1;
                       const vol = p.volume ?? (p as any).volumeSales ?? 0;
                       const rev = p.revenue ?? 0;
-                      const growthVal = p.growth ?? 0;
-                      const rot = p.rotationRate ?? 1.0;
-                      const reorder = p.reorderFrequencyDays ?? 4;
-                      const topZ = Array.isArray(p.topCommunes) && p.topCommunes.length > 0 ? p.topCommunes : ['Abidjan'];
+                      const growthVal = p.growth ?? null;
+                      const rot = p.rotationRate ?? 0;
+                      const reorder = p.reorderFrequencyDays ?? null;
+                      const topZ = Array.isArray(p.topCommunes) && p.topCommunes.length > 0 ? p.topCommunes : [];
                       const rowPadding = density === 'compact' ? 'py-1.5' : 'py-2.5';
 
                       return (
@@ -975,10 +976,10 @@ export default function ProductsPage() {
                           <td className={`${rowPadding} px-3 text-right`}>
                             <span
                               className={`inline-flex items-center gap-0.5 font-medium ${
-                                growthVal >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                                growthColorClass(growthVal)
                               }`}
                             >
-                              {growthVal >= 0 ? `+${growthVal}%` : `${growthVal}%`}
+                              {formatGrowth(growthVal)}
                             </span>
                           </td>
 
@@ -1084,9 +1085,9 @@ export default function ProductsPage() {
               const absoluteRank = pageSize === 'all' ? idx + 1 : (currentPage - 1) * Number(pageSize) + idx + 1;
               const vol = p.volume ?? (p as any).volumeSales ?? 0;
               const rev = p.revenue ?? 0;
-              const growthVal = p.growth ?? 0;
+              const growthVal = p.growth ?? null;
               const format = p.format || p.size || 'Bouteille 65cl';
-              const topZ = Array.isArray(p.topCommunes) && p.topCommunes.length > 0 ? p.topCommunes : ['Abidjan'];
+              const topZ = Array.isArray(p.topCommunes) && p.topCommunes.length > 0 ? p.topCommunes : [];
 
               return (
                 <Card
@@ -1131,12 +1132,10 @@ export default function ProductsPage() {
                     <div className="absolute top-2 right-2">
                       <span
                         className={`text-[10px] font-bold px-2 py-0.5 rounded-full backdrop-blur-md border ${
-                          growthVal >= 0
-                            ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                            : 'bg-rose-500/20 text-rose-400 border-rose-500/30'
+                          growthBadgeClass(growthVal)
                         }`}
                       >
-                        {growthVal >= 0 ? `+${growthVal}%` : `${growthVal}%`}
+                        {formatGrowth(growthVal)}
                       </span>
                     </div>
 
@@ -1173,7 +1172,7 @@ export default function ProductsPage() {
                       <div className="text-right">
                         <div className="text-muted-foreground text-[10px]">Rotation Hebdo</div>
                         <div className="font-bold text-foreground font-mono">
-                          {p.rotationRate ?? 1.0}x / sem
+                          {p.rotationRate ?? 0} u./POS/sem
                         </div>
                       </div>
                     </div>
@@ -1361,7 +1360,7 @@ export default function ProductsPage() {
               <div>
                 <span className="text-[10px] text-muted-foreground">Rotation Hebdo</span>
                 <div className="font-bold text-amber-500 font-mono mt-0.5">
-                  {selectedProduct.rotationRate ?? 1.0}x / sem
+                  {selectedProduct.rotationRate ?? 0} u./POS/sem
                 </div>
               </div>
               <div>
@@ -1392,7 +1391,7 @@ export default function ProductsPage() {
                 Top Communes débitrices réelles
               </h4>
               <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-                {(Array.isArray(selectedProduct.topCommunes) ? selectedProduct.topCommunes : ['Abidjan']).map(
+                {(Array.isArray(selectedProduct.topCommunes) ? selectedProduct.topCommunes : []).map(
                   (c: string, i: number) => (
                     <Badge
                       key={c}
@@ -1414,9 +1413,9 @@ export default function ProductsPage() {
                 Recommandation Market Intelligence
               </div>
               <p className="text-[11px] text-muted-foreground leading-relaxed">
-                {(selectedProduct.rotationRate || 1) >= 10
-                  ? `Forte rotation constatée (~${selectedProduct.rotationRate}x/sem). Il est conseillé d'augmenter le stock tampon et de planifier un réassort tous les ${selectedProduct.reorderFrequencyDays || 2} jours.`
-                  : `Rotation modérée (~${selectedProduct.rotationRate || 1}x/sem). Un réassort hebdomadaire régulier (tous les ${selectedProduct.reorderFrequencyDays || 5} jours) permet de maintenir une fraîcheur optimale.`}
+                {(selectedProduct.rotationRate ?? 0) >= 10
+                  ? `Forte rotation observée (~${selectedProduct.rotationRate} unités / point de vente / semaine). Estimation : réassort conseillé tous les ${selectedProduct.reorderFrequencyDays} jours (dérivé de la vélocité des ventes, sans donnée de stock).`
+                  : `Rotation observée : ~${selectedProduct.rotationRate ?? 0} unités / point de vente / semaine. Estimation : réassort tous les ${selectedProduct.reorderFrequencyDays} jours (dérivé de la vélocité des ventes, sans donnée de stock).`}
               </p>
             </div>
 

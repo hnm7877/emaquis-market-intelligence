@@ -11,6 +11,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { useDataCoverageQuery } from '@/hooks/market/useMarketQueries';
 
 interface ExportModalProps {
   open: boolean;
@@ -18,6 +19,8 @@ interface ExportModalProps {
 }
 
 export function ExportModal({ open, onOpenChange }: ExportModalProps) {
+  const { data: coverage } = useDataCoverageQuery();
+  const totalSales = coverage?.networkOverview?.totalAnalyzedTransactions;
   const [selectedFormat, setSelectedFormat] = useState<'pdf' | 'excel' | 'csv'>('pdf');
   const [isExporting, setIsExporting] = useState(false);
   const [isDone, setIsDone] = useState(false);
@@ -97,7 +100,7 @@ export function ExportModal({ open, onOpenChange }: ExportModalProps) {
           <div className="p-3 rounded-lg bg-accent/40 border border-border/60 text-[11px] text-muted-foreground flex gap-2">
             <ShieldCheck className="size-4 text-emerald-500 flex-shrink-0 mt-0.5" />
             <p className="leading-relaxed">
-              <strong>Notice méthodologique :</strong> Les données exportées représentent les ventes observées dans le réseau E-Maquis (57 744 transactions réelles). Les données individuelles des consommateurs et établissements restent strictement anonymisées.
+              <strong>Notice méthodologique :</strong> Les données exportées représentent les ventes observées dans le réseau E-Maquis{typeof totalSales === 'number' ? ` (${totalSales.toLocaleString('fr-FR')} transactions dans la base globale)` : ''}. Les données individuelles des consommateurs et établissements restent strictement anonymisées.
             </p>
           </div>
         </div>

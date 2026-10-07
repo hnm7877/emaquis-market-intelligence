@@ -132,16 +132,18 @@ export const fetchCategoriesData = async (filters?: Partial<FilterState>) => {
 /**
  * 6. Tendances de Consommation & Matrice Horaire
  */
-export const fetchTrendsData = async () => {
-  const response = await axiosInstance.get('/market-intelligence/trends');
+export const fetchTrendsData = async (filters?: Partial<FilterState>) => {
+  const params = buildQueryParams(filters);
+  const response = await axiosInstance.get('/market-intelligence/trends', { params });
   return response.data;
 };
 
 /**
  * 7. Stock Intelligence & Risques de rupture
  */
-export const fetchStockIntelligenceData = async () => {
-  const response = await axiosInstance.get('/market-intelligence/stock-intelligence');
+export const fetchStockIntelligenceData = async (filters?: Partial<FilterState>) => {
+  const params = buildQueryParams(filters);
+  const response = await axiosInstance.get('/market-intelligence/stock-intelligence', { params });
   return response.data;
 };
 

@@ -10,7 +10,7 @@ import {
   ResponsiveContainer,
   Cell,
 } from 'recharts';
-import { CATEGORIES_DATA } from '@/data/mockMarketData';
+import { formatGrowth, growthColorClass } from '@/utils/metrics';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useMarketOverview } from '@/hooks/market/useMarketQueries';
 
@@ -21,18 +21,15 @@ interface CategoryDistributionChartProps {
 export function CategoryDistributionChart({ data }: CategoryDistributionChartProps) {
   const { data: apiData } = useMarketOverview();
 
-  const sourceData = data || apiData?.topCategories;
-  const chartData = sourceData && sourceData.length > 0
-    ? sourceData.map((c: any, idx: number) => ({
-        id: c.id || `cat-${idx}`,
-        name: c.category || c.name,
-        sharePercent: c.marketShare ?? c.sharePercent ?? 0,
-        volume: c.volume ?? 0,
-        growthPercent: c.growth ?? c.growthPercent ?? 0,
-        avgPrice: c.avgPrice ?? 0,
-        color: c.color || '#f59e0b',
-      }))
-    : CATEGORIES_DATA;
+  const sourceData = data || apiData?.topCategories || [];
+  const chartData = sourceData.map((c: any, idx: number) => ({
+    id: c.id || `cat-${idx}`,
+    name: c.category || c.name,
+    sharePercent: c.marketShare ?? c.sharePercent ?? 0,
+    volume: c.volume ?? 0,
+    growthPercent: c.growth ?? c.growthPercent ?? null,
+    color: c.color || '#f59e0b',
+  }));
 
   return (
     <Card className="border border-border/80 bg-card/70 backdrop-blur-md">
@@ -46,6 +43,11 @@ export function CategoryDistributionChart({ data }: CategoryDistributionChartPro
       </CardHeader>
       <CardContent className="pt-2">
         <div className="h-72 w-full">
+          {chartData.length === 0 ? (
+            <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
+              Aucune vente par catégorie sur ce périmètre.
+            </div>
+          ) : (
           <ResponsiveContainer width="100%" height="100%">
             <BarChart
               data={chartData as any}
@@ -70,7 +72,9 @@ export function CategoryDistributionChart({ data }: CategoryDistributionChartPro
                         <p className="font-semibold text-foreground">{d.name}</p>
                         <p className="text-foreground">Part : <strong>{d.sharePercent}%</strong></p>
                         <p className="text-muted-foreground">Volume : {d.volume.toLocaleString()} cols</p>
-                        <p className="text-emerald-500 font-semibold">Croissance : +{d.growthPercent}%</p>
+                        <p className={`font-semibold ${growthColorClass(d.growthPercent)}`}>
+                          Croissance : {formatGrowth(d.growthPercent)}
+                        </p>
                       </div>
                     );
                   }
@@ -84,6 +88,7 @@ export function CategoryDistributionChart({ data }: CategoryDistributionChartPro
               </Bar>
             </BarChart>
           </ResponsiveContainer>
+          )}
         </div>
       </CardContent>
     </Card>

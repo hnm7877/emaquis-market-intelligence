@@ -6,21 +6,27 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { AiChatMessage } from '@/types/market';
+import { answerMarketQuestion } from '@/lib/marketAnalyst';
+import {
+  useBrandsQuery,
+  useGeographyQuery,
+  useMarketOverview,
+  useProductsQuery,
+} from '@/hooks/market/useMarketQueries';
 
 export default function AiIntelligencePage() {
+  const { data: overview } = useMarketOverview();
+  const { data: productsData } = useProductsQuery();
+  const { data: brandsData } = useBrandsQuery();
+  const { data: geoData } = useGeographyQuery();
+
   const [messages, setMessages] = useState<AiChatMessage[]>([
     {
       id: '1',
       sender: 'agent',
       content:
-        'Bienvenue dans l\'interface Agent IA E-Maquis Market Intelligence motorisé par DeerFlow.\n\nJe suis configuré pour interroger les données opérationnelles agrégées réelles (57 744 ventes) sans inventer ni halluciner de chiffres. Vous pouvez me poser toute question sur les volumes, les communes, les ruptures ou les comparaisons de marques.',
+        "Bienvenue dans l'interface Agent IA E-Maquis Market Intelligence.\n\nJe réponds uniquement à partir des ventes réellement observées dans le réseau E-Maquis (filtres actifs du tableau de bord). Si les données sont insuffisantes, je vous le dis. Posez vos questions sur les produits, les zones, les marques, les catégories ou les signaux de marché.",
       timestamp: 'Initialisé',
-      sampleMetadata: {
-        coverage: '64 établissements • Données réelles MongoDB',
-        transactions: 57744,
-        posCount: 64,
-        period: 'Septembre 2026',
-      },
     },
   ]);
   const [input, setInput] = useState('');
@@ -29,26 +35,18 @@ export default function AiIntelligencePage() {
     if (!input.trim()) return;
     const q = input;
     setInput('');
-    setMessages((prev) => [...prev, { id: Date.now().toString(), sender: 'user', content: q, timestamp: 'À l\'instant' }]);
-
-    setTimeout(() => {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: (Date.now() + 1).toString(),
-          sender: 'agent',
-          content: `Sur l'échantillon consolidé E-Maquis (57 744 transactions), l'analyse demandée concernant "${q}" indique une progression globale de +14.8% en volume. Les données confirment une forte polarisation sur Yopougon et Cocody, avec Bock 65cl et Desperados 33cl comme produits phares.`,
-          timestamp: 'À l\'instant',
-          toolUsed: 'get_market_overview',
-          sampleMetadata: {
-            coverage: 'Échantillon certifié E-Maquis V2',
-            transactions: 57744,
-            posCount: 64,
-            period: '30 derniers jours',
-          },
-        },
-      ]);
-    }, 1000);
+    const answer = answerMarketQuestion(q, {
+      overview,
+      products: productsData?.products,
+      brands: brandsData?.brands,
+      zones: geoData?.zones,
+    });
+    const now = Date.now();
+    setMessages((prev) => [
+      ...prev,
+      { id: `${now}`, sender: 'user', content: q, timestamp: "À l'instant" },
+      { id: `${now + 1}`, sender: 'agent', timestamp: "À l'instant", ...answer },
+    ]);
   };
 
   return (
@@ -60,7 +58,7 @@ export default function AiIntelligencePage() {
             Agent IA Market Intelligence (DeerFlow)
           </h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Interrogez le marché en langage naturel avec garantie de rigueur statistique.
+            Questions en langage naturel, réponses calculées sur les ventes observées (agent DeerFlow à venir).
           </p>
         </div>
       </div>
@@ -80,7 +78,10 @@ export default function AiIntelligencePage() {
                 {m.sampleMetadata && (
                   <div className="mt-2 pt-2 border-t border-border/40 text-[10px] text-muted-foreground flex items-center gap-2">
                     <CheckCircle2 className="size-3 text-emerald-500" />
-                    <span>{m.sampleMetadata.coverage} ({m.sampleMetadata.transactions.toLocaleString()} ventes)</span>
+                    <span>
+                      {m.sampleMetadata.coverage} ({m.sampleMetadata.transactions.toLocaleString('fr-FR')} ventes) —{' '}
+                      {m.sampleMetadata.period}
+                    </span>
                   </div>
                 )}
               </div>

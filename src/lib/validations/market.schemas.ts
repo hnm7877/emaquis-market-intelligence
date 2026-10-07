@@ -21,13 +21,14 @@ export const MarketKpisSchema = z.object({
   coveredZones: z.number().default(0),
   salesVolume: z.number().default(0),
   revenue: z.number().default(0),
-  growthRate: z.number().default(0),
-  demandIndex: z.number().default(0),
-  volumeGrowth: z.number().optional(),
-  revenueGrowth: z.number().optional(),
-  acceleration: z.number().optional(),
-  posGrowth: z.number().optional(),
-  transactionsGrowth: z.number().optional(),
+  // null = indicateur non calculable (période précédente vide)
+  growthRate: z.number().nullable().default(null),
+  demandIndex: z.number().nullable().default(null),
+  volumeGrowth: z.number().nullable().optional(),
+  revenueGrowth: z.number().nullable().optional(),
+  acceleration: z.number().nullable().optional(),
+  posGrowth: z.number().nullable().optional(),
+  transactionsGrowth: z.number().nullable().optional(),
 }).passthrough();
 
 export const MarketAlertSchema = z.object({
@@ -41,13 +42,28 @@ export const MarketAlertSchema = z.object({
   coveragePos: z.number(),
   confidence: z.string(),
   date: z.string().optional(),
+  currentVolume: z.number().optional(),
+  previousVolume: z.number().optional(),
+  scope: z.string().optional(),
 });
 
 export const SalesEvolutionPointSchema = z.object({
   date: z.string(),
   salesVolume: z.number(),
+  transactions: z.number().optional(),
   revenue: z.number(),
-  demandIndex: z.number(),
+  previousDate: z.string().optional(),
+  previousVolume: z.number().optional(),
+  demandIndex: z.number().nullable(),
+});
+
+const ComparisonPeriodSchema = z.object({
+  start: z.string(),
+  end: z.string(),
+  volume: z.number(),
+  revenue: z.number(),
+  transactions: z.number(),
+  activePos: z.number(),
 });
 
 export const TopCategorySchema = z.object({
@@ -61,7 +77,7 @@ export const TopCategorySchema = z.object({
   volume: z.number(),
   volumeSales: z.number().optional(),
   revenue: z.number(),
-  growth: z.number(),
+  growth: z.number().nullable(),
   marketShare: z.number(),
 });
 
@@ -69,11 +85,19 @@ export const TopBrandSchema = z.object({
   brand: z.string(),
   volume: z.number(),
   marketShare: z.number(),
-  growth: z.number(),
+  growth: z.number().nullable(),
 });
 
 export const MarketOverviewResponseSchema = z.object({
   kpis: MarketKpisSchema,
+  comparison: z
+    .object({
+      label: z.string(),
+      days: z.number(),
+      current: ComparisonPeriodSchema,
+      previous: ComparisonPeriodSchema,
+    })
+    .optional(),
   salesEvolution: z.array(SalesEvolutionPointSchema).default([]),
   topCategories: z.array(TopCategorySchema).default([]),
   topBrands: z.array(TopBrandSchema).default([]),
@@ -88,11 +112,14 @@ export const GeoZoneSchema = z.object({
   country: z.string().default("Côte d'Ivoire"),
   volume: z.number(),
   revenue: z.number().optional(),
-  growth: z.number(),
-  demandIndex: z.number(),
+  growth: z.number().nullable(),
+  demandIndex: z.number().nullable(),
   posCount: z.number(),
   latitude: z.number(),
   longitude: z.number(),
+  seasonalVolumes: z
+    .object({ festive: z.number(), dry: z.number(), rainy: z.number() })
+    .optional(),
 });
 
 export type GeoZone = z.infer<typeof GeoZoneSchema>;
@@ -116,6 +143,7 @@ export type EstablishmentMarker = z.infer<typeof EstablishmentMarkerSchema>;
 export const GeographyResponseSchema = z.object({
   country: z.string().default("Côte d'Ivoire"),
   totalAnalyzedPos: z.number().default(0),
+  comparisonLabel: z.string().optional(),
   zones: z.array(GeoZoneSchema).default([]),
   establishments: z.array(EstablishmentMarkerSchema).optional(),
 });
@@ -135,27 +163,53 @@ export const ProductItemSchema = z.object({
   description: z.string().optional(),
   volume: z.number(),
   revenue: z.number().optional(),
-  growth: z.number(),
+  growth: z.number().nullable(),
   rotationRate: z.number(),
+  posCount: z.number().optional(),
   reorderFrequencyDays: z.number(),
   stockoutRisk: z.string().default('LOW'),
   topCommunes: z.array(z.string()).default([]),
 });
 
+export type ProductItem = z.infer<typeof ProductItemSchema>;
+export type MarketAlert = z.infer<typeof MarketAlertSchema>;
+
+/** Marque renvoyée par GET /market-intelligence/brands */
+export interface BrandItem {
+  id: string;
+  name: string;
+  key?: string;
+  volume: number;
+  revenue?: number;
+  marketShare: number;
+  growth: number | null;
+  penetrationRate?: number;
+  activePosCount?: number;
+  totalPosCount?: number;
+  fiefTerritorial?: string;
+}
+
 export const ProductsResponseSchema = z.object({
   totalProducts: z.number().default(0),
+  comparisonLabel: z.string().optional(),
+  analysisSpanDays: z.number().optional(),
+  methodology: z.string().optional(),
   products: z.array(ProductItemSchema).default([]),
 });
 
 export const NetworkCoverageSchema = z.object({
   networkOverview: z.object({
     registeredEstablishments: z.number(),
+    activeEstablishments: z.number().optional(),
+    localizedEstablishments: z.number().optional(),
     totalAnalyzedTransactions: z.number(),
     catalogProductsCount: z.number(),
     catalogCategoriesCount: z.number(),
     citiesCovered: z.number(),
     communesCovered: z.number(),
     dateSpanMonths: z.number(),
+    firstSaleDate: z.string().nullable().optional(),
+    lastSaleDate: z.string().nullable().optional(),
     methodology: z.string(),
   }),
 });
@@ -197,8 +251,9 @@ export const CategoryItemSchema = z.object({
   volume: z.number().default(0),
   revenue: z.number().default(0),
   volumeShare: z.number().default(0),
-  growth: z.number().default(0),
+  growth: z.number().nullable().default(null),
   posPenetration: z.number().default(0),
+  activePosCount: z.number().optional(),
   createdAt: z.any().optional(),
   updatedAt: z.any().optional(),
 });

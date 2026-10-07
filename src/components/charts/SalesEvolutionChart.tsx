@@ -10,7 +10,6 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-import { SALES_TIMELINE_DATA } from '@/data/mockMarketData';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useMarketOverview } from '@/hooks/market/useMarketQueries';
 
@@ -21,15 +20,15 @@ interface SalesEvolutionChartProps {
 export function SalesEvolutionChart({ data }: SalesEvolutionChartProps) {
   const { data: apiData } = useMarketOverview();
 
-  const sourceData = data || apiData?.salesEvolution;
-  const chartData = sourceData && sourceData.length > 0
-    ? sourceData.map((d: any) => ({
-        label: d.date ? (d.date.length > 5 ? d.date.slice(5) : d.date) : (d.label || 'Jour'),
-        volume: d.salesVolume ?? d.volume ?? 0,
-        previousVolume: d.previousVolume ?? Math.round((d.salesVolume ?? d.volume ?? 0) * 0.88),
-        revenue: d.revenue ?? 0,
-      }))
-    : SALES_TIMELINE_DATA;
+  const sourceData = data || apiData?.salesEvolution || [];
+  // previousVolume = unités vendues le même jour de la période précédente (calculé par l'API)
+  const chartData = sourceData.map((d: any) => ({
+    label: d.date ? (d.date.length > 5 ? d.date.slice(5) : d.date) : (d.label || 'Jour'),
+    volume: d.salesVolume ?? d.volume ?? 0,
+    previousVolume: d.previousVolume ?? 0,
+    revenue: d.revenue ?? 0,
+  }));
+  const comparisonLabel = apiData?.comparison?.label;
 
   return (
     <Card className="border border-border/80 bg-card/70 backdrop-blur-md">
@@ -39,7 +38,8 @@ export function SalesEvolutionChart({ data }: SalesEvolutionChartProps) {
             Évolution des Volumes Vendus (Cols)
           </CardTitle>
           <CardDescription className="text-xs text-muted-foreground">
-            Volumes observés en temps réel consolidés sur le réseau
+            Unités vendues par jour (30 derniers jours avec ventes)
+            {comparisonLabel ? ` — comparaison : ${comparisonLabel}` : ''}
           </CardDescription>
         </div>
         <div className="flex items-center gap-4 text-xs">
@@ -55,6 +55,11 @@ export function SalesEvolutionChart({ data }: SalesEvolutionChartProps) {
       </CardHeader>
       <CardContent className="pt-2">
         <div className="h-72 w-full">
+          {chartData.length === 0 ? (
+            <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
+              Aucune vente observée sur ce périmètre.
+            </div>
+          ) : (
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
               <defs>
@@ -109,6 +114,7 @@ export function SalesEvolutionChart({ data }: SalesEvolutionChartProps) {
               />
             </AreaChart>
           </ResponsiveContainer>
+          )}
         </div>
       </CardContent>
     </Card>

@@ -7,18 +7,12 @@ import { Database, ShieldCheck, MapPin, Store, Receipt, Calendar, Layers, CheckC
 import { useDataCoverageQuery } from '@/hooks/market/useMarketQueries';
 
 export default function DataCoveragePage() {
-  const { data: coverageData, isLoading } = useDataCoverageQuery();
+  const { data: coverageData, isLoading, isError } = useDataCoverageQuery();
 
-  const overview = coverageData?.networkOverview || {
-    registeredEstablishments: 660,
-    totalAnalyzedTransactions: 57882,
-    catalogProductsCount: 397,
-    catalogCategoriesCount: 18,
-    citiesCovered: 6,
-    communesCovered: 14,
-    dateSpanMonths: 24,
-    methodology: "Agrégation sécurisée et anonymisée des tickets de caisse réels du réseau E-Maquis en Côte d'Ivoire.",
-  };
+  // Aucune valeur par défaut : tant que l'API n'a pas répondu, on affiche « … »
+  const overview = coverageData?.networkOverview;
+  const fmt = (n?: number | null) => (typeof n === 'number' ? n.toLocaleString('fr-FR') : '…');
+  const fmtDate = (d?: string | null) => (d ? new Date(d).toLocaleDateString('fr-FR') : '…');
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
@@ -31,7 +25,7 @@ export default function DataCoveragePage() {
             </h1>
             <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-400 border-emerald-500/30 gap-1.5 py-0.5">
               <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              {isLoading ? 'Interrogation MongoDB...' : 'Source Réelle Base Globale'}
+              {isLoading ? 'Interrogation MongoDB...' : isError ? 'API indisponible' : 'Source Réelle Base Globale'}
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">
@@ -44,28 +38,32 @@ export default function DataCoveragePage() {
         <Card className="p-4 border border-border/80 bg-card/70 text-center space-y-1 backdrop-blur-xs">
           <Store className="size-5 text-orange-500 mx-auto" />
           <span className="text-2xl font-extrabold text-foreground font-mono block">
-            {overview.registeredEstablishments.toLocaleString('fr-FR')}
+            {fmt(overview?.activeEstablishments ?? overview?.registeredEstablishments)}
           </span>
-          <span className="text-xs text-muted-foreground">Établissements enregistrés</span>
+          <span className="text-xs text-muted-foreground">
+            Établissements avec ventes ({fmt(overview?.registeredEstablishments)} comptes enregistrés)
+          </span>
         </Card>
         <Card className="p-4 border border-border/80 bg-card/70 text-center space-y-1 backdrop-blur-xs">
           <Receipt className="size-5 text-emerald-500 mx-auto" />
           <span className="text-2xl font-extrabold text-foreground font-mono block">
-            {overview.totalAnalyzedTransactions.toLocaleString('fr-FR')}
+            {fmt(overview?.totalAnalyzedTransactions)}
           </span>
           <span className="text-xs text-muted-foreground">Transactions consolidées</span>
         </Card>
         <Card className="p-4 border border-border/80 bg-card/70 text-center space-y-1 backdrop-blur-xs">
           <MapPin className="size-5 text-blue-500 mx-auto" />
           <span className="text-2xl font-extrabold text-foreground font-mono block">
-            {overview.communesCovered} communes
+            {fmt(overview?.communesCovered)} communes
           </span>
-          <span className="text-xs text-muted-foreground">Réparties sur {overview.citiesCovered} villes</span>
+          <span className="text-xs text-muted-foreground">
+            Réparties sur {fmt(overview?.citiesCovered)} villes ({fmt(overview?.localizedEstablishments)} établissements localisés)
+          </span>
         </Card>
         <Card className="p-4 border border-border/80 bg-card/70 text-center space-y-1 backdrop-blur-xs">
           <ShieldCheck className="size-5 text-amber-500 mx-auto" />
-          <span className="text-2xl font-extrabold text-foreground font-mono block">100%</span>
-          <span className="text-xs text-muted-foreground">Anonymisation certifiée</span>
+          <span className="text-2xl font-extrabold text-foreground font-mono block">Agrégées</span>
+          <span className="text-xs text-muted-foreground">Données de ventes, sans donnée consommateur</span>
         </Card>
       </div>
 
@@ -79,13 +77,13 @@ export default function DataCoveragePage() {
             <div className="bg-background/60 p-2.5 rounded-lg border border-border/60">
               <span className="text-muted-foreground block text-[11px]">Références SKU :</span>
               <span className="text-lg font-mono font-bold text-foreground">
-                {overview.catalogProductsCount}
+                {fmt(overview?.catalogProductsCount)}
               </span>
             </div>
             <div className="bg-background/60 p-2.5 rounded-lg border border-border/60">
               <span className="text-muted-foreground block text-[11px]">Catégories globales :</span>
               <span className="text-lg font-mono font-bold text-foreground">
-                {overview.catalogCategoriesCount}
+                {fmt(overview?.catalogCategoriesCount)}
               </span>
             </div>
           </div>
@@ -99,7 +97,10 @@ export default function DataCoveragePage() {
           <div className="bg-background/60 p-2.5 rounded-lg border border-border/60 text-xs">
             <span className="text-muted-foreground block text-[11px]">Période d&apos;observation :</span>
             <span className="text-lg font-mono font-bold text-foreground">
-              {overview.dateSpanMonths} mois consécutifs
+              {fmt(overview?.dateSpanMonths)} mois
+            </span>
+            <span className="text-muted-foreground block text-[11px] mt-1">
+              Du {fmtDate(overview?.firstSaleDate)} au {fmtDate(overview?.lastSaleDate)}
             </span>
           </div>
         </Card>
@@ -115,6 +116,7 @@ export default function DataCoveragePage() {
           représentent exclusivement les <strong>ventes observées dans le réseau E-Maquis</strong> et ne doivent pas
           être extrapolés sans modèle économétrique au marché ivoirien global.
         </p>
+        {overview?.methodology && <p className="text-muted-foreground">{overview.methodology}</p>}
         <p className="text-muted-foreground">
           Toutes les métadonnées nominatives de consommateurs sont rigoureusement exclues dès l&apos;ingestion.
           Aucun nom individuel, numéro de téléphone personnel ou identifiant privé n&apos;est stocké dans la couche

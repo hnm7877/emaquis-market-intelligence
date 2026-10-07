@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import dynamic from 'next/dynamic';
-import { GEOGRAPHY_DATA } from '@/data/mockMarketData';
+import { formatGrowth, growthColorClass, isAvailable } from '@/utils/metrics';
 import { GeographicBarChart } from '@/components/charts/GeographicBarChart';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -52,24 +52,7 @@ export default function GeographyPage() {
   const { data: apiGeoData, isLoading, refetch } = useGeographyQuery();
 
   // Consolidation des données de zones géographiques
-  const rawZones = useMemo(() => {
-    if (apiGeoData?.zones?.length) {
-      return apiGeoData.zones;
-    }
-    return GEOGRAPHY_DATA.map((g) => ({
-      id: g.id,
-      zone: g.commune,
-      city: g.city,
-      country: "Côte d'Ivoire",
-      volume: g.volume,
-      revenue: g.volume * 800,
-      growth: g.growthPercent,
-      demandIndex: g.demandIndex,
-      posCount: g.posCount,
-      latitude: 5.3438,
-      longitude: -4.0725,
-    }));
-  }, [apiGeoData]);
+  const rawZones = useMemo(() => apiGeoData?.zones ?? [], [apiGeoData]);
 
   // Établissements individuels retournés par le backend
   const establishments = apiGeoData?.establishments || [];
@@ -93,7 +76,7 @@ export default function GeographyPage() {
   );
 
   const totalRevenue = useMemo(
-    () => rawZones.reduce((sum, z) => sum + (z.revenue || z.volume * 800 || 0), 0),
+    () => rawZones.reduce((sum, z) => sum + (z.revenue || 0), 0),
     [rawZones]
   );
 
@@ -232,7 +215,7 @@ export default function GeographyPage() {
               </div>
             </div>
             <div className="text-xl font-extrabold text-foreground mt-2 truncate">
-              {topZone?.zone || 'Yopougon'}
+              {topZone?.zone || 'n/d'}
             </div>
             <div className="text-[11px] text-rose-400 mt-1 flex items-center gap-1 font-medium">
               <span>{Math.round(topZone?.volume || 0).toLocaleString('fr-FR')} u.</span>
@@ -335,7 +318,7 @@ export default function GeographyPage() {
                 </thead>
                 <tbody className="divide-y divide-border/40">
                   {filtered.map((item: any) => {
-                    const rev = item.revenue || item.volume * 800;
+                    const rev = item.revenue || 0;
                     return (
                       <tr key={item.id} className="hover:bg-muted/30 transition-colors">
                         <td className="py-2.5 px-3 font-medium text-foreground flex items-center gap-1.5">
@@ -366,16 +349,14 @@ export default function GeographyPage() {
                         </td>
                         <td className="py-2.5 px-3 text-right">
                           <span
-                            className={`inline-flex items-center gap-0.5 font-medium ${
-                              item.growth >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                            }`}
+                            className={`inline-flex items-center gap-0.5 font-medium ${growthColorClass(item.growth)}`}
                           >
-                            {item.growth >= 0 ? `+${item.growth}%` : `${item.growth}%`}
+                            {formatGrowth(item.growth)}
                           </span>
                         </td>
                         <td className="py-2.5 px-3 text-right">
                           <Badge variant="outline" className="text-[10px] bg-background/50 font-mono py-0">
-                            {item.demandIndex || 110} pts
+                            {isAvailable(item.demandIndex) ? `${item.demandIndex} pts` : 'n/d'}
                           </Badge>
                         </td>
                         <td className="py-2.5 px-3 text-right font-medium text-muted-foreground">

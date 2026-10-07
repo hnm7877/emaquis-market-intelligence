@@ -53,7 +53,7 @@ export function KpiCard({ metric }: KpiCardProps) {
             {!isUp && !isDown && (
               <span className="flex items-center text-muted-foreground font-medium text-xs">
                 <Minus className="size-3.5 mr-0.5 inline" />
-                {metric.changePercent}%
+                {metric.changePercent === null ? 'n/d' : `${metric.changePercent}%`}
               </span>
             )}
             <span className="text-[11px] text-muted-foreground ml-1 truncate max-w-[120px]">

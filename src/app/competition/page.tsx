@@ -1,13 +1,40 @@
-﻿'use client';
+'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Swords, ShieldCheck } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Swords, Info } from 'lucide-react';
+import { FilterBar } from '@/components/layout/FilterBar';
+import { useProductsQuery } from '@/hooks/market/useMarketQueries';
+import { computeShareLocal, formatGrowth, growthColorClass } from '@/utils/metrics';
+import type { ProductItem } from '@/lib/validations/market.schemas';
+
+const SLOT_STYLES = [
+  'border-amber-500/30 bg-amber-500/5',
+  'border-blue-500/30 bg-blue-500/5',
+  'border-emerald-500/30 bg-emerald-500/5',
+];
 
 export default function CompetitionPage() {
-  const [selectedMatchup, setSelectedMatchup] = useState('BEER_MAINSTREAM');
+  const { data, isLoading, isError } = useProductsQuery();
+
+  // Produits ayant réellement des ventes sur le périmètre filtré
+  const soldProducts = useMemo(
+    () => (data?.products ?? []).filter((p: ProductItem) => (p.volume ?? 0) > 0),
+    [data],
+  );
+
+  // Sélection : par défaut les 2 références les plus vendues
+  const [selection, setSelection] = useState<(string | null)[]>([null, null, null]);
+  const selectedIds = selection.map((id, idx) => id ?? (idx < 2 ? soldProducts[idx]?.id ?? null : null));
+  const selected = selectedIds
+    .map((id) => soldProducts.find((p: ProductItem) => p.id === id))
+    .filter((p): p is ProductItem => Boolean(p));
+
+  const totalSelectedVolume = selected.reduce((sum, p) => sum + (p.volume ?? 0), 0);
+
+  const setSlot = (slot: number, id: string) =>
+    setSelection((prev) => prev.map((v, i) => (i === slot ? id || null : v)));
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -18,99 +45,99 @@ export default function CompetitionPage() {
             Competitive Intelligence (Face-à-Face)
           </h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Comparatifs directs de marques et références concurrentes sur les mêmes zones et périodes.
+            Comparaison de références sur les ventes observées dans le réseau E-Maquis (mêmes filtres de zone et de
+            période).
           </p>
         </div>
       </div>
 
-      <div className="flex gap-2">
-        <Button
-          size="sm"
-          variant={selectedMatchup === 'BEER_MAINSTREAM' ? 'default' : 'outline'}
-          onClick={() => setSelectedMatchup('BEER_MAINSTREAM')}
-          className="text-xs"
-        >
-          Bock 65cl (Solibra) vs Ivoire 65cl (Brassivoire)
-        </Button>
-        <Button
-          size="sm"
-          variant={selectedMatchup === 'ENERGY' ? 'default' : 'outline'}
-          onClick={() => setSelectedMatchup('ENERGY')}
-          className="text-xs"
-        >
-          XXL Energy vs Vody / Red Bull
-        </Button>
-      </div>
+      <FilterBar />
 
       <Card className="border border-border/80 bg-card/70 backdrop-blur-md">
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold tracking-tight">
-            Duel Commercial : Bock 65cl vs Ivoire Spéciale 65cl
-          </CardTitle>
+          <CardTitle className="text-sm font-semibold tracking-tight">Références comparées</CardTitle>
           <CardDescription className="text-xs text-muted-foreground">
-            Données comparatives sur les 64 établissements du panel E-Maquis (30 derniers jours)
+            {isLoading
+              ? 'Chargement des références…'
+              : isError
+                ? "API Market Intelligence indisponible."
+                : `${soldProducts.length} références avec ventes sur le périmètre — croissance : ${
+                    data?.comparisonLabel ?? 'période courante vs précédente'
+                  }`}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4 pt-0">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/5 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-sm text-foreground">Bock 65cl (Drogba)</span>
-                <Badge variant="outline" className="border-amber-500 text-amber-600 dark:text-amber-400">
-                  SOLIBRA
-                </Badge>
-              </div>
-              <div className="space-y-1 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Volume de ventes :</span>
-                  <span className="font-bold font-mono">34 120 cols</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Part relative :</span>
-                  <span className="font-bold font-mono">60.3%</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Rotation hebdo :</span>
-                  <span className="font-bold font-mono">4.8x / semaine</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Bastions forts :</span>
-                  <span className="font-medium text-foreground">Yopougon, Abobo</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-xl border border-blue-500/30 bg-blue-500/5 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-sm text-foreground">Ivoire Spéciale 65cl</span>
-                <Badge variant="outline" className="border-blue-500 text-blue-600 dark:text-blue-400">
-                  BRASSIVOIRE
-                </Badge>
-              </div>
-              <div className="space-y-1 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Volume de ventes :</span>
-                  <span className="font-bold font-mono">22 450 cols</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Part relative :</span>
-                  <span className="font-bold font-mono">39.7%</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Rotation hebdo :</span>
-                  <span className="font-bold font-mono">3.9x / semaine</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Bastions forts :</span>
-                  <span className="font-medium text-foreground">Cocody, Marcory</span>
-                </div>
-              </div>
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {[0, 1, 2].map((slot) => (
+              <select
+                key={slot}
+                value={selectedIds[slot] ?? ''}
+                onChange={(e) => setSlot(slot, e.target.value)}
+                className="h-9 rounded-lg border border-border bg-background/60 px-2 text-xs text-foreground"
+              >
+                <option value="">{slot === 2 ? '— Troisième référence (optionnel) —' : '— Choisir une référence —'}</option>
+                {soldProducts.map((p: ProductItem) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} ({p.brand})
+                  </option>
+                ))}
+              </select>
+            ))}
           </div>
 
-          <div className="p-3 rounded-lg bg-accent/40 border border-border/60 text-xs text-muted-foreground flex items-center gap-2">
-            <ShieldCheck className="size-4 text-emerald-500 flex-shrink-0" />
-            <span>Indice de confiance statistique : <strong>96%</strong> (calculé sur 57 744 transactions consolidées).</span>
+          {selected.length < 2 ? (
+            <p className="text-xs text-muted-foreground">
+              {isLoading ? 'Calcul en cours…' : 'Sélectionnez au moins deux références ayant des ventes pour les comparer.'}
+            </p>
+          ) : (
+            <div className={`grid grid-cols-1 gap-4 ${selected.length === 3 ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
+              {selected.map((p, idx) => (
+                <div key={p.id} className={`p-4 rounded-xl border space-y-3 ${SLOT_STYLES[idx]}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold text-sm text-foreground truncate">{p.name}</span>
+                    <Badge variant="outline" className="shrink-0">
+                      {p.brand}
+                    </Badge>
+                  </div>
+                  <div className="space-y-1 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Volume observé :</span>
+                      <span className="font-bold font-mono">{(p.volume ?? 0).toLocaleString('fr-FR')} u.</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Part relative (comparaison) :</span>
+                      <span className="font-bold font-mono">{computeShareLocal(p.volume ?? 0, totalSelectedVolume)}%</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Croissance :</span>
+                      <span className={`font-bold font-mono ${growthColorClass(p.growth)}`}>{formatGrowth(p.growth)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Rotation :</span>
+                      <span className="font-bold font-mono">{p.rotationRate} u./POS/sem</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Points de vente :</span>
+                      <span className="font-bold font-mono">{p.posCount ?? 'n/d'}</span>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <span className="text-muted-foreground shrink-0">Communes principales :</span>
+                      <span className="font-medium text-foreground text-right">
+                        {p.topCommunes?.length ? p.topCommunes.join(', ') : 'Non localisé'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="p-3 rounded-lg bg-accent/40 border border-border/60 text-xs text-muted-foreground flex items-start gap-2">
+            <Info className="size-4 text-emerald-500 flex-shrink-0 mt-0.5" />
+            <span>
+              Ventes observées dans le réseau E-Maquis uniquement : ces chiffres ne représentent pas le marché ivoirien
+              total. Plus le nombre de points de vente est faible, plus la comparaison est fragile.
+            </span>
           </div>
         </CardContent>
       </Card>

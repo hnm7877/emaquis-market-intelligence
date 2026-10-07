@@ -25,14 +25,10 @@ export default function SettingsPage() {
           Derniers accès aux données de marché (Audit Log)
         </CardTitle>
         <div className="space-y-2 text-xs">
-          <div className="p-2.5 rounded-lg border border-border/50 bg-background/50 flex justify-between">
-            <span>25/09/2026 01:15 — Requête : <strong>Abidjan / Bières / 30j</strong></span>
-            <span className="text-muted-foreground font-mono">Status: AUTORISÉ (RBAC Partenaire)</span>
-          </div>
-          <div className="p-2.5 rounded-lg border border-border/50 bg-background/50 flex justify-between">
-            <span>24/09/2026 22:40 — Export rapport : <strong>Yopougon_Bieres_Q3.pdf</strong></span>
-            <span className="text-muted-foreground font-mono">Status: SUCCÈS</span>
-          </div>
+          <p className="p-2.5 rounded-lg border border-border/50 bg-background/50 text-muted-foreground">
+            Le journal d&apos;audit des accès aux données n&apos;est pas encore enregistré côté backend : aucun accès
+            n&apos;est affiché tant qu&apos;il n&apos;est pas réellement journalisé.
+          </p>
         </div>
       </Card>
     </div>

@@ -5,11 +5,14 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { FileSpreadsheet, Download, Check } from 'lucide-react';
+import { useDataCoverageQuery } from '@/hooks/market/useMarketQueries';
 
 export default function ReportsPage() {
   const [partnerName, setPartnerName] = useState('Brasserie Partenaire FMCG');
   const [territory, setTerritory] = useState('Abidjan (Cocody & Yopougon)');
   const [isGenerating, setIsGenerating] = useState(false);
+  const { data: coverage } = useDataCoverageQuery();
+  const totalTransactions = coverage?.networkOverview?.totalAnalyzedTransactions;
   const [success, setSuccess] = useState(false);
 
   const handleGenerate = () => {
@@ -61,7 +64,12 @@ export default function ReportsPage() {
             <p>• Top 10 produits & analyse par brasserie</p>
             <p>• Cartographie de pénétration par commune</p>
             <p>• Analyse d\'impact promotionnel & alertes de stock</p>
-            <p>• Notice méthodologique E-Maquis (57 744 transactions certifiées)</p>
+            <p>
+              • Notice méthodologique E-Maquis
+              {typeof totalTransactions === 'number'
+                ? ` (${totalTransactions.toLocaleString('fr-FR')} transactions dans la base globale)`
+                : ''}
+            </p>
           </div>
         </div>
 

@@ -1,10 +1,6 @@
 'use client';
 
 import React from 'react';
-import {
-  PRODUCTS_DATA,
-  ALERTS_DATA,
-} from '@/data/mockMarketData';
 import { KpiMetric } from '@/types/market';
 import { FilterBar } from '@/components/layout/FilterBar';
 import { KpiCard } from '@/components/common/KpiCard';
@@ -26,6 +22,7 @@ import { useMarketFilterStore } from '@/stores/useMarketFilterStore';
 import { useMarketOverview, useMarketLiveSocket } from '@/hooks/market/useMarketQueries';
 import { PAYS } from '@/constants/countries';
 import { formatVolumeValue } from '@/utils/volumeUnit';
+import { formatGrowth, growthColorClass, growthTrend, isAvailable } from '@/utils/metrics';
 
 export default function MarketOverviewPage() {
   const { filters, setFilter, resetFilters, volumeUnit } = useMarketFilterStore();
@@ -48,27 +45,23 @@ export default function MarketOverviewPage() {
     return `${rev.toLocaleString('fr-FR')} FCFA`;
   };
 
-  const getPeriodLabel = () => {
-    switch (filters.dateRange) {
-      case '7d':
-        return 'vs 7j précédents';
-      case '90d':
-        return 'vs 90j précédents';
-      case '12m':
-        return 'vs 12m précédents';
-      case 'all':
-        return 'vs historique';
-      case '30d':
-      default:
-        return 'vs 30j précédents';
-    }
-  };
+  // Libellé réel de la comparaison calculée par l'API (ex. « 30 derniers jours vs 30 jours précédents »)
+  const periodLabel = apiData?.comparison?.label
+    ? `${apiData.comparison.label}`
+    : 'vs période précédente';
 
-  const periodLabel = getPeriodLabel();
+  /** Variation en valeur absolue + sens, ou n/d si non calculable */
+  const change = (value: number | null | undefined) => ({
+    changePercent: isAvailable(value) ? Math.abs(value) : null,
+    trend: growthTrend(value),
+  });
 
   // Conversion dynamique du KPI volume selon l'unité de mesure sélectionnée
   const activeVolumeUnit = volumeUnit || 'cols';
   const formattedKpiVolume = formatVolumeValue(kpis?.salesVolume ?? 0, activeVolumeUnit, kpis?.revenue);
+  const growthRate = kpis?.growthRate ?? null;
+  const demandIndex = kpis?.demandIndex ?? null;
+  const acceleration = kpis?.acceleration ?? null;
 
   const kpiMetrics: KpiMetric[] = [
     {
@@ -76,21 +69,19 @@ export default function MarketOverviewPage() {
       title: 'Points de Vente Actifs',
       value: `${kpis?.activePos ?? 0}`,
       numericValue: kpis?.activePos ?? 0,
-      changePercent: Math.abs(kpis?.posGrowth ?? 12.5),
-      trend: (kpis?.posGrowth ?? 12.5) >= 0 ? 'up' : 'down',
+      ...change(kpis?.posGrowth),
       comparisonPeriod: periodLabel,
-      description: 'Établissements enregistrant des flux réels',
-      badge: 'Réseau certifié',
+      description: 'Établissements ayant enregistré au moins une vente sur la période',
+      badge: 'Réseau E-Maquis',
     },
     {
       id: 'kpi-transactions',
       title: 'Transactions Analysées',
       value: (kpis?.analyzedTransactions ?? 0).toLocaleString('fr-FR'),
       numericValue: kpis?.analyzedTransactions ?? 0,
-      changePercent: Math.abs(kpis?.transactionsGrowth ?? 18.4),
-      trend: (kpis?.transactionsGrowth ?? 18.4) >= 0 ? 'up' : 'down',
+      ...change(kpis?.transactionsGrowth),
       comparisonPeriod: periodLabel,
-      description: 'Volume total de tickets de caisse consolidés',
+      description: 'Tickets de caisse consolidés',
       badge: 'Échantillon réel',
     },
     {
@@ -98,28 +89,27 @@ export default function MarketOverviewPage() {
       title: 'Produits Distincts Suivis',
       value: `${kpis?.analyzedProducts ?? 0}`,
       numericValue: kpis?.analyzedProducts ?? 0,
-      changePercent: 5.2,
-      trend: 'up',
-      comparisonPeriod: periodLabel,
-      description: 'Boissons et articles FMCG actifs',
+      changePercent: null,
+      trend: 'neutral',
+      comparisonPeriod: 'sans comparaison',
+      description: 'Références du catalogue dans le périmètre filtré',
     },
     {
       id: 'kpi-zones',
       title: 'Zones Couvertes',
       value: `${kpis?.coveredZones ?? 0}`,
       numericValue: kpis?.coveredZones ?? 0,
-      changePercent: 14.0,
-      trend: 'up',
-      comparisonPeriod: periodLabel,
-      description: 'Communes et villes analysées',
+      changePercent: null,
+      trend: 'neutral',
+      comparisonPeriod: 'sans comparaison',
+      description: 'Communes / villes des points de vente actifs',
     },
     {
       id: 'kpi-volume',
       title: `Volume Observé (${formattedKpiVolume.unit})`,
       value: formattedKpiVolume.formatted,
       numericValue: formattedKpiVolume.value,
-      changePercent: Math.abs(kpis?.volumeGrowth ?? kpis?.growthRate ?? 11.4),
-      trend: (kpis?.volumeGrowth ?? kpis?.growthRate ?? 11.4) >= 0 ? 'up' : 'down',
+      ...change(kpis?.volumeGrowth ?? growthRate),
       comparisonPeriod: periodLabel,
       description: `Consommation consolidée exprimée en ${formattedKpiVolume.unit}`,
     },
@@ -128,32 +118,36 @@ export default function MarketOverviewPage() {
       title: "Chiffre d'Affaires Observé",
       value: formatRevenue(kpis?.revenue),
       numericValue: kpis?.revenue ?? 0,
-      changePercent: Math.abs(kpis?.revenueGrowth ?? kpis?.growthRate ?? 11.4),
-      trend: (kpis?.revenueGrowth ?? kpis?.growthRate ?? 11.4) >= 0 ? 'up' : 'down',
+      ...change(kpis?.revenueGrowth),
       comparisonPeriod: periodLabel,
       description: 'Chiffre consolidé échantillon',
     },
     {
       id: 'kpi-growth',
-      title: 'Taux de Croissance Moyen',
-      value: `${(kpis?.growthRate ?? 11.4) >= 0 ? '+' : ''}${kpis?.growthRate ?? 11.4}%`,
-      numericValue: kpis?.growthRate ?? 11.4,
-      changePercent: Math.abs(kpis?.acceleration ?? 2.3),
-      trend: (kpis?.acceleration ?? 2.3) >= 0 ? 'up' : 'down',
-      comparisonPeriod: (kpis?.acceleration ?? 2.3) >= 0 ? 'accélération' : 'ralentissement',
-      description: 'Progression globale de la demande',
+      title: 'Croissance des Volumes',
+      value: formatGrowth(growthRate),
+      numericValue: growthRate ?? 0,
+      ...change(acceleration),
+      comparisonPeriod: isAvailable(acceleration)
+        ? acceleration >= 0
+          ? 'pts d’accélération'
+          : 'pts de ralentissement'
+        : 'accélération n/d',
+      description: 'Volume période courante vs période précédente',
     },
     {
       id: 'kpi-demand',
-      title: 'Indice de Demande Global',
-      value: `${kpis?.demandIndex ?? 124.6}`,
-      numericValue: kpis?.demandIndex ?? 124.6,
-      changePercent: +Math.abs((kpis?.demandIndex ?? 124.6) - 100).toFixed(1),
-      trend: (kpis?.demandIndex ?? 124.6) >= 100 ? 'up' : 'down',
-      comparisonPeriod: 'Base 100',
-      description: 'Tension de consommation sur le terrain',
+      title: 'Indice de Demande',
+      value: isAvailable(demandIndex) ? `${demandIndex}` : 'n/d',
+      numericValue: demandIndex ?? 0,
+      ...change(isAvailable(demandIndex) ? +(demandIndex - 100).toFixed(1) : null),
+      comparisonPeriod: 'vs moyenne des 3 dernières périodes (base 100)',
+      description: 'Volume courant rapporté à la moyenne des périodes de référence',
     },
   ];
+
+  const alerts = apiData?.alerts ?? [];
+  const topProducts: any[] = (apiData as any)?.topProducts ?? [];
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -166,7 +160,7 @@ export default function MarketOverviewPage() {
             </h1>
             <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-400 border-emerald-500/30 gap-1.5 py-0.5">
               <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              {isLoading ? 'Synchronisation API...' : isError ? 'Mode Cache' : 'Live Data API (Port 3001)'}
+              {isLoading ? 'Synchronisation API...' : isError ? 'API indisponible' : 'Données live API'}
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">
@@ -236,10 +230,10 @@ export default function MarketOverviewPage() {
           <CardHeader className="pb-3 flex flex-row items-center justify-between">
             <div>
               <CardTitle className="text-sm font-semibold text-foreground">
-                Top Produits en Progression
+                Top Produits (volume)
               </CardTitle>
               <CardDescription className="text-xs">
-                Références enregistrant la plus forte rotation sur le réseau
+                Références les plus vendues — croissance {periodLabel}
               </CardDescription>
             </div>
             <Link href="/products">
@@ -251,10 +245,15 @@ export default function MarketOverviewPage() {
           </CardHeader>
           <CardContent className="pt-0">
             <div className="divide-y divide-border/50 text-xs">
-              {((apiData as any)?.topProducts?.length ? (apiData as any).topProducts.slice(0, 6) : PRODUCTS_DATA.slice(0, 6)).map((p: any, idx: number) => {
+              {!isLoading && topProducts.length === 0 && (
+                <p className="py-6 text-center text-muted-foreground">
+                  Aucune vente produit observée sur ce périmètre.
+                </p>
+              )}
+              {topProducts.slice(0, 6).map((p: any, idx: number) => {
                 const vol = p.volumeSales ?? p.volume ?? 0;
-                const growth = p.growthPercent ?? p.growth ?? 0;
-                const format = p.format || p.size || '65cl';
+                const growth = p.growthPercent ?? p.growth ?? null;
+                const format = p.format || p.size || '';
                 const formattedProdVol = formatVolumeValue(vol, activeVolumeUnit, p.revenue);
 
                 return (
@@ -292,7 +291,7 @@ export default function MarketOverviewPage() {
                           )}
                         </div>
                         <div className="text-[11px] text-muted-foreground truncate">
-                          {p.brand} • {format}
+                          {p.brand}{format ? ` • ${format}` : ''}
                         </div>
                       </div>
                     </div>
@@ -300,8 +299,8 @@ export default function MarketOverviewPage() {
                       <div className="font-semibold text-foreground font-mono">
                         {formattedProdVol.formatted}
                       </div>
-                      <div className="text-[11px] text-emerald-400 font-medium">
-                        +{growth}%
+                      <div className={`text-[11px] font-medium ${growthColorClass(growth)}`}>
+                        {formatGrowth(growth)}
                       </div>
                     </div>
                   </div>
@@ -330,13 +329,19 @@ export default function MarketOverviewPage() {
               </div>
             </div>
             <Badge variant="outline" className="text-xs border-border bg-background/60">
-              {ALERTS_DATA.length} signaux actifs
+              {alerts.length} signaux actifs
             </Badge>
           </div>
         </CardHeader>
         <CardContent className="pt-0">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {ALERTS_DATA.map((alert) => (
+            {!isLoading && alerts.length === 0 && (
+              <p className="md:col-span-2 py-4 text-center text-xs text-muted-foreground">
+                Aucune variation significative détectée ({periodLabel}). Un signal est publié à partir de ±20 %,
+                avec au moins 3 points de vente et 30 unités sur la période précédente.
+              </p>
+            )}
+            {alerts.map((alert) => (
               <div
                 key={alert.id}
                 className="p-3.5 rounded-xl border border-border/60 bg-background/40 hover:bg-background/80 transition-colors flex flex-col justify-between gap-2.5"
@@ -344,7 +349,7 @@ export default function MarketOverviewPage() {
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <span className="text-sm">
-                      {alert.type === 'DEMAND_INCREASE' ? '📈' : alert.type === 'STOCKOUT_RISK' ? '⚠️' : '⚡'}
+                      {alert.type === 'DEMAND_INCREASE' ? '📈' : alert.type === 'DEMAND_DROP' ? '📉' : '⚡'}
                     </span>
                     <span className="font-semibold text-xs text-foreground">
                       {alert.title}
@@ -352,9 +357,13 @@ export default function MarketOverviewPage() {
                   </div>
                   <Badge
                     variant="outline"
-                    className="text-[10px] font-mono px-1.5 py-0 bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                    className={`text-[10px] font-mono px-1.5 py-0 border ${
+                      alert.variation >= 0
+                        ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                        : 'bg-rose-500/15 text-rose-400 border-rose-500/30'
+                    }`}
                   >
-                    {alert.variation}
+                    {formatGrowth(alert.variation)}
                   </Badge>
                 </div>
 
@@ -365,7 +374,7 @@ export default function MarketOverviewPage() {
                   </div>
                   <div>
                     <span className="text-muted-foreground/70">Catégorie : </span>
-                    <span className="text-foreground font-medium">{alert.categoryOrProduct}</span>
+                    <span className="text-foreground font-medium">{alert.category}</span>
                   </div>
                   <div>
                     <span className="text-muted-foreground/70">Période : </span>
@@ -373,12 +382,12 @@ export default function MarketOverviewPage() {
                   </div>
                   <div>
                     <span className="text-muted-foreground/70">Couverture : </span>
-                    <span className="text-foreground">{alert.samplePosCount} POS ({alert.confidence})</span>
+                    <span className="text-foreground">{alert.coveragePos} POS (confiance {alert.confidence})</span>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between text-[11px] pt-0.5">
-                  <span className="text-muted-foreground/80">Signal statistique certifié</span>
+                  <span className="text-muted-foreground/80">Ventes observées dans le réseau E-Maquis</span>
                   <Link href={`/geography`}>
                     <Button variant="ghost" size="sm" className="h-6 text-[11px] text-orange-400 hover:text-orange-300 p-0 hover:bg-transparent">
                       Explorer la zone &rarr;

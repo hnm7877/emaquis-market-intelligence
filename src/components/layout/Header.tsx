@@ -11,7 +11,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { ALERTS_DATA } from '@/data/mockMarketData';
+import { useDataCoverageQuery, useMarketOverview } from '@/hooks/market/useMarketQueries';
+import { formatGrowth } from '@/utils/metrics';
 
 interface HeaderProps {
   onOpenAiChat: () => void;
@@ -21,6 +22,8 @@ interface HeaderProps {
 
 export function Header({ onOpenAiChat, onOpenExport, onToggleSidebar }: HeaderProps) {
   const [showAlertsDropdown, setShowAlertsDropdown] = useState(false);
+  const { data: coverage } = useDataCoverageQuery();
+  const totalSales = coverage?.networkOverview?.totalAnalyzedTransactions;
 
   return (
     <header className="h-16 border-b border-border bg-card/60 backdrop-blur-xl px-3 sm:px-6 flex items-center justify-between sticky top-0 z-20 gap-2">
@@ -52,7 +55,10 @@ export function Header({ onOpenAiChat, onOpenExport, onToggleSidebar }: HeaderPr
         {/* Sample Status Pill */}
         <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs font-medium">
           <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span>Échantillon : <strong>58 032</strong> ventes réelles</span>
+          <span>
+            Échantillon : <strong>{typeof totalSales === 'number' ? totalSales.toLocaleString('fr-FR') : '…'}</strong>{' '}
+            ventes réelles
+          </span>
         </div>
 
         {/* DeerFlow AI Assistant Trigger Button */}
@@ -98,9 +104,7 @@ export function Header({ onOpenAiChat, onOpenExport, onToggleSidebar }: HeaderPr
               <div className="flex items-center justify-between border-b border-border pb-3 mb-3">
                 <div className="flex items-center gap-2">
                   <span className="font-semibold text-xs text-foreground">Alertes Marché en direct</span>
-                  <Badge variant="secondary" className="text-[10px] h-4">
-                    {ALERTS_DATA.length} nouvelles
-                  </Badge>
+
                 </div>
                 <button
                   onClick={() => setShowAlertsDropdown(false)}
@@ -110,30 +114,7 @@ export function Header({ onOpenAiChat, onOpenExport, onToggleSidebar }: HeaderPr
                 </button>
               </div>
 
-              <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
-                {ALERTS_DATA.map((alt) => (
-                  <div
-                    key={alt.id}
-                    className="p-2.5 rounded-lg border border-border/60 bg-background/50 hover:bg-accent/40 transition-colors text-xs flex flex-col gap-1"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-foreground text-[11px] truncate max-w-[200px] sm:max-w-[240px]">
-                        {alt.title}
-                      </span>
-                      <span className="text-[10px] font-mono font-bold text-amber-600 dark:text-amber-400">
-                        {alt.variation}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-muted-foreground line-clamp-2">
-                      {alt.description}
-                    </p>
-                    <div className="flex items-center justify-between text-[10px] text-muted-foreground/80 mt-1">
-                      <span>{alt.zone}</span>
-                      <span>{alt.date}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <HeaderAlertsList />
             </div>
           )}
         </div>
@@ -150,5 +131,49 @@ export function Header({ onOpenAiChat, onOpenExport, onToggleSidebar }: HeaderPr
         </div>
       </div>
     </header>
+  );
+}
+
+
+/** Alertes réelles calculées par l'API (chargées uniquement à l'ouverture du menu) */
+function HeaderAlertsList() {
+  const { data, isLoading, isError } = useMarketOverview();
+  const alerts = data?.alerts ?? [];
+
+  if (isLoading) return <p className="text-xs text-muted-foreground">Chargement des signaux…</p>;
+  if (isError) return <p className="text-xs text-rose-400">API Market Intelligence indisponible.</p>;
+  if (alerts.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        Aucune variation significative détectée sur le périmètre filtré.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
+      {alerts.map((alt) => (
+        <div
+          key={alt.id}
+          className="p-2.5 rounded-lg border border-border/60 bg-background/50 hover:bg-accent/40 transition-colors text-xs flex flex-col gap-1"
+        >
+          <div className="flex items-center justify-between">
+            <span className="font-semibold text-foreground text-[11px] truncate max-w-[200px] sm:max-w-[240px]">
+              {alt.title}
+            </span>
+            <span className="text-[10px] font-mono font-bold text-amber-600 dark:text-amber-400">
+              {formatGrowth(alt.variation)}
+            </span>
+          </div>
+          <p className="text-[11px] text-muted-foreground line-clamp-2">
+            {alt.category} — {alt.coveragePos} points de vente, confiance {alt.confidence}
+          </p>
+          <div className="flex items-center justify-between text-[10px] text-muted-foreground/80 mt-1">
+            <span>{alt.zone}</span>
+            <span>{alt.period}</span>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
