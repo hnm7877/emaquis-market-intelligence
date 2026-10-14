@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
+import { LocationPrecisionBar } from '@/components/geography/LocationPrecisionBar';
 import dynamic from 'next/dynamic';
 import { formatGrowth, growthColorClass, isAvailable } from '@/utils/metrics';
 import { GeographicBarChart } from '@/components/charts/GeographicBarChart';
@@ -127,6 +128,10 @@ export default function GeographyPage() {
               placés sur la carte.
             </p>
           )}
+          <LocationPrecisionBar
+            precision={apiGeoData?.locationPrecision}
+            unlocated={apiGeoData?.unlocated?.posCount ?? 0}
+          />
         </div>
 
         {/* Barre de recherche et raccourcis */}

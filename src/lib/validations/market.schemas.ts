@@ -105,6 +105,16 @@ export const MarketOverviewResponseSchema = z.object({
   alerts: z.array(MarketAlertSchema).default([]),
 });
 
+/** Origine des positions : GPS de la vente, barman sur place, épingle du patron, adresse déclarée */
+export const LocationPrecisionSchema = z.object({
+  sale_gps: z.number().default(0),
+  barman: z.number().default(0),
+  owner: z.number().default(0),
+  declared: z.number().default(0),
+});
+
+export type LocationPrecision = z.infer<typeof LocationPrecisionSchema>;
+
 export const GeoZoneSchema = z.object({
   id: z.string(),
   zone: z.string(),
@@ -120,6 +130,7 @@ export const GeoZoneSchema = z.object({
   seasonalVolumes: z
     .object({ festive: z.number(), dry: z.number(), rainy: z.number() })
     .optional(),
+  precision: LocationPrecisionSchema.optional(),
 });
 
 export type GeoZone = z.infer<typeof GeoZoneSchema>;
@@ -133,6 +144,7 @@ export const EstablishmentMarkerSchema = z.object({
   latitude: z.number(),
   longitude: z.number(),
   hasDirectGps: z.boolean().optional(),
+  positionPrecision: z.enum(['sale_gps', 'barman', 'owner', 'declared']).nullable().optional(),
   volume: z.number().default(0),
   revenue: z.number().default(0),
   transactions: z.number().default(0),
@@ -149,6 +161,7 @@ export const GeographyResponseSchema = z.object({
   unlocated: z
     .object({ posCount: z.number(), volume: z.number(), revenue: z.number() })
     .optional(),
+  locationPrecision: LocationPrecisionSchema.optional(),
 });
 
 export const ProductItemSchema = z.object({
