@@ -207,8 +207,20 @@ export function useMarketLiveSocket() {
     socket.on('disconnect', handleDisconnect);
     socket.on('market:alert', handleAlert);
     socket.on('market:new-sale', handleNewSale);
+    // Position/adresse d'un établissement mise à jour (barman sur place, réglages, inscription) :
+    // recharge les vues géographiques, regroupé pour éviter les rafales.
+    let geoTimer: ReturnType<typeof setTimeout> | null = null;
+    const handleGeoUpdated = () => {
+      if (geoTimer) clearTimeout(geoTimer);
+      geoTimer = setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: marketQueryKeys.all });
+      }, 1500);
+    };
+    socket.on('market:geo-updated', handleGeoUpdated);
 
     return () => {
+      if (geoTimer) clearTimeout(geoTimer);
+      socket.off('market:geo-updated', handleGeoUpdated);
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
       socket.off('market:alert', handleAlert);
