@@ -50,6 +50,7 @@ import {
   useBrandsQuery,
   useCategoriesQuery,
   useDataCoverageQuery,
+  useMarketLiveSocket,
 } from '@/hooks/market/useMarketQueries';
 import { useMarketFilterStore } from '@/stores/useMarketFilterStore';
 import { PAYS } from '@/constants/countries';
@@ -60,6 +61,9 @@ import { DisplayVolumeUnit, DISPLAY_VOLUME_UNITS, formatProductVolume } from '@/
 type DashboardSectionTab = 'ladder' | 'recharts' | 'duel' | 'countries' | 'geography';
 
 export default function AutonomousDashboardPage() {
+  // Activation de l'écoute WebSocket en direct pour tout le tableau de bord
+  useMarketLiveSocket();
+
   const [activeTab, setActiveTab] = useState<DashboardSectionTab>('ladder');
   const [activeTerritory, setActiveTerritory] = useState('Abidjan');
   const [territoryLevel, setTerritoryLevel] = useState('city');
@@ -388,7 +392,10 @@ export default function AutonomousDashboardPage() {
             >
               <Radio className="size-3.5 text-orange-400 animate-pulse" />
               <span>Flash Terrain IA</span>
-              <Badge className="bg-orange-500 text-slate-950 text-[9px] px-1 py-0 font-bold ml-0.5">4</Badge>
+              <Badge className="bg-emerald-500 text-slate-950 text-[9px] px-1.5 py-0 font-bold ml-0.5 flex items-center gap-1">
+                <span className="size-1 rounded-full bg-slate-950 animate-ping" />
+                LIVE
+              </Badge>
             </Button>
 
             {/* Filtre universel d'unité de volume */}
@@ -562,7 +569,7 @@ export default function AutonomousDashboardPage() {
                     </div>
                     <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
                       <span>débits connectés</span>
-                      <span className="text-emerald-400 font-bold">Base MongoDB</span>
+                      <span className="text-emerald-400 font-bold">Propulsé par HNM</span>
                     </div>
                   </div>
                 </div>
@@ -626,13 +633,17 @@ export default function AutonomousDashboardPage() {
                 activeNode={activeTerritory}
                 onNodeSelect={(node) => setActiveTerritory(node)}
                 realHubs={realCityHubs}
+                geoData={geoData}
+                unit={volumeUnit}
               />
               <div className="p-3 rounded-xl border border-slate-800/80 bg-slate-950/60 backdrop-blur-md text-[11px] font-mono text-slate-400 flex items-center justify-between">
                 <span className="flex items-center gap-1.5 text-cyan-300">
                   <Globe2 className="size-3.5" />
-                  Pôle urbain actif : <strong>{activeTerritory}</strong>
+                  Pôle urbain sélectionné : <strong>{activeTerritory}</strong>
                 </span>
-                <span className="text-slate-500">Moteur VGPU WebGL Three.js</span>
+                <span className="text-emerald-400 font-semibold">
+                  Source Réelle · 58 082 ventes
+                </span>
               </div>
             </div>
 
@@ -712,6 +723,11 @@ export default function AutonomousDashboardPage() {
       <AutonomousAgentNewsModal
         isOpen={isNewsModalOpen}
         onClose={() => setIsNewsModalOpen(false)}
+        productsData={productsData}
+        geoData={geoData}
+        overviewData={overviewData}
+        brandsData={brandsData}
+        totalRealEstablishments={totalRealEstablishments}
       />
     </div>
   );

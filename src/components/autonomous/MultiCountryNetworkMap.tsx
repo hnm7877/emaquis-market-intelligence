@@ -102,7 +102,7 @@ const REAL_DATABASE_COUNTRIES: CountrySalesData[] = [
     cities: [
       { name: 'Abidjan (Yopougon, Cocody, Marcory)', volumeShare: '68.4%', pos: 42, volumeCols: 202258 },
       { name: 'Bouaké (Commerce & Koko)', volumeShare: '14.2%', pos: 8, volumeCols: 41989 },
-      { name: 'Tiassalé (Aniki Ets & alentours)', volumeShare: '6.5%', pos: 4, volumeCols: 19220 },
+      { name: 'Tiassalé (Pôle Sud & alentours)', volumeShare: '6.5%', pos: 4, volumeCols: 19220 },
       { name: 'Bingerville (HNM & périphérie)', volumeShare: '5.8%', pos: 3, volumeCols: 17150 },
       { name: 'Grand-Bassam, Yamoussoukro, Korhogo', volumeShare: '5.1%', pos: 4, volumeCols: 15083 },
     ],
@@ -125,8 +125,8 @@ const REAL_DATABASE_COUNTRIES: CountrySalesData[] = [
     growth: 5.4,
     distressedProducts: 1,
     cities: [
-      { name: 'Ouagadougou (cristal Bar)', volumeShare: '71.4%', pos: 1, volumeCols: 299 },
-      { name: 'Est / Fada N\'Gourma (Fada mixt)', volumeShare: '28.6%', pos: 1, volumeCols: 120 },
+      { name: 'Ouagadougou (Pôle Capitale)', volumeShare: '71.4%', pos: 1, volumeCols: 299 },
+      { name: 'Est / Fada N\'Gourma (Pôle Est)', volumeShare: '28.6%', pos: 1, volumeCols: 120 },
     ],
     status: 'active',
     registeredAccounts: 39,
@@ -147,7 +147,7 @@ const REAL_DATABASE_COUNTRIES: CountrySalesData[] = [
     growth: 3.8,
     distressedProducts: 0,
     cities: [
-      { name: 'Kinshasa (Cash Money Corporation)', volumeShare: '100%', pos: 1, volumeCols: 321 },
+      { name: 'Kinshasa (Pôle Gombe)', volumeShare: '100%', pos: 1, volumeCols: 321 },
     ],
     status: 'active',
     registeredAccounts: 1,

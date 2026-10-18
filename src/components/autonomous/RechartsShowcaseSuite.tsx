@@ -475,7 +475,7 @@ export const RechartsShowcaseSuite: React.FC<RechartsShowcaseSuiteProps> = ({
           { label: 'Top Leader Volume', value: dynamicBarData[0]?.product || 'Heineken-33', sub: `${dynamicBarData[0]?.volume?.toLocaleString('fr-FR') || 38477} ${unit}`, color: 'text-emerald-400' },
           { label: 'Produits en Souffrance', value: `${dynamicBarData.filter(d => d.distress).length} références`, sub: 'Marge négative / surstock', color: 'text-rose-400' },
           { label: 'Challenger Direct', value: dynamicBarData[1]?.product || 'Beaufort-33', sub: `${dynamicBarData[1]?.volume?.toLocaleString('fr-FR') || 33579} ${unit}`, color: 'text-amber-400' },
-          { label: 'Volume Échantillon Bar', value: formatProductVolume(dynamicBarData.reduce((s, p) => s + (p.volume || 0), 0), unit, 'BarChart').formatted, sub: 'Base MongoDB certifiée', color: 'text-cyan-400' },
+          { label: 'Volume Échantillon Bar', value: formatProductVolume(dynamicBarData.reduce((s, p) => s + (p.volume || 0), 0), unit, 'BarChart').formatted, sub: 'Propulsé par HNM', color: 'text-cyan-400' },
         ];
       case 'line':
         return [
@@ -521,7 +521,7 @@ export const RechartsShowcaseSuite: React.FC<RechartsShowcaseSuiteProps> = ({
         ];
       case 'funnel':
         return [
-          { label: 'Total Base MongoDB', value: `${totalRawDocs.toLocaleString('fr-FR')}`, sub: 'Collection sales certifiée', color: 'text-sky-400' },
+          { label: 'Total Ventes Réseau', value: `${totalRawDocs.toLocaleString('fr-FR')}`, sub: 'Propulsé par HNM', color: 'text-sky-400' },
           { label: 'Livrées avec Succès', value: `${(kpis?.statusBreakdown?.success || 51631).toLocaleString('fr-FR')}`, sub: 'Statut success (88.9%)', color: 'text-emerald-400' },
           { label: 'En Cours de Paiement', value: `${(kpis?.statusBreakdown?.pending || 1316).toLocaleString('fr-FR')}`, sub: 'Statut pending (2.3%)', color: 'text-amber-400' },
           { label: 'Annulations / Rejets', value: `${(kpis?.statusBreakdown?.canceled || 4308).toLocaleString('fr-FR')}`, sub: 'Statut canceled (7.4%)', color: 'text-rose-400' },

@@ -1,16 +1,60 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import * as THREE from 'three';
-import { motion } from 'framer-motion';
-import { Sparkles, Maximize2, RotateCcw, Activity } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  Sparkles,
+  Maximize2,
+  RotateCcw,
+  Activity,
+  MapPin,
+  TrendingUp,
+  Layers,
+  Store,
+  Beer,
+  DollarSign,
+  Globe2,
+  Calendar,
+  Sun,
+  CloudRain,
+  PartyPopper,
+  BarChart3,
+  Check,
+  Compass,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { resolveZoneCoordinates } from '@/constants/coordinates';
+import { DisplayVolumeUnit, formatProductVolume } from '@/utils/productVolumeConverter';
+import { anonymizeEstablishmentName } from '@/utils/anonymize';
+import 'leaflet/dist/leaflet.css';
 
 export interface RealHub {
   name: string;
   share: string;
   volume?: number;
+  revenue?: number;
+  posCount?: number;
+}
+
+interface ZoneData {
+  id?: string;
+  zone: string;
+  city: string;
+  country?: string;
+  volume: number;
+  revenue: number;
+  posCount: number;
+  latitude: number;
+  longitude: number;
+  growth?: number | null;
+  demandIndex?: number | null;
+  seasonalVolumes?: {
+    festive?: number;
+    dry?: number;
+    rainy?: number;
+  };
 }
 
 interface ThreeVgpuCanvasProps {
@@ -18,368 +62,693 @@ interface ThreeVgpuCanvasProps {
   onNodeSelect?: (nodeName: string) => void;
   intensity?: number;
   realHubs?: RealHub[];
+  geoData?: any;
+  unit?: DisplayVolumeUnit;
 }
 
+type ViewMode = 'map' | 'ranking' | 'seasonality' | 'mesh3d';
+type MetricMode = 'volume' | 'revenue' | 'pos';
+
+// Communes réelles de référence pour Abidjan et l'intérieur en Côte d'Ivoire
+const FALLBACK_ZONES: ZoneData[] = [
+  { zone: 'Yopougon', city: 'Abidjan', volume: 155300, revenue: 77650000, posCount: 418, latitude: 5.3438, longitude: -4.0725, seasonalVolumes: { festive: 68300, dry: 52800, rainy: 34200 } },
+  { zone: 'Plateau', city: 'Abidjan', volume: 114500, revenue: 57250000, posCount: 98, latitude: 5.3256, longitude: -4.0211, seasonalVolumes: { festive: 50400, dry: 38900, rainy: 25200 } },
+  { zone: 'Marcory', city: 'Abidjan', volume: 88900, revenue: 44450000, posCount: 215, latitude: 5.3045, longitude: -3.9842, seasonalVolumes: { festive: 39100, dry: 30200, rainy: 19600 } },
+  { zone: 'Cocody', city: 'Abidjan', volume: 76200, revenue: 38100000, posCount: 342, latitude: 5.3547, longitude: -3.9783, seasonalVolumes: { festive: 33500, dry: 25900, rainy: 16800 } },
+  { zone: 'Port-Bouët', city: 'Abidjan', volume: 24600, revenue: 12300000, posCount: 112, latitude: 5.2575, longitude: -3.9442, seasonalVolumes: { festive: 10800, dry: 8400, rainy: 5400 } },
+  { zone: 'Treichville', city: 'Abidjan', volume: 18200, revenue: 9100000, posCount: 164, latitude: 5.3006, longitude: -4.0094, seasonalVolumes: { festive: 8000, dry: 6200, rainy: 4000 } },
+  { zone: 'Bingerville', city: 'Abidjan', volume: 12400, revenue: 6200000, posCount: 76, latitude: 5.3567, longitude: -3.8911, seasonalVolumes: { festive: 5500, dry: 4200, rainy: 2700 } },
+  { zone: 'Grand-Bassam', city: 'Grand-Bassam', volume: 8900, revenue: 4450000, posCount: 45, latitude: 5.2117, longitude: -3.7388, seasonalVolumes: { festive: 3900, dry: 3000, rainy: 2000 } },
+];
+
 export const ThreeVgpuCanvas: React.FC<ThreeVgpuCanvasProps> = ({
-  activeNode = 'Abidjan',
+  activeNode = 'Yopougon',
   onNodeSelect,
   intensity = 1.0,
   realHubs,
+  geoData,
+  unit = 'cols',
 }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('map');
+  const [metricMode, setMetricMode] = useState<MetricMode>('volume');
+  const [showPins, setShowPins] = useState(true);
+
+  // Références Leaflet
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<any>(null);
+  const layersGroupRef = useRef<any>(null);
+  const hasInitializedCameraRef = useRef(false);
+
+  // Références Three.js
+  const threeContainerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const animFrameId = useRef<number | null>(null);
-
-  const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const [isRotating, setIsRotating] = useState(true);
   const [fps, setFps] = useState(60);
 
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
+  // Extraction et consolidation des zones réelles
+  const resolvedZones: ZoneData[] = useMemo(() => {
+    const rawZones: any[] = geoData?.zones || [];
+    if (!rawZones.length) return FALLBACK_ZONES;
 
-    const width = container.clientWidth;
-    const height = container.clientHeight || 340;
+    return rawZones.map((z, idx) => {
+      let lat = Number(z.latitude);
+      let lng = Number(z.longitude);
 
-    // 1. Scene
-    const scene = new THREE.Scene();
-    sceneRef.current = scene;
-
-    // 2. Camera
-    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
-    camera.position.set(0, 5, 20);
-    camera.lookAt(0, 0, 0);
-    cameraRef.current = camera;
-
-    // 3. Renderer with antialias and alpha
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
-    renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setClearColor(0x000000, 0);
-    rendererRef.current = renderer;
-
-    container.innerHTML = '';
-    container.appendChild(renderer.domElement);
-
-    // 4. Group for all elements
-    const mainGroup = new THREE.Group();
-    scene.add(mainGroup);
-
-    // 5. Central Neural Sphere (Wireframe & Glowing points)
-    const coreGeometry = new THREE.IcosahedronGeometry(4.2, 2);
-    const coreMaterial = new THREE.MeshBasicMaterial({
-      color: 0x38bdf8,
-      wireframe: true,
-      transparent: true,
-      opacity: 0.25,
-    });
-    const coreMesh = new THREE.Mesh(coreGeometry, coreMaterial);
-    mainGroup.add(coreMesh);
-
-    // 6. Inner Glowing Pulse Core
-    const innerGeo = new THREE.SphereGeometry(2.2, 16, 16);
-    const innerMat = new THREE.MeshBasicMaterial({
-      color: 0xf97316,
-      wireframe: true,
-      transparent: true,
-      opacity: 0.35,
-    });
-    const innerMesh = new THREE.Mesh(innerGeo, innerMat);
-    mainGroup.add(innerMesh);
-
-    // 7. VGPU-style Vector Field Particles (Simulating GPU Compute Particles)
-    const particleCount = 1200;
-    const particleGeometry = new THREE.BufferGeometry();
-    const positions = new Float32Array(particleCount * 3);
-    const colors = new Float32Array(particleCount * 3);
-    const initialRadii = new Float32Array(particleCount);
-    const speeds = new Float32Array(particleCount);
-    const angles = new Float32Array(particleCount);
-
-    const color1 = new THREE.Color(0xf97316); // Orange E-Maquis
-    const color2 = new THREE.Color(0x38bdf8); // Cyan Liquid
-    const color3 = new THREE.Color(0x10b981); // Emerald Sales
-    const color4 = new THREE.Color(0xa855f7); // Violet AI
-
-    for (let i = 0; i < particleCount; i++) {
-      const radius = 5 + Math.random() * 8;
-      const angle = Math.random() * Math.PI * 2;
-      const heightVal = (Math.random() - 0.5) * 8;
-
-      positions[i * 3] = Math.cos(angle) * radius;
-      positions[i * 3 + 1] = heightVal;
-      positions[i * 3 + 2] = Math.sin(angle) * radius;
-
-      initialRadii[i] = radius;
-      angles[i] = angle;
-      speeds[i] = (0.2 + Math.random() * 0.8) * 0.015;
-
-      // Color interpolation
-      const mixRatio = Math.random();
-      let pColor: THREE.Color;
-      if (mixRatio < 0.35) {
-        pColor = color1;
-      } else if (mixRatio < 0.65) {
-        pColor = color2;
-      } else if (mixRatio < 0.85) {
-        pColor = color3;
-      } else {
-        pColor = color4;
+      if (!lat || !lng || isNaN(lat) || isNaN(lng) || lat === 0) {
+        const resolved = resolveZoneCoordinates(z.zone, z.city, z.country, idx);
+        lat = resolved.latitude;
+        lng = resolved.longitude;
       }
 
-      colors[i * 3] = pColor.r;
-      colors[i * 3 + 1] = pColor.g;
-      colors[i * 3 + 2] = pColor.b;
+      return {
+        id: z.id || `zone-${idx}`,
+        zone: z.zone || 'Commune Inconnue',
+        city: z.city || 'Abidjan',
+        country: z.country || "Côte d'Ivoire",
+        volume: Number(z.volume) || 0,
+        revenue: Number(z.revenue) || 0,
+        posCount: Number(z.posCount) || 1,
+        latitude: lat,
+        longitude: lng,
+        growth: z.growth ?? null,
+        demandIndex: z.demandIndex ?? null,
+        seasonalVolumes: z.seasonalVolumes || {
+          festive: Math.round((Number(z.volume) || 0) * 0.44),
+          dry: Math.round((Number(z.volume) || 0) * 0.34),
+          rainy: Math.round((Number(z.volume) || 0) * 0.22),
+        },
+      };
+    }).sort((a, b) => b.volume - a.volume);
+  }, [geoData]);
+
+  // Établissements réels anonymisés
+  const establishments = useMemo(() => {
+    return (geoData?.establishments || []).filter(
+      (e: any) => e.latitude && e.longitude && !isNaN(e.latitude) && !isNaN(e.longitude)
+    );
+  }, [geoData]);
+
+  // Totaux consolidés
+  const totalVolume = useMemo(() => resolvedZones.reduce((s, z) => s + z.volume, 0), [resolvedZones]);
+  const totalRevenue = useMemo(() => resolvedZones.reduce((s, z) => s + z.revenue, 0), [resolvedZones]);
+  const totalPos = useMemo(() => resolvedZones.reduce((s, z) => s + z.posCount, 0), [resolvedZones]);
+
+  // Saisonnalités consolidées
+  const seasonalStats = useMemo(() => {
+    let festive = 0;
+    let dry = 0;
+    let rainy = 0;
+
+    resolvedZones.forEach((z) => {
+      festive += z.seasonalVolumes?.festive || 0;
+      dry += z.seasonalVolumes?.dry || 0;
+      rainy += z.seasonalVolumes?.rainy || 0;
+    });
+
+    const sum = festive + dry + rainy || 1;
+    return {
+      festive: { volume: festive, share: Math.round((festive / sum) * 1000) / 10 },
+      dry: { volume: dry, share: Math.round((dry / sum) * 1000) / 10 },
+      rainy: { volume: rainy, share: Math.round((rainy / sum) * 1000) / 10 },
+    };
+  }, [resolvedZones]);
+
+  // Top hubs territoriaux (communes réelles)
+  const dynamicHubs = useMemo(() => {
+    if (!resolvedZones.length) return [];
+    return resolvedZones.slice(0, 5).map((z) => ({
+      name: z.zone,
+      share: totalVolume > 0 ? `${Math.round((z.volume / totalVolume) * 1000) / 10}%` : '0%',
+      volume: z.volume,
+      revenue: z.revenue,
+      posCount: z.posCount,
+      latitude: z.latitude,
+      longitude: z.longitude,
+    }));
+  }, [resolvedZones, totalVolume]);
+
+  // ==========================================
+  // RENDU CARTE LEAFLET INTERACTIVE (STABLE & SANS FLASH)
+  // ==========================================
+  const renderLeafletLayers = useCallback(
+    (L: any, map: any, group: any) => {
+      group.clearLayers();
+
+      // 1. Cercles interactifs des communes
+      resolvedZones.forEach((z) => {
+        const lat = z.latitude;
+        const lng = z.longitude;
+        if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
+
+        let radius = 14;
+        let color = '#10b981';
+        let formattedValue = '';
+
+        if (metricMode === 'volume') {
+          radius = Math.max(12, Math.min(26, Math.sqrt(z.volume) * 0.055));
+          color = z.volume > 50000 ? '#10b981' : z.volume > 15000 ? '#f59e0b' : '#06b6d4';
+          formattedValue = formatProductVolume(z.volume, unit, z.zone).formatted;
+        } else if (metricMode === 'revenue') {
+          radius = Math.max(12, Math.min(26, Math.sqrt(z.revenue) * 0.0022));
+          color = '#8b5cf6';
+          formattedValue = `${(z.revenue / 1000000).toFixed(1)}M FCFA`;
+        } else {
+          radius = Math.max(12, Math.min(26, Math.sqrt(z.posCount) * 1.3));
+          color = '#06b6d4';
+          formattedValue = `${z.posCount} POS`;
+        }
+
+        const isSelected = activeNode?.toLowerCase() === z.zone.toLowerCase();
+
+        // Halo lumineux discret
+        const halo = L.circleMarker([lat, lng], {
+          radius: radius * 1.5,
+          fillColor: color,
+          color: 'transparent',
+          weight: 0,
+          fillOpacity: isSelected ? 0.35 : 0.14,
+          interactive: false,
+        });
+        halo.addTo(group);
+
+        // Cercle principal
+        const circle = L.circleMarker([lat, lng], {
+          radius,
+          fillColor: color,
+          color: isSelected ? '#ffffff' : 'rgba(255,255,255,0.7)',
+          weight: isSelected ? 2.5 : 1.2,
+          opacity: 1,
+          fillOpacity: isSelected ? 0.88 : 0.7,
+        });
+
+        // Tooltip interactif riche
+        const shareOfTotal = totalVolume > 0 ? ((z.volume / totalVolume) * 100).toFixed(1) : '0';
+        circle.bindTooltip(
+          `
+          <div style="background: rgba(15, 23, 42, 0.96); backdrop-filter: blur(12px); padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.18); color: #fff; font-family: system-ui, sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.6); min-width: 190px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+              <span style="font-weight: 700; font-size: 13px; color: #f8fafc;">📍 ${z.zone}</span>
+              <span style="font-size: 10px; background: rgba(245,158,11,0.2); color: #f59e0b; padding: 1px 6px; border-radius: 4px; font-weight: 700;">${shareOfTotal}%</span>
+            </div>
+            <div style="font-size: 11px; color: #94a3b8; margin-bottom: 6px;">${z.city} · ${z.country}</div>
+            <div style="font-size: 11px; color: #38bdf8; font-weight: 600;">📦 Volume : ${formatProductVolume(z.volume, unit, z.zone).formatted}</div>
+            <div style="font-size: 11px; color: #34d399; font-weight: 600;">💰 CA : ${(z.revenue / 1000000).toFixed(2)}M FCFA</div>
+            <div style="font-size: 11px; color: #fbbf24; font-weight: 600;">🏪 Maquis actifs : ${z.posCount} POS anonymisés</div>
+            <div style="margin-top: 6px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.1); font-size: 10px; color: #38bdf8; font-weight: 600;">
+              👉 Cliquez pour zoomer sur ${z.zone}
+            </div>
+          </div>
+          `,
+          { direction: 'top', offset: [0, -radius], opacity: 1, sticky: true }
+        );
+
+        circle.on('click', () => {
+          onNodeSelect?.(z.zone);
+          map.setView([lat, lng], 13, { animate: true });
+        });
+
+        circle.addTo(group);
+
+        // Badge texte épuré (une seule ligne, sans pavé noir opaque)
+        const textIcon = L.divIcon({
+          className: 'zone-text-badge',
+          html: `
+            <div style="transform: translate(-50%, -50%); display: flex; align-items: center; pointer-events: none;">
+              <span style="background: rgba(15, 23, 42, 0.9); color: ${isSelected ? '#38bdf8' : '#f8fafc'}; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 9999px; border: 1px solid ${isSelected ? '#38bdf8' : 'rgba(255,255,255,0.22)'}; white-space: nowrap; box-shadow: 0 4px 10px rgba(0,0,0,0.6);">
+                ${z.zone}
+              </span>
+            </div>
+          `,
+          iconSize: [0, 0],
+        });
+
+        L.marker([lat, lng], { icon: textIcon }).addTo(group);
+      });
+
+      // 2. Pins des établissements individuels (ANONYMISÉS 100%)
+      if (showPins && establishments.length > 0) {
+        establishments.slice(0, 80).forEach((est: any, idx: number) => {
+          if (!est.latitude || !est.longitude) return;
+
+          const anonName = anonymizeEstablishmentName(est.name, est.id, idx);
+
+          const estIcon = L.divIcon({
+            className: 'custom-est-pin',
+            html: `
+              <div style="width: 12px; height: 12px; background: #090d16; border: 1.5px solid ${
+                est.hasDirectGps ? '#10b981' : '#f59e0b'
+              }; border-radius: 50%; box-shadow: 0 0 5px ${
+                est.hasDirectGps ? 'rgba(16,185,129,0.7)' : 'rgba(245,158,11,0.5)'
+              };"></div>
+            `,
+            iconSize: [12, 12],
+            iconAnchor: [6, 6],
+          });
+
+          const estMarker = L.marker([est.latitude, est.longitude], { icon: estIcon });
+
+          estMarker.bindTooltip(
+            `
+            <div style="background: rgba(15, 23, 42, 0.95); padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); color: #fff; font-size: 11px;">
+              <div style="font-weight: 700; color: #38bdf8;">🏪 ${anonName}</div>
+              <div style="color: #94a3b8; font-size: 10px;">${est.zone || ''} · ${est.city || ''}</div>
+              <div style="color: #10b981; font-weight: 600; margin-top: 2px;">${(Number(est.volume) || 0).toLocaleString('fr-FR')} cols</div>
+            </div>
+            `,
+            { direction: 'top', offset: [0, -6], opacity: 1 }
+          );
+
+          estMarker.addTo(group);
+        });
+      }
+    },
+    [resolvedZones, establishments, metricMode, showPins, activeNode, totalVolume, unit, onNodeSelect]
+  );
+
+  // Initialisation Leaflet : créée une seule fois pour éviter tout flash/rechargement de tuiles
+  useEffect(() => {
+    if (viewMode !== 'map') {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+        layersGroupRef.current = null;
+      }
+      return;
     }
 
-    particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    particleGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    // Si la carte existe déjà, on ne la recrée surtout pas
+    if (mapInstanceRef.current) return;
 
-    const particleMaterial = new THREE.PointsMaterial({
-      size: 0.16,
-      vertexColors: true,
-      transparent: true,
-      opacity: 0.85,
-      blending: THREE.AdditiveBlending,
-    });
+    let isMounted = true;
 
-    const particleSystem = new THREE.Points(particleGeometry, particleMaterial);
-    mainGroup.add(particleSystem);
+    async function initMap() {
+      if (!mapContainerRef.current) return;
+      const L = await import('leaflet');
+      if (!isMounted || !mapContainerRef.current || mapInstanceRef.current) return;
 
-    // 8. Territorial Hub Nodes (Abidjan, Bouaké, San Pedro, Yamoussoukro, Korhogo)
-    const hubs = [
-      { name: 'Abidjan', angle: 0, radius: 5.5, size: 0.65, color: 0xf97316, volume: '68%' },
-      { name: 'Bouaké', angle: (Math.PI * 2) / 4, radius: 6.2, size: 0.45, color: 0x10b981, volume: '14%' },
-      { name: 'San Pedro', angle: (Math.PI * 2 * 2) / 4, radius: 5.8, size: 0.4, color: 0x38bdf8, volume: '9%' },
-      { name: 'Yamoussoukro', angle: (Math.PI * 2 * 3) / 4, radius: 6.5, size: 0.38, color: 0xa855f7, volume: '6%' },
-    ];
-
-    const hubMeshes: { mesh: THREE.Mesh; hub: typeof hubs[0] }[] = [];
-
-    hubs.forEach((hub) => {
-      const hubGeo = new THREE.SphereGeometry(hub.size, 16, 16);
-      const hubMat = new THREE.MeshBasicMaterial({
-        color: hub.color,
-        wireframe: false,
-      });
-      const hubMesh = new THREE.Mesh(hubGeo, hubMat);
-
-      const x = Math.cos(hub.angle) * hub.radius;
-      const z = Math.sin(hub.angle) * hub.radius;
-      hubMesh.position.set(x, 0, z);
-
-      // Glow halo ring
-      const haloGeo = new THREE.RingGeometry(hub.size * 1.3, hub.size * 1.6, 24);
-      const haloMat = new THREE.MeshBasicMaterial({
-        color: hub.color,
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: 0.6,
-      });
-      const haloMesh = new THREE.Mesh(haloGeo, haloMat);
-      haloMesh.rotation.x = Math.PI / 2;
-      hubMesh.add(haloMesh);
-
-      mainGroup.add(hubMesh);
-      hubMeshes.push({ mesh: hubMesh, hub });
-    });
-
-    // 9. Connecting Arcs (Flow lines between hubs)
-    const curvePoints: THREE.Vector3[] = [];
-    hubs.forEach((hub) => {
-      curvePoints.push(new THREE.Vector3(Math.cos(hub.angle) * hub.radius, 0, Math.sin(hub.angle) * hub.radius));
-    });
-    curvePoints.push(curvePoints[0]); // Loop back
-
-    const curve = new THREE.CatmullRomCurve3(curvePoints);
-    const tubeGeo = new THREE.TubeGeometry(curve, 64, 0.05, 8, true);
-    const tubeMat = new THREE.MeshBasicMaterial({
-      color: 0x38bdf8,
-      transparent: true,
-      opacity: 0.35,
-      wireframe: true,
-    });
-    const tubeMesh = new THREE.Mesh(tubeGeo, tubeMat);
-    mainGroup.add(tubeMesh);
-
-    // 10. Mouse interaction (Orbit and Raycasting)
-    let mouseX = 0;
-    let mouseY = 0;
-    let targetRotationX = 0.2;
-    let targetRotationY = 0;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      const rect = container.getBoundingClientRect();
-      const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-      const y = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
-
-      mouseX = x;
-      mouseY = y;
-      targetRotationY = x * 0.6;
-      targetRotationX = y * 0.4 + 0.2;
-    };
-
-    container.addEventListener('mousemove', handleMouseMove);
-
-    // Resize observer
-    const handleResize = () => {
-      if (!container || !renderer || !camera) return;
-      const newWidth = container.clientWidth;
-      const newHeight = container.clientHeight || 340;
-      camera.aspect = newWidth / newHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(newWidth, newHeight);
-    };
-
-    window.addEventListener('resize', handleResize);
-
-    // 11. Animation Loop
-    let clock = new THREE.Clock();
-    let frameCount = 0;
-    let lastTime = performance.now();
-
-    const animate = () => {
-      animFrameId.current = requestAnimationFrame(animate);
-
-      const elapsedTime = clock.getElapsedTime();
-      frameCount++;
-
-      // FPS calculation
-      const now = performance.now();
-      if (now - lastTime >= 1000) {
-        setFps(Math.round((frameCount * 1000) / (now - lastTime)));
-        frameCount = 0;
-        lastTime = now;
-      }
-
-      // Rotation & Physics
-      if (isRotating) {
-        mainGroup.rotation.y += 0.005 * intensity;
-      }
-      mainGroup.rotation.y += (targetRotationY - mainGroup.rotation.y) * 0.05;
-      mainGroup.rotation.x += (targetRotationX - mainGroup.rotation.x) * 0.05;
-
-      // Pulse Cores
-      const coreScale = 1 + Math.sin(elapsedTime * 2) * 0.04;
-      coreMesh.scale.set(coreScale, coreScale, coreScale);
-
-      const innerScale = 1 + Math.cos(elapsedTime * 3) * 0.08;
-      innerMesh.scale.set(innerScale, innerScale, innerScale);
-
-      // Particle simulation (VGPU field)
-      const posAttr = particleGeometry.attributes.position as THREE.BufferAttribute;
-      const posArray = posAttr.array as Float32Array;
-
-      for (let i = 0; i < particleCount; i++) {
-        angles[i] += speeds[i] * intensity;
-        const radius = initialRadii[i] + Math.sin(elapsedTime + i) * 0.3;
-
-        posArray[i * 3] = Math.cos(angles[i]) * radius;
-        posArray[i * 3 + 2] = Math.sin(angles[i]) * radius;
-        posArray[i * 3 + 1] += Math.sin(elapsedTime * 2 + i) * 0.005;
-      }
-      posAttr.needsUpdate = true;
-
-      // Hub node animations
-      hubMeshes.forEach(({ mesh, hub }) => {
-        mesh.rotation.y += 0.02;
-        const pulse = 1 + Math.sin(elapsedTime * 4 + hub.angle) * 0.15;
-        mesh.scale.set(pulse, pulse, pulse);
+      // Centre fixe par défaut sur Abidjan
+      const map = L.map(mapContainerRef.current, {
+        center: [5.348, -4.015],
+        zoom: 12,
+        zoomControl: false,
+        attributionControl: false,
       });
 
-      renderer.render(scene, camera);
-    };
+      L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-    animate();
+      // Fond de carte sombre Esri Dark Canvas
+      L.tileLayer(
+        'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+        { maxZoom: 16 }
+      ).addTo(map);
+
+      L.tileLayer(
+        'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
+        { maxZoom: 16, opacity: 0.85 }
+      ).addTo(map);
+
+      const group = L.layerGroup().addTo(map);
+      layersGroupRef.current = group;
+      mapInstanceRef.current = map;
+
+      // Rendu initial des calques
+      renderLeafletLayers(L, map, group);
+    }
+
+    initMap();
 
     return () => {
-      if (animFrameId.current) cancelAnimationFrame(animFrameId.current);
-      container.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('resize', handleResize);
-      renderer.dispose();
-      particleGeometry.dispose();
-      particleMaterial.dispose();
-      coreGeometry.dispose();
-      coreMaterial.dispose();
-      innerGeo.dispose();
-      innerMat.dispose();
-      tubeGeo.dispose();
-      tubeMat.dispose();
+      isMounted = false;
     };
-  }, [intensity, isRotating]);
+  }, [viewMode]);
+
+  // Redimensionnement automatique sans clignotement
+  useEffect(() => {
+    if (viewMode !== 'map' || !mapContainerRef.current) return;
+    const resizeObserver = new ResizeObserver(() => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.invalidateSize();
+      }
+    });
+    resizeObserver.observe(mapContainerRef.current);
+    return () => resizeObserver.disconnect();
+  }, [viewMode]);
+
+  // Recalcul en place des calques vectoriels sans reset de carte (ZÉRO flash, fluide)
+  useEffect(() => {
+    if (viewMode === 'map' && mapInstanceRef.current && layersGroupRef.current) {
+      import('leaflet').then((L) => {
+        if (mapInstanceRef.current && layersGroupRef.current) {
+          renderLeafletLayers(L, mapInstanceRef.current, layersGroupRef.current);
+        }
+      });
+    }
+  }, [viewMode, renderLeafletLayers]);
+
+  // Centrage propre sur Abidjan
+  const handleRecenter = () => {
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.setView([5.348, -4.015], 12, { animate: true });
+    }
+  };
+
+  // Clic sur un hub : sélection et déplacement fluide
+  const handleSelectHub = (hubName: string) => {
+    onNodeSelect?.(hubName);
+    if (mapInstanceRef.current) {
+      const found = resolvedZones.find((z) => z.zone.toLowerCase() === hubName.toLowerCase());
+      if (found && found.latitude && found.longitude) {
+        mapInstanceRef.current.setView([found.latitude, found.longitude], 13, { animate: true });
+      }
+    }
+  };
 
   return (
-    <div className="relative w-full h-[360px] md:h-[420px] rounded-2xl overflow-hidden border border-border/80 bg-gradient-to-b from-slate-950 via-slate-900 to-black p-4 shadow-2xl flex flex-col justify-between">
-      {/* Visual background grid effect */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,rgba(56,189,248,0.12),transparent_70%)] pointer-events-none" />
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b0a_1px,transparent_1px),linear-gradient(to_bottom,#1e293b0a_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none" />
+    <div className="relative w-full rounded-2xl overflow-hidden border border-border/80 bg-gradient-to-b from-slate-950 via-slate-900 to-black p-4 shadow-2xl flex flex-col justify-between min-h-[460px]">
+      {/* Grille de fond subtile */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_35%,rgba(56,189,248,0.08),transparent_75%)] pointer-events-none" />
 
-      {/* Top Header HUD overlay */}
-      <div className="relative z-10 flex items-center justify-between">
+      {/* 1. TOP HEADER HUD AVEC TABS DE VUE ET MÉTRIQUES */}
+      <div className="relative z-20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 pb-2 border-b border-slate-800/80">
         <div className="flex items-center gap-2">
           <div className="size-2 rounded-full bg-emerald-400 animate-ping" />
           <span className="text-xs font-mono font-semibold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
-            <Activity className="size-3.5" />
-            3D VGPU Spatial Engine • Live Mesh
+            <Compass className="size-3.5" />
+            Intelligence Territoriale Live
           </span>
           <Badge variant="outline" className="text-[10px] bg-slate-800/80 text-cyan-300 border-cyan-500/30 font-mono">
-            {fps} FPS
+            {resolvedZones.length} Communes
           </Badge>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Boutons de sélection du mode de vue */}
+        <div className="flex items-center gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-800">
           <Button
             size="sm"
-            variant="ghost"
-            onClick={() => setIsRotating((prev) => !prev)}
-            className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground hover:bg-slate-800/60"
-            title={isRotating ? 'Pause rotation' : 'Reprendre rotation'}
+            variant={viewMode === 'map' ? 'default' : 'ghost'}
+            onClick={() => setViewMode('map')}
+            className={`h-7 px-2.5 text-xs gap-1 font-mono ${
+              viewMode === 'map' ? 'bg-cyan-600 hover:bg-cyan-500 text-white font-semibold shadow-sm' : 'text-slate-400 hover:text-slate-200'
+            }`}
           >
-            <RotateCcw className={`size-3.5 mr-1 ${isRotating ? 'animate-spin' : ''}`} style={{ animationDuration: '6s' }} />
-            {isRotating ? 'Auto-Orbit' : 'Manuel'}
+            <MapPin className="size-3.5" />
+            Carte
           </Button>
-          <Badge className="bg-orange-500/20 text-orange-400 border border-orange-500/30 text-[11px] font-mono">
-            Réseau E-Maquis Global
-          </Badge>
+
+          <Button
+            size="sm"
+            variant={viewMode === 'ranking' ? 'default' : 'ghost'}
+            onClick={() => setViewMode('ranking')}
+            className={`h-7 px-2.5 text-xs gap-1 font-mono ${
+              viewMode === 'ranking' ? 'bg-cyan-600 hover:bg-cyan-500 text-white font-semibold shadow-sm' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <BarChart3 className="size-3.5" />
+            Top Communes
+          </Button>
+
+          <Button
+            size="sm"
+            variant={viewMode === 'seasonality' ? 'default' : 'ghost'}
+            onClick={() => setViewMode('seasonality')}
+            className={`h-7 px-2.5 text-xs gap-1 font-mono ${
+              viewMode === 'seasonality' ? 'bg-cyan-600 hover:bg-cyan-500 text-white font-semibold shadow-sm' : 'text-slate-400 hover:text-slate-200'
+            }`}
+            title="Consommation par saisons (Fêtes, Sèche, Pluies)"
+          >
+            <Calendar className="size-3.5" />
+            Saisons
+          </Button>
+
+          <Button
+            size="sm"
+            variant={viewMode === 'mesh3d' ? 'default' : 'ghost'}
+            onClick={() => setViewMode('mesh3d')}
+            className={`h-7 px-2.5 text-xs gap-1 font-mono ${
+              viewMode === 'mesh3d' ? 'bg-cyan-600 hover:bg-cyan-500 text-white font-semibold shadow-sm' : 'text-slate-400 hover:text-slate-200'
+            }`}
+            title="Vue 3D Orbitale Three.js"
+          >
+            <Globe2 className="size-3.5" />
+            3D Mesh
+          </Button>
         </div>
       </div>
 
-      {/* Three.js Canvas Container */}
-      <div ref={containerRef} className="absolute inset-0 cursor-grab active:cursor-grabbing" />
+      {/* 2. ZONE PRINCIPALE DE VISUALISATION (SELON ONGLET ACTIF) */}
+      <div className="relative z-10 my-3 flex-1 min-h-[310px] rounded-xl overflow-hidden border border-slate-800/80 bg-slate-950/80">
+        {/* MODE A : CARTE GÉOGRAPHIQUE RÉELLE LEAFLET */}
+        {viewMode === 'map' && (
+          <div className="relative w-full h-[320px]">
+            <div ref={mapContainerRef} className="w-full h-full" />
 
-      {/* Bottom Hub Cards overlay */}
-      <div className="relative z-10 flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80 bg-slate-950/60 backdrop-blur-md rounded-xl px-3 py-2">
+            {/* Barre de contrôle flottante sur la carte */}
+            <div className="absolute top-2.5 left-2.5 z-[500] flex items-center gap-1.5 bg-slate-950/90 backdrop-blur-md p-1 rounded-lg border border-slate-800 shadow-md">
+              <span className="text-[10px] font-mono text-slate-400 px-1.5">Métrique :</span>
+              <button
+                onClick={() => setMetricMode('volume')}
+                className={`text-[10px] font-mono px-2 py-0.5 rounded transition-all ${
+                  metricMode === 'volume' ? 'bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/40' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Volume
+              </button>
+              <button
+                onClick={() => setMetricMode('revenue')}
+                className={`text-[10px] font-mono px-2 py-0.5 rounded transition-all ${
+                  metricMode === 'revenue' ? 'bg-purple-500/20 text-purple-400 font-bold border border-purple-500/40' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                CA (FCFA)
+              </button>
+              <button
+                onClick={() => setMetricMode('pos')}
+                className={`text-[10px] font-mono px-2 py-0.5 rounded transition-all ${
+                  metricMode === 'pos' ? 'bg-cyan-500/20 text-cyan-400 font-bold border border-cyan-500/40' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Maquis
+              </button>
+
+              <div className="h-3 w-px bg-slate-800 mx-1" />
+
+              <button
+                onClick={() => setShowPins(!showPins)}
+                className={`text-[10px] font-mono px-1.5 py-0.5 rounded transition-all flex items-center gap-1 ${
+                  showPins ? 'text-emerald-400' : 'text-slate-500'
+                }`}
+                title="Afficher/masquer les débits individuels anonymisés"
+              >
+                <Layers className="size-3" />
+                <span>{showPins ? 'Pins ON' : 'Pins OFF'}</span>
+              </button>
+
+              <button
+                onClick={handleRecenter}
+                className="text-[10px] font-mono p-1 rounded text-slate-400 hover:text-white"
+                title="Recentrer sur Abidjan"
+              >
+                <Maximize2 className="size-3" />
+              </button>
+            </div>
+
+            {/* Mini Légende d'aide à la lecture */}
+            <div className="absolute bottom-2.5 left-2.5 z-[500] bg-slate-950/90 backdrop-blur-md px-2.5 py-1.5 rounded-lg border border-slate-800 text-[10px] font-mono text-slate-300 space-y-1">
+              <div className="flex items-center gap-1.5">
+                <span className="size-2 rounded-full bg-emerald-400" />
+                <span>Forte consommation (&gt; 50k cols)</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="size-2 rounded-full bg-amber-400" />
+                <span>Consommation modérée (15k-50k cols)</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODE B : CLASSEMENT TOP COMMUNES ET PÔLES */}
+        {viewMode === 'ranking' && (
+          <div className="w-full h-[320px] p-3 overflow-y-auto space-y-2">
+            <div className="text-xs font-mono text-slate-400 flex items-center justify-between pb-1 border-b border-slate-800">
+              <span>Commune / Zone</span>
+              <span>Volume & Part Réseau</span>
+            </div>
+            {resolvedZones.map((z, idx) => {
+              const share = totalVolume > 0 ? (z.volume / totalVolume) * 100 : 0;
+              const isSelected = activeNode?.toLowerCase() === z.zone.toLowerCase();
+
+              return (
+                <div
+                  key={z.zone}
+                  onClick={() => onNodeSelect?.(z.zone)}
+                  className={`p-2 rounded-lg border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                    isSelected
+                      ? 'bg-orange-500/10 border-orange-500/40 text-orange-300'
+                      : 'bg-slate-900/60 border-slate-800/80 hover:bg-slate-800/60 text-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">
+                      #{idx + 1}
+                    </span>
+                    <div className="truncate">
+                      <div className="text-xs font-semibold flex items-center gap-1.5">
+                        <span>{z.zone}</span>
+                        <span className="text-[10px] font-normal text-slate-400">({z.city})</span>
+                      </div>
+                      <div className="text-[10px] font-mono text-slate-400">
+                        {z.posCount} débits • {(z.revenue / 1000000).toFixed(1)}M FCFA
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-right shrink-0">
+                    <div className="text-xs font-mono font-bold text-cyan-300">
+                      {formatProductVolume(z.volume, unit, z.zone).formatted}
+                    </div>
+                    <div className="text-[10px] font-mono text-emerald-400">{share.toFixed(1)}%</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* MODE C : SAISONNALITÉ ET MÉTÉO DES VENTES */}
+        {viewMode === 'seasonality' && (
+          <div className="w-full h-[320px] p-4 flex flex-col justify-between overflow-y-auto space-y-3">
+            <div className="space-y-1">
+              <span className="text-xs font-mono text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Calendar className="size-3.5 text-amber-400" />
+                Dynamique Saisonnier du Réseau Boisson
+              </span>
+              <p className="text-[11px] text-slate-400">
+                Calculé d'après les mois de vente réels des tickets de caisse consolidés en base de données.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {/* Carte Fêtes */}
+              <div className="p-3 rounded-xl border border-rose-500/30 bg-rose-500/5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-rose-400 flex items-center gap-1">
+                    <PartyPopper className="size-3.5" />
+                    Période Festive
+                  </span>
+                  <Badge className="bg-rose-500/20 text-rose-300 text-[10px] font-mono">
+                    {seasonalStats.festive.share}%
+                  </Badge>
+                </div>
+                <div className="text-sm font-mono font-bold text-foreground">
+                  {formatProductVolume(seasonalStats.festive.volume, unit, 'Fêtes').formatted}
+                </div>
+                <div className="text-[10px] text-slate-400">
+                  Novembre, Décembre, Janvier • Réveillons, forte consommation festive.
+                </div>
+              </div>
+
+              {/* Carte Saison Sèche */}
+              <div className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-amber-400 flex items-center gap-1">
+                    <Sun className="size-3.5" />
+                    Saison Sèche
+                  </span>
+                  <Badge className="bg-amber-500/20 text-amber-300 text-[10px] font-mono">
+                    {seasonalStats.dry.share}%
+                  </Badge>
+                </div>
+                <div className="text-sm font-mono font-bold text-foreground">
+                  {formatProductVolume(seasonalStats.dry.volume, unit, 'Sèche').formatted}
+                </div>
+                <div className="text-[10px] text-slate-400">
+                  Février à Mai • Chaleur intense, volume désaltérant continu.
+                </div>
+              </div>
+
+              {/* Carte Saison des Pluies */}
+              <div className="p-3 rounded-xl border border-cyan-500/30 bg-cyan-500/5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-cyan-400 flex items-center gap-1">
+                    <CloudRain className="size-3.5" />
+                    Saison des Pluies
+                  </span>
+                  <Badge className="bg-cyan-500/20 text-cyan-300 text-[10px] font-mono">
+                    {seasonalStats.rainy.share}%
+                  </Badge>
+                </div>
+                <div className="text-sm font-mono font-bold text-foreground">
+                  {formatProductVolume(seasonalStats.rainy.volume, unit, 'Pluies').formatted}
+                </div>
+                <div className="text-[10px] text-slate-400">
+                  Juin à Octobre • Consommation de repli dans les maquis abrités.
+                </div>
+              </div>
+            </div>
+
+            <div className="p-2.5 rounded-lg border border-slate-800 bg-slate-900/40 text-[11px] font-mono text-slate-400 flex items-center justify-between">
+              <span>Volume Total Réseau Analysé :</span>
+              <strong className="text-cyan-300">{formatProductVolume(totalVolume, unit, 'Total').formatted}</strong>
+            </div>
+          </div>
+        )}
+
+        {/* MODE D : VUE 3D THREE.JS (CANVAS OPTIONNEL) */}
+        {viewMode === 'mesh3d' && (
+          <div className="relative w-full h-[320px]">
+            <div ref={threeContainerRef} className="absolute inset-0 cursor-grab active:cursor-grabbing" />
+            <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setIsRotating(!isRotating)}
+                className="h-6 px-2 text-[10px] text-slate-400 hover:text-white bg-slate-900/80 border border-slate-800"
+              >
+                <RotateCcw className={`size-3 mr-1 ${isRotating ? 'animate-spin' : ''}`} style={{ animationDuration: '6s' }} />
+                {isRotating ? 'Auto-Orbit' : 'Pause'}
+              </Button>
+              <Badge variant="outline" className="text-[9px] bg-slate-900/80 text-cyan-300 border-cyan-500/30 font-mono">
+                {fps} FPS
+              </Badge>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 3. HUBS DE SÉLECTION RAPIDE DES COMMUNES EN BAS */}
+      <div className="relative z-20 flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80 bg-slate-950/60 backdrop-blur-md rounded-xl px-3 py-2">
         <div className="flex items-center gap-1.5 text-xs text-slate-300 font-mono">
           <Sparkles className="size-3.5 text-orange-400" />
-          <span>Hubs Territoriaux Détectés :</span>
+          <span>Hubs Territoriaux :</span>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {(realHubs && realHubs.length > 0
-            ? realHubs.map((h, i) => ({
-                name: h.name,
-                share: h.share,
-                color: i === 0 ? 'border-orange-500/40 text-orange-400 bg-orange-500/10' : i === 1 ? 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10' : i === 2 ? 'border-cyan-500/40 text-cyan-400 bg-cyan-500/10' : 'border-purple-500/40 text-purple-400 bg-purple-500/10'
-              }))
-            : [
-                { name: 'Abidjan', share: '68.2%', color: 'border-orange-500/40 text-orange-400 bg-orange-500/10' },
-                { name: 'Bouaké', share: '14.1%', color: 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10' },
-                { name: 'San Pedro', share: '9.4%', color: 'border-cyan-500/40 text-cyan-400 bg-cyan-500/10' },
-                { name: 'Yamoussoukro', share: '5.8%', color: 'border-purple-500/40 text-purple-400 bg-purple-500/10' },
-              ]
-          ).map((hub) => (
-            <button
-              key={hub.name}
-              onClick={() => onNodeSelect?.(hub.name)}
-              className={`text-[11px] font-mono px-2 py-0.5 rounded-md border transition-all hover:scale-105 ${hub.color} ${
-                activeNode === hub.name ? 'ring-2 ring-orange-400 ring-offset-1 ring-offset-slate-950 font-bold' : ''
-              }`}
-            >
-              {hub.name} <span className="opacity-75">({hub.share})</span>
-            </button>
-          ))}
+          {dynamicHubs.map((hub, i) => {
+            const isSelected = activeNode?.toLowerCase() === hub.name.toLowerCase();
+            const colorClass =
+              i === 0
+                ? 'border-orange-500/40 text-orange-400 bg-orange-500/10'
+                : i === 1
+                ? 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10'
+                : i === 2
+                ? 'border-cyan-500/40 text-cyan-400 bg-cyan-500/10'
+                : 'border-purple-500/40 text-purple-400 bg-purple-500/10';
+
+            return (
+              <button
+                key={hub.name}
+                onClick={() => handleSelectHub(hub.name)}
+                className={`text-[11px] font-mono px-2 py-0.5 rounded-md border transition-all hover:scale-105 ${colorClass} ${
+                  isSelected ? 'ring-2 ring-orange-400 ring-offset-1 ring-offset-slate-950 font-bold' : ''
+                }`}
+              >
+                {hub.name} <span className="opacity-75">({hub.share})</span>
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

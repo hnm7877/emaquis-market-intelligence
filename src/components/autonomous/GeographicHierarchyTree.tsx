@@ -29,6 +29,7 @@ import {
 } from 'recharts';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { anonymizeEstablishmentName } from '@/utils/anonymize';
 
 export interface GeoNode {
   id: string;
@@ -139,7 +140,7 @@ export function buildRealHierarchyTree(geoData: any): GeoNode {
 
           return {
             id: est.id || `est-${Math.random()}`,
-            name: est.name || 'Établissement E-Maquis',
+            name: anonymizeEstablishmentName(est.name, est.id),
             level: 'establishment' as const,
             volume: estVol,
             share: estShare,

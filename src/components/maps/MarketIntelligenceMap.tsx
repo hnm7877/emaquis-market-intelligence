@@ -23,6 +23,7 @@ import {
 import { useMarketFilterStore } from '@/stores/useMarketFilterStore';
 import { resolveZoneCoordinates } from '@/constants/coordinates';
 import { formatGrowth, isAvailable } from '@/utils/metrics';
+import { anonymizeEstablishmentName } from '@/utils/anonymize';
 import 'leaflet/dist/leaflet.css';
 
 interface MarketIntelligenceMapProps {
@@ -249,7 +250,7 @@ export const MarketIntelligenceMap: React.FC<MarketIntelligenceMapProps> = ({
         estMarker.bindTooltip(
           `
           <div style="background: rgba(15, 23, 42, 0.95); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.18); color: #fff; font-family: system-ui, sans-serif; box-shadow: 0 8px 24px rgba(0,0,0,0.5);">
-            <div style="font-weight: 700; font-size: 12px; color: #f8fafc;">🏪 ${est.name}</div>
+            <div style="font-weight: 700; font-size: 12px; color: #f8fafc;">🏪 ${anonymizeEstablishmentName(est.name, est.id)}</div>
             <div style="font-size: 10px; color: #94a3b8;">${est.zone} · ${est.city}</div>
             <div style="font-size: 10px; color: #10b981; font-weight: 600; margin-top: 3px;">
               ${est.volume.toLocaleString('fr-FR')} unités · ${(est.revenue / 1000).toFixed(0)}k FCFA
@@ -642,7 +643,7 @@ export const MarketIntelligenceMap: React.FC<MarketIntelligenceMapProps> = ({
               <div>
                 <h4 className="font-bold text-sm text-foreground flex items-center gap-1.5">
                   <span>🏪</span>
-                  <span>{selectedEst.name}</span>
+                  <span>{anonymizeEstablishmentName(selectedEst.name, selectedEst.id)}</span>
                 </h4>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {selectedEst.zone} · {selectedEst.city}
