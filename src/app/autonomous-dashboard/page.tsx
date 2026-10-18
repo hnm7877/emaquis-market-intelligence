@@ -86,44 +86,60 @@ export default function AutonomousDashboardPage() {
     : filters.country || 'all';
 
   // 1. Vrais produits de la base de données MongoDB (397 références)
-  const { data: productsData, isLoading: isProductsLoading, refetch: refetchProducts } = useProductsQuery();
+  const { data: productsData, isLoading: isProductsLoading, isFetching: isProductsFetching, refetch: refetchProducts } = useProductsQuery();
   const dbProducts = useMemo(() => productsData?.products || [], [productsData]);
 
   // 2. Vraies zones et vrais établissements de la base de données
-  const { data: geoData, isLoading: isGeoLoading, refetch: refetchGeo } = useGeographyQuery();
+  const { data: geoData, isLoading: isGeoLoading, isFetching: isGeoFetching, refetch: refetchGeo } = useGeographyQuery();
 
   // 3. Vraies métriques d'ensemble consolidées (58 082 ventes)
-  const { data: overviewData, refetch: refetchOverview } = useMarketOverview();
+  const { data: overviewData, isFetching: isOverviewFetching, refetch: refetchOverview } = useMarketOverview();
 
   // 4. Vraies marques, catégories et couverture réseau
-  const { data: brandsData, refetch: refetchBrands } = useBrandsQuery();
-  const { data: categoriesData, refetch: refetchCategories } = useCategoriesQuery();
-  const { data: dataCoverage, refetch: refetchCoverage } = useDataCoverageQuery();
+  const { data: brandsData, isFetching: isBrandsFetching, refetch: refetchBrands } = useBrandsQuery();
+  const { data: categoriesData, isFetching: isCategoriesFetching, refetch: refetchCategories } = useCategoriesQuery();
+  const { data: dataCoverage, isFetching: isCoverageFetching, refetch: refetchCoverage } = useDataCoverageQuery();
 
-  // Boucle d'actualisation 100% autonome en tâche de fond (0 intervention humaine requise)
+  // Boucle d'actualisation 100% autonome en tâche de fond (avec garde-fou anti-avalanche)
   useEffect(() => {
     const timer = setInterval(() => {
       setAutoSyncCountdown((prev) => {
         if (prev <= 1) {
-          refetchProducts();
-          refetchGeo();
-          refetchOverview();
-          refetchBrands();
-          refetchCategories();
-          refetchCoverage();
-          setAutoUpdatesCount((c) => c + 1);
-          const now = new Date();
-          setLastSyncTime(
-            `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`
-          );
-          return 8;
+          const isBusy = isProductsFetching || isGeoFetching || isOverviewFetching || isBrandsFetching || isCategoriesFetching || isCoverageFetching;
+          if (!isBusy) {
+            refetchProducts();
+            refetchGeo();
+            refetchOverview();
+            refetchBrands();
+            refetchCategories();
+            refetchCoverage();
+            setAutoUpdatesCount((c) => c + 1);
+            const now = new Date();
+            setLastSyncTime(
+              `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`
+            );
+          }
+          return 25; // 25s par cycle pour éviter la congestion
         }
         return prev - 1;
       });
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [refetchProducts, refetchGeo, refetchOverview, refetchBrands, refetchCategories, refetchCoverage]);
+  }, [
+    isProductsFetching,
+    isGeoFetching,
+    isOverviewFetching,
+    isBrandsFetching,
+    isCategoriesFetching,
+    isCoverageFetching,
+    refetchProducts,
+    refetchGeo,
+    refetchOverview,
+    refetchBrands,
+    refetchCategories,
+    refetchCoverage,
+  ]);
 
   // Calcul du volume réel total depuis les zones de la base
   const totalRealVolume = useMemo(() => {
