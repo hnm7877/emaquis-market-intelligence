@@ -39,6 +39,7 @@ import {
   Cell,
   CartesianGrid,
   Legend,
+  LabelList,
 } from 'recharts';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -168,32 +169,49 @@ export const MultiCountryNetworkMap: React.FC<{
   onOpenGlossary?: () => void;
   overviewData?: any;
   geoData?: any;
-  selectedCountry?: string;
-  onSelectCountry?: (countryCode: string) => void;
+  selectedCountry?: string | string[];
+  onSelectCountry?: (countryCode: string | string[]) => void;
 }> = ({ unit = 'cols', onOpenGlossary, overviewData, geoData, selectedCountry: externalCountry, onSelectCountry }) => {
   // Multi-sélection des pays à comparer (par défaut tous les pays réels actifs : CI, BF, RDC)
   const [selectedCountryIds, setSelectedCountryIds] = useState<string[]>(['ci', 'bf', 'rdc']);
   const [focusedCountryId, setFocusedCountryId] = useState<string>('ci');
   const [detailsTab, setDetailsTab] = useState<'matrix' | 'cities'>('matrix');
   const [activeViewMode, setActiveViewMode] = useState<'bars' | 'sales' | 'revenue' | 'pos' | 'growth'>('bars');
+  const [scaleMode, setScaleMode] = useState<'adaptive' | 'linear'>('adaptive');
   const [showOnboardingList, setShowOnboardingList] = useState<boolean>(false);
 
-  // Synchronisation avec le filtre pays global
+  // Synchronisation avec le filtre pays global (supportant string ou tableau string[])
   useEffect(() => {
     if (externalCountry) {
-      const code = String(externalCountry).toLowerCase();
-      if (code === 'all' || code.includes('tous')) {
-        setSelectedCountryIds(['ci', 'bf', 'rdc']);
-        setFocusedCountryId('ci');
-      } else if (code.includes('ivoire') || code === 'ci' || code === 'cote_d_ivoire') {
-        setSelectedCountryIds(['ci']);
-        setFocusedCountryId('ci');
-      } else if (code.includes('burkina') || code === 'bf' || code === 'burkina_faso') {
-        setSelectedCountryIds(['bf']);
-        setFocusedCountryId('bf');
-      } else if (code.includes('congo') || code === 'rdc' || code === 'cd') {
-        setSelectedCountryIds(['rdc']);
-        setFocusedCountryId('rdc');
+      if (Array.isArray(externalCountry)) {
+        const mapped = externalCountry
+          .map((c) => {
+            const l = String(c).toLowerCase();
+            if (l.includes('ivoire') || l === 'ci') return 'ci';
+            if (l.includes('burkina') || l === 'bf') return 'bf';
+            if (l.includes('congo') || l === 'rdc' || l === 'cd') return 'rdc';
+            return null;
+          })
+          .filter(Boolean) as string[];
+        if (mapped.length > 0) {
+          setSelectedCountryIds(mapped);
+          setFocusedCountryId(mapped[0]);
+        }
+      } else {
+        const code = String(externalCountry).toLowerCase();
+        if (code === 'all' || code.includes('tous')) {
+          setSelectedCountryIds(['ci', 'bf', 'rdc']);
+          setFocusedCountryId('ci');
+        } else if (code.includes('ivoire') || code === 'ci' || code === 'cote_d_ivoire') {
+          setSelectedCountryIds(['ci']);
+          setFocusedCountryId('ci');
+        } else if (code.includes('burkina') || code === 'bf' || code === 'burkina_faso') {
+          setSelectedCountryIds(['bf']);
+          setFocusedCountryId('bf');
+        } else if (code.includes('congo') || code === 'rdc' || code === 'cd') {
+          setSelectedCountryIds(['rdc']);
+          setFocusedCountryId('rdc');
+        }
       }
     }
   }, [externalCountry]);
@@ -260,22 +278,21 @@ export const MultiCountryNetworkMap: React.FC<{
       return;
     }
 
-    setSelectedCountryIds((prev) => {
-      const isAlreadySelected = prev.includes(countryId);
-      if (isAlreadySelected) {
-        // Empêcher de tout vider : garder au moins 1 pays
-        if (prev.length <= 1) return prev;
-        const next = prev.filter((id) => id !== countryId);
-        if (focusedCountryId === countryId) {
-          setFocusedCountryId(next[0]);
-        }
-        return next;
-      } else {
-        const next = [...prev, countryId];
-        setFocusedCountryId(countryId);
-        return next;
+    const isAlreadySelected = selectedCountryIds.includes(countryId);
+    let nextIds: string[];
+
+    if (isAlreadySelected) {
+      if (selectedCountryIds.length <= 1) return; // Garder au moins 1 pays
+      nextIds = selectedCountryIds.filter((id) => id !== countryId);
+      if (focusedCountryId === countryId) {
+        setFocusedCountryId(nextIds[0]);
       }
-    });
+    } else {
+      nextIds = [...selectedCountryIds, countryId];
+      setFocusedCountryId(countryId);
+    }
+
+    setSelectedCountryIds(nextIds);
 
     if (onSelectCountry) {
       const map: Record<string, string> = {
@@ -283,7 +300,13 @@ export const MultiCountryNetworkMap: React.FC<{
         bf: 'burkina_faso',
         rdc: 'rdc',
       };
-      onSelectCountry(map[countryId] || countryId);
+      if (nextIds.length === dynamicCountries.length) {
+        onSelectCountry('all');
+      } else if (nextIds.length === 1) {
+        onSelectCountry(map[nextIds[0]] || nextIds[0]);
+      } else {
+        onSelectCountry(nextIds.map((id) => map[id] || id));
+      }
     }
   };
 
@@ -292,10 +315,12 @@ export const MultiCountryNetworkMap: React.FC<{
     setSelectedCountryIds(ids);
     setFocusedCountryId(ids[0]);
     if (onSelectCountry) {
+      const map: Record<string, string> = { ci: 'cote_d_ivoire', bf: 'burkina_faso', rdc: 'rdc' };
       if (ids.length === dynamicCountries.length) onSelectCountry('all');
       else if (ids.length === 1) {
-        const map: Record<string, string> = { ci: 'cote_d_ivoire', bf: 'burkina_faso', rdc: 'rdc' };
         onSelectCountry(map[ids[0]] || ids[0]);
+      } else {
+        onSelectCountry(ids.map((id) => map[id] || id));
       }
     }
   };
@@ -303,13 +328,44 @@ export const MultiCountryNetworkMap: React.FC<{
   // Données filtrées pour Recharts BarChart & AreaChart
   const comparisonData = useMemo(() => {
     const list = comparedCountries.length > 0 ? comparedCountries : dynamicCountries;
+    
+    // Calcul des maxima pour la normalisation logarithmique adaptative
+    const maxVol = Math.max(...list.map((c) => c.volumeCols), 1);
+    const maxSales = Math.max(...list.map((c) => c.totalSalesCount), 1);
+    const maxRev = Math.max(...list.map((c) => c.revenueFcfa), 1);
+
     return list.map((c) => {
       const vol = formatProductVolume(c.volumeCols, unit, c.name);
+
+      // Calcul des hauteurs visuelles adaptatives (logarithmique douce normalisée sur 100)
+      // Garantit une visibilité claire de tous les pays même avec 300k vs 400 (ex: ~55% pour BF, ~52% pour RDC, 100% pour CI)
+      const volLog = Math.log10(Math.max(1, c.volumeCols));
+      const maxVolLog = Math.log10(Math.max(10, maxVol));
+      const adaptiveVolume = Math.round(20 + (volLog / maxVolLog) * 80);
+
+      const salesLog = Math.log10(Math.max(1, c.totalSalesCount));
+      const maxSalesLog = Math.log10(Math.max(10, maxSales));
+      const adaptiveSales = Math.round(20 + (salesLog / maxSalesLog) * 80);
+
+      const revLog = Math.log10(Math.max(1, c.revenueFcfa));
+      const maxRevLog = Math.log10(Math.max(10, maxRev));
+      const adaptiveRevenue = Math.round(20 + (revLog / maxRevLog) * 80);
+
+      // Labels directs toujours réels au format texte pour LabelList
+      const volumeLabel = `${vol.formatted}`;
+      const salesLabel = `${c.totalSalesCount.toLocaleString('fr-FR')} v.`;
+      const revLabel = c.revenueFcfa >= 1000000 
+        ? `${(c.revenueFcfa / 1000000).toFixed(1)}M F` 
+        : `${Math.round(c.revenueFcfa / 1000)}k F`;
+      const posLabel = `${c.posCount} POS`;
+      const growthLabel = `+${c.growth}%`;
+
       return {
         id: c.id,
         name: c.name,
         code: c.code,
         flag: c.flag,
+        // Valeurs réelles exactes
         volumeNumber: vol.rawNumber,
         volumeFormatted: vol.formatted,
         salesCount: c.totalSalesCount,
@@ -320,6 +376,16 @@ export const MultiCountryNetworkMap: React.FC<{
         growth: c.growth,
         topBrewery: c.topBrewery,
         topBrand: c.topBrand,
+        // Valeurs adaptatives pour la visibilité des barres
+        adaptiveVolume,
+        adaptiveSales,
+        adaptiveRevenue,
+        // Labels directs pour affichage au-dessus des barres
+        volumeLabel,
+        salesLabel,
+        revLabel,
+        posLabel,
+        growthLabel,
       };
     });
   }, [comparedCountries, dynamicCountries, unit]);
@@ -574,70 +640,128 @@ export const MultiCountryNetworkMap: React.FC<{
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 pt-1">
         {/* Colonne Gauche : Graphique Recharts dynamique multi-pays */}
         <div className="lg:col-span-6 rounded-2xl border border-slate-800 bg-slate-900/40 p-4 space-y-3 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-xs font-mono text-slate-300 flex-wrap gap-2">
-            <span className="flex items-center gap-1.5 font-bold">
-              <BarChart3 className="size-4 text-cyan-400" />
-              {activeViewMode === 'bars'
-                ? `Volume Comparé (${unit.toUpperCase()})`
-                : activeViewMode === 'sales'
-                ? 'Nombre de Ventes (Tickets)'
-                : activeViewMode === 'revenue'
-                ? 'Chiffre d\'Affaires (M FCFA)'
-                : activeViewMode === 'pos'
-                ? 'Débits Réseau (POS Actifs)'
-                : 'Taux de Croissance Annuelle (%)'}
-            </span>
-            <div className="flex items-center gap-1 bg-slate-950 p-0.5 rounded-lg border border-slate-800 flex-wrap">
-              <button
-                onClick={() => setActiveViewMode('bars')}
-                className={`px-2 py-0.5 rounded text-[10px] font-mono transition-colors ${
-                  activeViewMode === 'bars' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                Volume
-              </button>
-              <button
-                onClick={() => setActiveViewMode('sales')}
-                className={`px-2 py-0.5 rounded text-[10px] font-mono transition-colors ${
-                  activeViewMode === 'sales' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                Ventes
-              </button>
-              <button
-                onClick={() => setActiveViewMode('revenue')}
-                className={`px-2 py-0.5 rounded text-[10px] font-mono transition-colors ${
-                  activeViewMode === 'revenue' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                CA (M)
-              </button>
-              <button
-                onClick={() => setActiveViewMode('pos')}
-                className={`px-2 py-0.5 rounded text-[10px] font-mono transition-colors ${
-                  activeViewMode === 'pos' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                POS
-              </button>
-              <button
-                onClick={() => setActiveViewMode('growth')}
-                className={`px-2 py-0.5 rounded text-[10px] font-mono transition-colors ${
-                  activeViewMode === 'growth' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                Croissance %
-              </button>
+          <div className="flex flex-col gap-2 pb-1 border-b border-slate-800/80">
+            <div className="flex items-center justify-between text-xs font-mono text-slate-300 flex-wrap gap-2">
+              <span className="flex items-center gap-1.5 font-bold">
+                <BarChart3 className="size-4 text-cyan-400" />
+                {activeViewMode === 'bars'
+                  ? `Volume Comparé (${unit.toUpperCase()})`
+                  : activeViewMode === 'sales'
+                  ? 'Nombre de Ventes (Tickets)'
+                  : activeViewMode === 'revenue'
+                  ? 'Chiffre d\'Affaires (M FCFA)'
+                  : activeViewMode === 'pos'
+                  ? 'Débits Réseau (POS Actifs)'
+                  : 'Taux de Croissance Annuelle (%)'}
+              </span>
+
+              {/* COMMUTATEUR D'ÉCHELLE (ADAPTATIVE LOG vs LINÉAIRE 1:1) */}
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setScaleMode((m) => (m === 'adaptive' ? 'linear' : 'adaptive'))}
+                  className={`px-2 py-0.5 rounded text-[10px] font-mono border transition-all flex items-center gap-1 font-bold ${
+                    scaleMode === 'adaptive'
+                      ? 'bg-gradient-to-r from-emerald-500/20 to-cyan-500/20 border-cyan-400 text-cyan-300 shadow-sm'
+                      : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'
+                  }`}
+                  title="L'échelle adaptative amplifie la visibilité des marchés émergents (BF et RDC) sans être écrasés par les volumes de Côte d'Ivoire"
+                >
+                  <Sparkles className="size-3 text-cyan-400" />
+                  <span>{scaleMode === 'adaptive' ? 'Échelle Adaptative (Log)' : 'Échelle Linéaire (1:1)'}</span>
+                </button>
+              </div>
+
+              {/* SÉLECTEUR DE MÉTRIQUES */}
+              <div className="flex items-center gap-1 bg-slate-950 p-0.5 rounded-lg border border-slate-800 flex-wrap">
+                <button
+                  onClick={() => setActiveViewMode('bars')}
+                  className={`px-2 py-0.5 rounded text-[10px] font-mono transition-colors ${
+                    activeViewMode === 'bars' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Volume
+                </button>
+                <button
+                  onClick={() => setActiveViewMode('sales')}
+                  className={`px-2 py-0.5 rounded text-[10px] font-mono transition-colors ${
+                    activeViewMode === 'sales' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Ventes
+                </button>
+                <button
+                  onClick={() => setActiveViewMode('revenue')}
+                  className={`px-2 py-0.5 rounded text-[10px] font-mono transition-colors ${
+                    activeViewMode === 'revenue' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  CA (M)
+                </button>
+                <button
+                  onClick={() => setActiveViewMode('pos')}
+                  className={`px-2 py-0.5 rounded text-[10px] font-mono transition-colors ${
+                    activeViewMode === 'pos' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  POS
+                </button>
+                <button
+                  onClick={() => setActiveViewMode('growth')}
+                  className={`px-2 py-0.5 rounded text-[10px] font-mono transition-colors ${
+                    activeViewMode === 'growth' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Croissance %
+                </button>
+              </div>
+            </div>
+
+            {/* BANDEAU INFORMATIF D'ÉCHELLE & RACCOURCI DE ZOOM DIRECT */}
+            <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-slate-950/80 border border-slate-800 text-[11px] font-mono">
+              <div className="flex items-center gap-1.5 text-slate-300">
+                <span className="size-2 rounded-full bg-emerald-400 animate-ping" />
+                <span className="text-[10px] text-slate-300">
+                  {scaleMode === 'adaptive'
+                    ? "Visibilité optimisée : Barres 🇧🇫 Burkina Faso et 🇨🇩 RDC amplifiées pour analyse comparative directe."
+                    : "Échelle 1:1 active (hauteur min 34px garantie pour repérer tous les pays)."}
+                </span>
+              </div>
+              {comparedCountries.some((c) => c.id === 'ci') && comparedCountries.some((c) => c.id === 'bf' || c.id === 'rdc') && (
+                <button
+                  onClick={() => setPresetComparison(['bf', 'rdc'])}
+                  className="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 underline shrink-0 flex items-center gap-1"
+                >
+                  <span>Zoomer : 🇧🇫 BF vs 🇨🇩 RDC</span>
+                  <ArrowUpRight className="size-3" />
+                </button>
+              )}
             </div>
           </div>
 
           <div className="h-[270px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               {activeViewMode === 'bars' ? (
-                <BarChart data={comparisonData} margin={{ top: 10, right: 10, left: -5, bottom: 20 }}>
+                <BarChart data={comparisonData} margin={{ top: 25, right: 10, left: -5, bottom: 20 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                   <XAxis dataKey="name" stroke="#64748b" fontSize={11} fontVariant="mono" />
-                  <YAxis stroke="#64748b" fontSize={11} tickFormatter={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : `${v}`)} />
+                  <YAxis
+                    stroke="#64748b"
+                    fontSize={11}
+                    domain={scaleMode === 'adaptive' ? [0, 115] : [0, 'auto']}
+                    tickFormatter={(v) =>
+                      scaleMode === 'adaptive'
+                        ? v >= 95
+                          ? 'Leader (CI)'
+                          : v >= 45
+                          ? 'Émergents'
+                          : v === 0
+                          ? '0'
+                          : ''
+                        : v >= 1000
+                        ? `${Math.round(v / 1000)}k`
+                        : `${v}`
+                    }
+                  />
                   <Tooltip
                     content={({ active, payload }) => {
                       if (active && payload && payload.length) {
@@ -649,7 +773,7 @@ export const MultiCountryNetworkMap: React.FC<{
                               <span>{data.name}</span>
                               <Badge className="bg-cyan-500/20 text-cyan-300 text-[9px] font-mono">{data.shareOfSales}</Badge>
                             </div>
-                            <div className="text-cyan-400 font-semibold">Volume : {data.volumeFormatted}</div>
+                            <div className="text-cyan-400 font-semibold">Volume Réel : {data.volumeFormatted}</div>
                             <div className="text-emerald-400">CA : {data.revenue?.toLocaleString('fr-FR')} FCFA</div>
                             <div className="text-slate-300">{data.salesCount?.toLocaleString('fr-FR')} ventes réelles enregistrées</div>
                             <div className="text-slate-400 text-[10px]">{data.posCount} établissements actifs</div>
@@ -659,7 +783,19 @@ export const MultiCountryNetworkMap: React.FC<{
                       return null;
                     }}
                   />
-                  <Bar dataKey="volumeNumber" radius={[6, 6, 0, 0]}>
+                  <Bar
+                    dataKey={scaleMode === 'adaptive' ? 'adaptiveVolume' : 'volumeNumber'}
+                    minPointSize={34}
+                    radius={[6, 6, 0, 0]}
+                  >
+                    <LabelList
+                      dataKey="volumeLabel"
+                      position="top"
+                      fill="#38bdf8"
+                      fontSize={11}
+                      fontWeight={700}
+                      offset={8}
+                    />
                     {comparisonData.map((entry, index) => (
                       <Cell
                         key={`cell-ctry-${index}`}
@@ -669,10 +805,27 @@ export const MultiCountryNetworkMap: React.FC<{
                   </Bar>
                 </BarChart>
               ) : activeViewMode === 'sales' ? (
-                <BarChart data={comparisonData} margin={{ top: 10, right: 10, left: -5, bottom: 20 }}>
+                <BarChart data={comparisonData} margin={{ top: 25, right: 10, left: -5, bottom: 20 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                   <XAxis dataKey="name" stroke="#64748b" fontSize={11} fontVariant="mono" />
-                  <YAxis stroke="#64748b" fontSize={11} tickFormatter={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : `${v}`)} />
+                  <YAxis
+                    stroke="#64748b"
+                    fontSize={11}
+                    domain={scaleMode === 'adaptive' ? [0, 115] : [0, 'auto']}
+                    tickFormatter={(v) =>
+                      scaleMode === 'adaptive'
+                        ? v >= 95
+                          ? 'Leader (CI)'
+                          : v >= 45
+                          ? 'Émergents'
+                          : v === 0
+                          ? '0'
+                          : ''
+                        : v >= 1000
+                        ? `${Math.round(v / 1000)}k`
+                        : `${v}`
+                    }
+                  />
                   <Tooltip
                     content={({ active, payload }) => {
                       if (active && payload && payload.length) {
@@ -691,7 +844,19 @@ export const MultiCountryNetworkMap: React.FC<{
                       return null;
                     }}
                   />
-                  <Bar dataKey="salesCount" radius={[6, 6, 0, 0]}>
+                  <Bar
+                    dataKey={scaleMode === 'adaptive' ? 'adaptiveSales' : 'salesCount'}
+                    minPointSize={34}
+                    radius={[6, 6, 0, 0]}
+                  >
+                    <LabelList
+                      dataKey="salesLabel"
+                      position="top"
+                      fill="#10b981"
+                      fontSize={11}
+                      fontWeight={700}
+                      offset={8}
+                    />
                     {comparisonData.map((entry, index) => (
                       <Cell
                         key={`cell-sales-${index}`}
@@ -701,10 +866,25 @@ export const MultiCountryNetworkMap: React.FC<{
                   </Bar>
                 </BarChart>
               ) : activeViewMode === 'revenue' ? (
-                <BarChart data={comparisonData} margin={{ top: 10, right: 10, left: -5, bottom: 20 }}>
+                <BarChart data={comparisonData} margin={{ top: 25, right: 10, left: -5, bottom: 20 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                   <XAxis dataKey="name" stroke="#64748b" fontSize={11} fontVariant="mono" />
-                  <YAxis stroke="#64748b" fontSize={11} tickFormatter={(v) => `${v}M`} />
+                  <YAxis
+                    stroke="#64748b"
+                    fontSize={11}
+                    domain={scaleMode === 'adaptive' ? [0, 115] : [0, 'auto']}
+                    tickFormatter={(v) =>
+                      scaleMode === 'adaptive'
+                        ? v >= 95
+                          ? 'Leader (CI)'
+                          : v >= 45
+                          ? 'Émergents'
+                          : v === 0
+                          ? '0'
+                          : ''
+                        : `${v}M`
+                    }
+                  />
                   <Tooltip
                     content={({ active, payload }) => {
                       if (active && payload && payload.length) {
@@ -723,7 +903,19 @@ export const MultiCountryNetworkMap: React.FC<{
                       return null;
                     }}
                   />
-                  <Bar dataKey="revenueMillions" radius={[6, 6, 0, 0]}>
+                  <Bar
+                    dataKey={scaleMode === 'adaptive' ? 'adaptiveRevenue' : 'revenueMillions'}
+                    minPointSize={34}
+                    radius={[6, 6, 0, 0]}
+                  >
+                    <LabelList
+                      dataKey="revLabel"
+                      position="top"
+                      fill="#34d399"
+                      fontSize={11}
+                      fontWeight={700}
+                      offset={8}
+                    />
                     {comparisonData.map((entry, index) => (
                       <Cell
                         key={`cell-rev-${index}`}
@@ -733,7 +925,7 @@ export const MultiCountryNetworkMap: React.FC<{
                   </Bar>
                 </BarChart>
               ) : activeViewMode === 'pos' ? (
-                <BarChart data={comparisonData} margin={{ top: 10, right: 10, left: -5, bottom: 20 }}>
+                <BarChart data={comparisonData} margin={{ top: 25, right: 10, left: -5, bottom: 20 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                   <XAxis dataKey="name" stroke="#64748b" fontSize={11} fontVariant="mono" />
                   <YAxis stroke="#64748b" fontSize={11} />
@@ -754,7 +946,15 @@ export const MultiCountryNetworkMap: React.FC<{
                       return null;
                     }}
                   />
-                  <Bar dataKey="posCount" radius={[6, 6, 0, 0]}>
+                  <Bar dataKey="posCount" minPointSize={34} radius={[6, 6, 0, 0]}>
+                    <LabelList
+                      dataKey="posLabel"
+                      position="top"
+                      fill="#38bdf8"
+                      fontSize={11}
+                      fontWeight={700}
+                      offset={8}
+                    />
                     {comparisonData.map((entry, index) => (
                       <Cell
                         key={`cell-pos-${index}`}

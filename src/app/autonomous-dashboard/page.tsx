@@ -79,7 +79,11 @@ export default function AutonomousDashboardPage() {
 
   // Filtre pays synchronisé avec le store global de l'application
   const { filters, setFilter } = useMarketFilterStore();
-  const selectedCountryCode = Array.isArray(filters.country) ? filters.country[0] : filters.country || 'all';
+  const selectedCountryCode = Array.isArray(filters.country)
+    ? filters.country.length === 1
+      ? filters.country[0]
+      : filters.country
+    : filters.country || 'all';
 
   // 1. Vrais produits de la base de données MongoDB (397 références)
   const { data: productsData, isLoading: isProductsLoading, refetch: refetchProducts } = useProductsQuery();
@@ -309,19 +313,54 @@ export default function AutonomousDashboardPage() {
             <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-900 border border-slate-800">
               <Globe2 className="size-3.5 text-cyan-400 ml-1.5 shrink-0" />
               <select
-                value={selectedCountryCode}
-                onChange={(e) => setFilter('country', e.target.value)}
+                value={Array.isArray(selectedCountryCode) ? (selectedCountryCode.length === 1 ? selectedCountryCode[0] : 'multi') : selectedCountryCode}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === 'multi') return;
+                  setFilter('country', val);
+                }}
                 className="bg-transparent text-xs font-mono text-cyan-300 focus:outline-none cursor-pointer pr-1"
                 title="Filtrer tout le tableau de bord par pays"
               >
                 <option value="all" className="bg-slate-950 text-slate-200">
                   🌍 Tous les pays (Consolidé 58 082 ventes)
                 </option>
-                {PAYS.map((p) => (
-                  <option key={p.code} value={p.code} className="bg-slate-950 text-slate-200">
-                    {p.flag} {p.name.replace(/_/g, ' ')}
+                {Array.isArray(selectedCountryCode) && selectedCountryCode.length > 1 && (
+                  <option value="multi" className="bg-slate-950 text-cyan-300 font-bold">
+                    ⚖️ Multi-sélection ({selectedCountryCode.length} pays comparés)
                   </option>
-                ))}
+                )}
+                <optgroup label="── PAYS ACTIFS AVEC VENTES BD ──" className="bg-slate-950 text-cyan-400 font-bold">
+                  <option value="cote_d_ivoire" className="bg-slate-950 text-slate-200">
+                    🇨🇮 Côte d&apos;Ivoire (57 348 ventes • 98.7%)
+                  </option>
+                  <option value="burkina_faso" className="bg-slate-950 text-slate-200">
+                    🇧🇫 Burkina Faso (292 ventes • 0.5%)
+                  </option>
+                  <option value="rdc" className="bg-slate-950 text-slate-200">
+                    🇨🇩 RD Congo (30 ventes • 0.1%)
+                  </option>
+                </optgroup>
+                <optgroup label="── PAYS INSCRITS SANS VENTE (0) ──" className="bg-slate-950 text-slate-500">
+                  <option value="guinee" className="bg-slate-950 text-slate-400">
+                    🇬🇳 Guinée (10 maquis • 0 vente)
+                  </option>
+                  <option value="benin" className="bg-slate-950 text-slate-400">
+                    🇧🇯 Bénin (7 maquis • 0 vente)
+                  </option>
+                  <option value="togo" className="bg-slate-950 text-slate-400">
+                    🇹🇬 Togo (3 maquis • 0 vente)
+                  </option>
+                  <option value="mali" className="bg-slate-950 text-slate-400">
+                    🇲🇱 Mali (2 maquis • 0 vente)
+                  </option>
+                  <option value="niger" className="bg-slate-950 text-slate-400">
+                    🇳🇪 Niger (1 maquis • 0 vente)
+                  </option>
+                  <option value="zimbabwe" className="bg-slate-950 text-slate-400">
+                    🇿🇼 Zimbabwe (1 maquis • 0 vente)
+                  </option>
+                </optgroup>
               </select>
             </div>
 
