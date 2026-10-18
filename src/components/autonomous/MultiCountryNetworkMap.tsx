@@ -20,6 +20,12 @@ import {
   Truck,
   Sparkles,
   Hand,
+  Check,
+  CheckSquare,
+  Square,
+  ArrowRightLeft,
+  Scale,
+  X,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -165,8 +171,11 @@ export const MultiCountryNetworkMap: React.FC<{
   selectedCountry?: string;
   onSelectCountry?: (countryCode: string) => void;
 }> = ({ unit = 'cols', onOpenGlossary, overviewData, geoData, selectedCountry: externalCountry, onSelectCountry }) => {
-  const [selectedCountryId, setSelectedCountryId] = useState<string>('all');
-  const [activeViewMode, setActiveViewMode] = useState<'bars' | 'sales' | 'growth'>('bars');
+  // Multi-sélection des pays à comparer (par défaut tous les pays réels actifs : CI, BF, RDC)
+  const [selectedCountryIds, setSelectedCountryIds] = useState<string[]>(['ci', 'bf', 'rdc']);
+  const [focusedCountryId, setFocusedCountryId] = useState<string>('ci');
+  const [detailsTab, setDetailsTab] = useState<'matrix' | 'cities'>('matrix');
+  const [activeViewMode, setActiveViewMode] = useState<'bars' | 'sales' | 'revenue' | 'pos' | 'growth'>('bars');
   const [showOnboardingList, setShowOnboardingList] = useState<boolean>(false);
 
   // Synchronisation avec le filtre pays global
@@ -174,13 +183,17 @@ export const MultiCountryNetworkMap: React.FC<{
     if (externalCountry) {
       const code = String(externalCountry).toLowerCase();
       if (code === 'all' || code.includes('tous')) {
-        setSelectedCountryId('all');
+        setSelectedCountryIds(['ci', 'bf', 'rdc']);
+        setFocusedCountryId('ci');
       } else if (code.includes('ivoire') || code === 'ci' || code === 'cote_d_ivoire') {
-        setSelectedCountryId('ci');
+        setSelectedCountryIds(['ci']);
+        setFocusedCountryId('ci');
       } else if (code.includes('burkina') || code === 'bf' || code === 'burkina_faso') {
-        setSelectedCountryId('bf');
+        setSelectedCountryIds(['bf']);
+        setFocusedCountryId('bf');
       } else if (code.includes('congo') || code === 'rdc' || code === 'cd') {
-        setSelectedCountryId('rdc');
+        setSelectedCountryIds(['rdc']);
+        setFocusedCountryId('rdc');
       }
     }
   }, [externalCountry]);
@@ -203,7 +216,6 @@ export const MultiCountryNetworkMap: React.FC<{
 
     return REAL_DATABASE_COUNTRIES.map((c) => {
       if (c.id === 'ci') {
-        // La Côte d'Ivoire représente 98.7% du volume consolidé
         const ciVol = Math.max(295700, realTotalVolume - 740);
         const ciRev = Math.max(295100000, realTotalRevenue - 355100);
         const ciPos = Math.max(61, realTotalPos - 3);
@@ -220,43 +232,81 @@ export const MultiCountryNetworkMap: React.FC<{
     });
   }, [overviewData, geoData]);
 
-  const selectedCountry = useMemo(() => {
-    if (selectedCountryId === 'all') {
-      const kpis = overviewData?.kpis;
-      const ciData = dynamicCountries.find((c) => c.id === 'ci') || REAL_DATABASE_COUNTRIES[0];
-      return {
-        id: 'all',
-        code: 'all',
-        name: 'Réseau Consolidé E-Maquis',
-        flag: '🌍',
-        currency: 'FCFA & Multi-devises',
-        volumeCols: kpis?.salesVolume || 298206,
-        revenueFcfa: kpis?.revenue || 299732697,
-        posCount: kpis?.activePos || 66,
-        totalSalesCount: 58082,
-        shareOfSales: '100%',
-        topBrewery: 'Solibra (58.4%) / Brassivoire (32.1%)',
-        topBrand: 'Bock 65cl, Beaufort-33, Heineken-33',
-        growth: kpis?.volumeGrowth || 8.3,
-        distressedProducts: 5,
-        cities: [
-          { name: "Côte d'Ivoire (Abidjan, Bouaké, Tiassalé...)", volumeShare: '98.7%', pos: ciData.posCount, volumeCols: ciData.volumeCols },
-          { name: 'Burkina Faso (Ouagadougou & Fada)', volumeShare: '0.5%', pos: 2, volumeCols: 419 },
-          { name: 'RD Congo (Kinshasa)', volumeShare: '0.1%', pos: 1, volumeCols: 321 },
-          { name: 'Débits réseau en mise à jour profil', volumeShare: '0.7%', pos: 2, volumeCols: 1766 },
-        ],
-        status: 'active' as const,
-        registeredAccounts: 662,
-      };
-    }
-    return dynamicCountries.find((c) => c.id === selectedCountryId) || dynamicCountries[0];
-  }, [selectedCountryId, dynamicCountries, overviewData]);
+  // Tous les pays actuellement sélectionnés dans le comparatif
+  const comparedCountries = useMemo(() => {
+    return dynamicCountries.filter((c) => selectedCountryIds.includes(c.id));
+  }, [dynamicCountries, selectedCountryIds]);
 
-  // Données pour le Recharts BarChart comparatif
+  // Pays sous le focus principal (pour les détails urbains)
+  const focusedCountry = useMemo(() => {
+    return dynamicCountries.find((c) => c.id === focusedCountryId) || comparedCountries[0] || dynamicCountries[0];
+  }, [dynamicCountries, focusedCountryId, comparedCountries]);
+
+  // Gestion du basculement (toggle) d'un pays dans la multi-sélection
+  const toggleCountrySelection = (countryId: string) => {
+    if (countryId === 'all') {
+      const allIds = dynamicCountries.map((c) => c.id);
+      if (selectedCountryIds.length === dynamicCountries.length) {
+        // Déselectionner tout sauf Côte d'Ivoire
+        setSelectedCountryIds(['ci']);
+        setFocusedCountryId('ci');
+        if (onSelectCountry) onSelectCountry('cote_d_ivoire');
+      } else {
+        // Tout sélectionner
+        setSelectedCountryIds(allIds);
+        setFocusedCountryId('ci');
+        if (onSelectCountry) onSelectCountry('all');
+      }
+      return;
+    }
+
+    setSelectedCountryIds((prev) => {
+      const isAlreadySelected = prev.includes(countryId);
+      if (isAlreadySelected) {
+        // Empêcher de tout vider : garder au moins 1 pays
+        if (prev.length <= 1) return prev;
+        const next = prev.filter((id) => id !== countryId);
+        if (focusedCountryId === countryId) {
+          setFocusedCountryId(next[0]);
+        }
+        return next;
+      } else {
+        const next = [...prev, countryId];
+        setFocusedCountryId(countryId);
+        return next;
+      }
+    });
+
+    if (onSelectCountry) {
+      const map: Record<string, string> = {
+        ci: 'cote_d_ivoire',
+        bf: 'burkina_faso',
+        rdc: 'rdc',
+      };
+      onSelectCountry(map[countryId] || countryId);
+    }
+  };
+
+  // Raccourcis de comparaison rapide
+  const setPresetComparison = (ids: string[]) => {
+    setSelectedCountryIds(ids);
+    setFocusedCountryId(ids[0]);
+    if (onSelectCountry) {
+      if (ids.length === dynamicCountries.length) onSelectCountry('all');
+      else if (ids.length === 1) {
+        const map: Record<string, string> = { ci: 'cote_d_ivoire', bf: 'burkina_faso', rdc: 'rdc' };
+        onSelectCountry(map[ids[0]] || ids[0]);
+      }
+    }
+  };
+
+  // Données filtrées pour Recharts BarChart & AreaChart
   const comparisonData = useMemo(() => {
-    return dynamicCountries.map((c) => {
+    const list = comparedCountries.length > 0 ? comparedCountries : dynamicCountries;
+    return list.map((c) => {
       const vol = formatProductVolume(c.volumeCols, unit, c.name);
       return {
+        id: c.id,
         name: c.name,
         code: c.code,
         flag: c.flag,
@@ -265,11 +315,14 @@ export const MultiCountryNetworkMap: React.FC<{
         salesCount: c.totalSalesCount,
         shareOfSales: c.shareOfSales,
         revenue: c.revenueFcfa,
+        revenueMillions: Math.round((c.revenueFcfa / 1000000) * 10) / 10,
         posCount: c.posCount,
         growth: c.growth,
+        topBrewery: c.topBrewery,
+        topBrand: c.topBrand,
       };
     });
-  }, [dynamicCountries, unit]);
+  }, [comparedCountries, dynamicCountries, unit]);
 
   const totalGlobalVolume = useMemo(() => {
     if (overviewData?.kpis?.salesVolume) return overviewData.kpis.salesVolume;
@@ -285,35 +338,24 @@ export const MultiCountryNetworkMap: React.FC<{
     return dynamicCountries.reduce((sum, c) => sum + c.posCount, 0);
   }, [dynamicCountries]);
 
-  const handleCountryClick = (countryId: string) => {
-    setSelectedCountryId(countryId);
-    if (onSelectCountry) {
-      const map: Record<string, string> = {
-        all: 'all',
-        ci: 'cote_d_ivoire',
-        bf: 'burkina_faso',
-        rdc: 'rdc',
-      };
-      onSelectCountry(map[countryId] || countryId);
-    }
-  };
-
   const formattedGlobalVolume = formatProductVolume(totalGlobalVolume, unit, 'Total Global');
+  const isAllSelected = selectedCountryIds.length === dynamicCountries.length;
 
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-950/95 backdrop-blur-xl p-5 shadow-2xl space-y-5">
-      {/* 1. EN-TÊTE CONSOLIDATION MULTI-PAYS (100% VRAIES DONNÉES BD) */}
+      {/* 1. EN-TÊTE CONSOLIDATION & SÉLECTION MULTI-PAYS */}
       <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 pb-4 border-b border-slate-800">
         <div>
           <div className="flex items-center gap-2 flex-wrap">
             <h2 className="text-lg font-black text-foreground flex items-center gap-2">
               <Globe2 className="size-5 text-cyan-400" />
-              Réseau International de Vente E-Maquis (Sales Globales)
+              Réseau Multi-Pays • Comparateur Avancé GlobalSale
             </h2>
-            <Badge className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-[10px] font-mono">
-              3 Pays avec Ventes Actives
+            <Badge className="bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[10px] font-mono flex items-center gap-1">
+              <Scale className="size-3 text-cyan-400" />
+              Comparaison Active : {selectedCountryIds.length}/{dynamicCountries.length} Pays
             </Badge>
-            <Badge className="bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[10px] font-mono">
+            <Badge className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-[10px] font-mono">
               58 082 Transactions Réelles
             </Badge>
             <Badge className="bg-purple-500/20 text-purple-300 border border-purple-500/40 text-[10px] font-mono">
@@ -321,51 +363,98 @@ export const MultiCountryNetworkMap: React.FC<{
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground mt-1">
-            Agrégation certifiée des tickets réels de la collection <code className="text-cyan-300 font-mono">sales</code> : volume consolidé de {formattedGlobalVolume.formatted} réparti sur {totalGlobalPos.toLocaleString('fr-FR')} débits actifs géolocalisés en base.
+            Sélectionnez un ou plusieurs pays pour comparer leurs volumes ({unit.toUpperCase()}), leur chiffre d&apos;affaires, leur nombre de débits et leurs boissons leaders en temps réel.
           </p>
         </div>
 
-        {/* STATISTIQUES CONSOLIDÉES RÉSEAU */}
-        <div className="flex items-center gap-3 text-xs font-mono text-slate-300 flex-wrap">
-          <div className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 flex items-center gap-2">
-            <Building2 className="size-3.5 text-cyan-400" />
-            <span>Débits Réseau avec Ventes : <strong className="text-foreground">{totalGlobalPos.toLocaleString('fr-FR')} POS</strong></span>
-          </div>
-          <div className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 flex items-center gap-2">
-            <DollarSign className="size-3.5 text-emerald-400" />
-            <span>CA Consolidé BD : <strong className="text-emerald-400">{(totalGlobalRevenue / 1000000).toFixed(1)}M FCFA</strong></span>
-          </div>
+        {/* RACCOURCIS DE SÉLECTION MULTI-PAYS */}
+        <div className="flex items-center gap-1.5 text-xs font-mono flex-wrap">
+          <span className="text-[11px] text-slate-400 mr-1 flex items-center gap-1">
+            <ArrowRightLeft className="size-3 text-cyan-400" />
+            Comparer :
+          </span>
+          <button
+            onClick={() => setPresetComparison(['ci', 'bf', 'rdc'])}
+            className={`px-2.5 py-1 rounded-lg border text-[11px] transition-all font-semibold ${
+              isAllSelected
+                ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-sm shadow-cyan-500/20'
+                : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700 hover:text-white'
+            }`}
+          >
+            Tous les 3
+          </button>
+          <button
+            onClick={() => setPresetComparison(['ci', 'bf'])}
+            className={`px-2 py-1 rounded-lg border text-[11px] transition-all font-semibold ${
+              selectedCountryIds.length === 2 && selectedCountryIds.includes('ci') && selectedCountryIds.includes('bf')
+                ? 'bg-cyan-500 text-slate-950 border-cyan-400'
+                : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700 hover:text-white'
+            }`}
+          >
+            🇨🇮 CI vs 🇧🇫 BF
+          </button>
+          <button
+            onClick={() => setPresetComparison(['ci', 'rdc'])}
+            className={`px-2 py-1 rounded-lg border text-[11px] transition-all font-semibold ${
+              selectedCountryIds.length === 2 && selectedCountryIds.includes('ci') && selectedCountryIds.includes('rdc')
+                ? 'bg-cyan-500 text-slate-950 border-cyan-400'
+                : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700 hover:text-white'
+            }`}
+          >
+            🇨🇮 CI vs 🇨🇩 RDC
+          </button>
+          <button
+            onClick={() => setPresetComparison(['bf', 'rdc'])}
+            className={`px-2 py-1 rounded-lg border text-[11px] transition-all font-semibold ${
+              selectedCountryIds.length === 2 && selectedCountryIds.includes('bf') && selectedCountryIds.includes('rdc')
+                ? 'bg-cyan-500 text-slate-950 border-cyan-400'
+                : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700 hover:text-white'
+            }`}
+          >
+            🇧🇫 BF vs 🇨🇩 RDC
+          </button>
         </div>
       </div>
 
-      {/* 2. SÉLECTEUR DE PAYS RÉELS (COTE D'IVOIRE, BURKINA FASO, RD CONGO) AVEC MAIN POUR ATTRAPER ET TIRER */}
+      {/* 2. SÉLECTEUR MULTI-PAYS INTERACTIF AVEC CASES À COCHER ET MAIN DRAGGABLE */}
       <div className="space-y-2">
         <div className="flex items-center justify-between text-[11px] font-mono text-cyan-400 px-1">
           <div className="flex items-center gap-1.5">
             <Hand className="size-3 text-cyan-300 animate-pulse" />
-            <span>Main active : attraper et tirer avec la souris pour naviguer entre les pays réels</span>
+            <span>Main active : cliquez sur chaque pays pour l&apos;ajouter ou le retirer du comparateur</span>
           </div>
           <button
             onClick={() => setShowOnboardingList((prev) => !prev)}
             className="text-[10px] text-slate-400 hover:text-cyan-300 transition-colors underline flex items-center gap-1"
           >
-            <span>{showOnboardingList ? 'Masquer' : 'Voir'} les 6 autres pays enregistrés (0 vente)</span>
+            <span>{showOnboardingList ? 'Masquer' : 'Voir'} les 6 pays inscrits en attente (0 vente)</span>
           </button>
         </div>
 
         <DraggableScrollWrapper showArrows={true} showHint={true} className="pb-1">
-          {/* CARTE 0 : VUE CONSOLIDÉE GLOBALE TOUS PAYS (58 082 VENTES) */}
+          {/* CARTE CONSOLIDÉE GLOBALE (TOUT SÉLECTIONNER / DÉSELECTIONNER) */}
           <button
-            onClick={() => handleCountryClick('all')}
-            className={`w-[170px] shrink-0 p-3 rounded-xl border text-left transition-all flex flex-col justify-between gap-1.5 cursor-grab active:cursor-grabbing ${
-              selectedCountryId === 'all'
-                ? 'border-cyan-500/80 bg-gradient-to-br from-cyan-500/20 via-slate-900 to-slate-950 shadow-lg shadow-cyan-500/10 ring-1 ring-cyan-500/50'
+            onClick={() => toggleCountrySelection('all')}
+            className={`w-[175px] shrink-0 p-3 rounded-xl border text-left transition-all flex flex-col justify-between gap-1.5 cursor-grab active:cursor-grabbing ${
+              isAllSelected
+                ? 'border-cyan-500 bg-gradient-to-br from-cyan-500/20 via-slate-900 to-slate-950 shadow-lg shadow-cyan-500/10 ring-2 ring-cyan-500/40'
                 : 'border-slate-800 bg-slate-900/50 hover:bg-slate-900/90 hover:border-slate-700'
             }`}
           >
             <div className="flex items-center justify-between w-full">
               <span className="text-2xl">🌍</span>
-              <Badge className="bg-cyan-500/20 text-cyan-300 text-[8px] font-mono px-1 py-0">CONSOLIDÉ</Badge>
+              <div className="flex items-center gap-1">
+                <Badge className="bg-cyan-500/20 text-cyan-300 text-[8px] font-mono px-1 py-0">CONSOLIDÉ</Badge>
+                <div
+                  className={`size-4 rounded flex items-center justify-center border transition-all ${
+                    isAllSelected
+                      ? 'bg-cyan-500 border-cyan-400 text-slate-950 font-black text-xs'
+                      : 'border-slate-700 bg-slate-950 text-transparent'
+                  }`}
+                >
+                  <Check className="size-3 stroke-[3]" />
+                </div>
+              </div>
             </div>
             <div>
               <div className="font-mono text-xs font-bold text-foreground truncate">Tous les pays (Total)</div>
@@ -373,50 +462,82 @@ export const MultiCountryNetworkMap: React.FC<{
             </div>
             <div className="pt-1.5 border-t border-slate-800/80 w-full flex items-center justify-between text-[10px] font-mono text-slate-400">
               <span>58 082 ventes</span>
-              <span className="text-emerald-400 font-bold">100% BD</span>
+              <span className="text-emerald-400 font-bold">3/3 Actifs</span>
             </div>
           </button>
 
-          {/* CARTES DES PAYS RÉELS AVEC VENTES EN BASE */}
+          {/* CARTES INDIVIDUELLES MULTI-SÉLECTIONNABLES */}
           {dynamicCountries.map((country) => {
-            const isSelected = country.id === selectedCountryId;
+            const isSelected = selectedCountryIds.includes(country.id);
+            const isFocused = focusedCountryId === country.id;
             const formattedVol = formatProductVolume(country.volumeCols, unit, country.name);
 
             return (
-              <button
+              <div
                 key={country.id}
-                onClick={() => handleCountryClick(country.id)}
-                className={`w-[170px] shrink-0 p-3 rounded-xl border text-left transition-all flex flex-col justify-between gap-1.5 cursor-grab active:cursor-grabbing ${
+                onClick={() => toggleCountrySelection(country.id)}
+                className={`w-[185px] shrink-0 p-3 rounded-xl border text-left transition-all flex flex-col justify-between gap-1.5 cursor-pointer relative select-none ${
                   isSelected
-                    ? 'border-cyan-500/80 bg-gradient-to-br from-cyan-500/20 via-slate-900 to-slate-950 shadow-lg shadow-cyan-500/10 ring-1 ring-cyan-500/50'
-                    : 'border-slate-800 bg-slate-900/50 hover:bg-slate-900/90 hover:border-slate-700'
+                    ? 'border-cyan-500/90 bg-gradient-to-br from-cyan-950/30 via-slate-900 to-slate-950 shadow-lg shadow-cyan-500/10 ring-2 ring-cyan-500/50'
+                    : 'border-slate-800/80 bg-slate-950/50 hover:bg-slate-900/60 opacity-60 hover:opacity-100 hover:border-slate-700'
                 }`}
               >
                 <div className="flex items-center justify-between w-full">
-                  <span className="text-2xl">{country.flag}</span>
-                  <div className="flex items-center gap-1">
-                    <span className="text-[9px] font-mono text-cyan-300 bg-cyan-950/60 px-1 rounded border border-cyan-800/50">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-2xl">{country.flag}</span>
+                    <span className="text-[9px] font-mono text-cyan-300 bg-cyan-950/80 px-1 rounded border border-cyan-800/60 font-semibold">
                       {country.shareOfSales}
                     </span>
-                    <span className="text-[10px] font-mono text-emerald-400 font-bold">+{country.growth}%</span>
+                  </div>
+                  {/* Case à cocher multi-sélection */}
+                  <div
+                    className={`size-4 rounded flex items-center justify-center border transition-all ${
+                      isSelected
+                        ? 'bg-cyan-500 border-cyan-400 text-slate-950 font-black'
+                        : 'border-slate-700 bg-slate-950 text-transparent'
+                    }`}
+                  >
+                    <Check className="size-3 stroke-[3]" />
                   </div>
                 </div>
 
                 <div>
-                  <div className="font-mono text-xs font-bold text-foreground truncate">{country.name}</div>
-                  <div className="text-[10px] text-cyan-400 font-mono font-semibold truncate">{formattedVol.formatted}</div>
+                  <div className="font-mono text-xs font-bold text-foreground flex items-center justify-between">
+                    <span className="truncate">{country.name}</span>
+                    <span className="text-[10px] font-mono text-emerald-400 font-bold">+{country.growth}%</span>
+                  </div>
+                  <div className="text-[10px] text-cyan-400 font-mono font-semibold truncate mt-0.5">{formattedVol.formatted}</div>
                 </div>
 
                 <div className="pt-1.5 border-t border-slate-800/80 w-full flex items-center justify-between text-[10px] font-mono text-slate-400">
                   <span>{country.totalSalesCount.toLocaleString('fr-FR')} ventes</span>
                   <span className="text-slate-300 font-semibold">{country.posCount} POS</span>
                 </div>
-              </button>
+
+                {/* Badge statut comparatif */}
+                <div className="flex items-center justify-between pt-0.5 text-[9px] font-mono">
+                  <span className={isSelected ? 'text-cyan-400 font-bold' : 'text-slate-500'}>
+                    {isSelected ? '✓ Inclus au comparatif' : '+ Cliquer pour comparer'}
+                  </span>
+                  {isSelected && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setFocusedCountryId(country.id);
+                        setDetailsTab('cities');
+                      }}
+                      className="text-[9px] text-slate-400 hover:text-white underline ml-1"
+                    >
+                      Détails
+                    </button>
+                  )}
+                </div>
+              </div>
             );
           })}
         </DraggableScrollWrapper>
 
-        {/* BANDEAU DES PAYS INSCRITS MAIS EN ATTENTE DE LEUR PREMIÈRE VENTE */}
+        {/* BANDEAU ACCORDÉON DES AUTRES PAYS ENREGISTRÉS DANS USERS (0 VENTE) */}
         <AnimatePresence>
           {showOnboardingList && (
             <motion.div
@@ -430,7 +551,7 @@ export const MultiCountryNetworkMap: React.FC<{
                   <Building2 className="size-3.5 text-cyan-400" />
                   Implantations Réseau Enregistrées dans la collection Users (0 Vente dans GlobalSale) :
                 </span>
-                <span className="text-[10px] text-slate-400">Pas de volume fictif généré</span>
+                <span className="text-[10px] text-slate-400">Comptes utilisateurs réels répertoriés</span>
               </div>
               <div className="flex flex-wrap gap-2">
                 {REGISTERED_ONBOARDING_COUNTRIES.map((c) => (
@@ -449,20 +570,24 @@ export const MultiCountryNetworkMap: React.FC<{
         </AnimatePresence>
       </div>
 
-      {/* 3. GRAPHIQUE COMPARATIF RECHARTS & DÉTAILS DU PAYS SÉLECTIONNÉ */}
+      {/* 3. GRAPHIQUE COMPARATIF MULTI-PAYS RECHARTS & MATRICE COMPARATIVE FACE-À-FACE */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 pt-1">
-        {/* Graphique Recharts des Pays Réels */}
-        <div className="lg:col-span-7 rounded-2xl border border-slate-800 bg-slate-900/40 p-4 space-y-3 flex flex-col justify-between">
+        {/* Colonne Gauche : Graphique Recharts dynamique multi-pays */}
+        <div className="lg:col-span-6 rounded-2xl border border-slate-800 bg-slate-900/40 p-4 space-y-3 flex flex-col justify-between">
           <div className="flex items-center justify-between text-xs font-mono text-slate-300 flex-wrap gap-2">
             <span className="flex items-center gap-1.5 font-bold">
               <BarChart3 className="size-4 text-cyan-400" />
               {activeViewMode === 'bars'
-                ? `Volume des Ventes Réelles par Pays (${unit.toUpperCase()})`
+                ? `Volume Comparé (${unit.toUpperCase()})`
                 : activeViewMode === 'sales'
-                ? 'Nombre Réel de Transactions (Tickets GlobalSale)'
+                ? 'Nombre de Ventes (Tickets)'
+                : activeViewMode === 'revenue'
+                ? 'Chiffre d\'Affaires (M FCFA)'
+                : activeViewMode === 'pos'
+                ? 'Débits Réseau (POS Actifs)'
                 : 'Taux de Croissance Annuelle (%)'}
             </span>
-            <div className="flex items-center gap-1 bg-slate-950 p-0.5 rounded-lg border border-slate-800">
+            <div className="flex items-center gap-1 bg-slate-950 p-0.5 rounded-lg border border-slate-800 flex-wrap">
               <button
                 onClick={() => setActiveViewMode('bars')}
                 className={`px-2 py-0.5 rounded text-[10px] font-mono transition-colors ${
@@ -480,6 +605,22 @@ export const MultiCountryNetworkMap: React.FC<{
                 Ventes
               </button>
               <button
+                onClick={() => setActiveViewMode('revenue')}
+                className={`px-2 py-0.5 rounded text-[10px] font-mono transition-colors ${
+                  activeViewMode === 'revenue' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                CA (M)
+              </button>
+              <button
+                onClick={() => setActiveViewMode('pos')}
+                className={`px-2 py-0.5 rounded text-[10px] font-mono transition-colors ${
+                  activeViewMode === 'pos' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                POS
+              </button>
+              <button
                 onClick={() => setActiveViewMode('growth')}
                 className={`px-2 py-0.5 rounded text-[10px] font-mono transition-colors ${
                   activeViewMode === 'growth' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
@@ -490,7 +631,7 @@ export const MultiCountryNetworkMap: React.FC<{
             </div>
           </div>
 
-          <div className="h-[260px] w-full">
+          <div className="h-[270px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               {activeViewMode === 'bars' ? (
                 <BarChart data={comparisonData} margin={{ top: 10, right: 10, left: -5, bottom: 20 }}>
@@ -559,6 +700,69 @@ export const MultiCountryNetworkMap: React.FC<{
                     ))}
                   </Bar>
                 </BarChart>
+              ) : activeViewMode === 'revenue' ? (
+                <BarChart data={comparisonData} margin={{ top: 10, right: 10, left: -5, bottom: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                  <XAxis dataKey="name" stroke="#64748b" fontSize={11} fontVariant="mono" />
+                  <YAxis stroke="#64748b" fontSize={11} tickFormatter={(v) => `${v}M`} />
+                  <Tooltip
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0].payload;
+                        return (
+                          <div className="bg-slate-950 border border-slate-800 p-2.5 rounded-lg text-xs font-mono shadow-xl space-y-1">
+                            <div className="font-bold text-foreground flex items-center gap-1.5">
+                              <span>{data.flag}</span>
+                              <span>{data.name}</span>
+                            </div>
+                            <div className="text-emerald-400 font-bold">CA : {data.revenue?.toLocaleString('fr-FR')} FCFA</div>
+                            <div className="text-cyan-400 font-semibold">{data.revenueMillions} Millions FCFA</div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Bar dataKey="revenueMillions" radius={[6, 6, 0, 0]}>
+                    {comparisonData.map((entry, index) => (
+                      <Cell
+                        key={`cell-rev-${index}`}
+                        fill={entry.code === 'cote_d_ivoire' ? '#f97316' : entry.code === 'burkina_faso' ? '#10b981' : '#06b6d4'}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              ) : activeViewMode === 'pos' ? (
+                <BarChart data={comparisonData} margin={{ top: 10, right: 10, left: -5, bottom: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                  <XAxis dataKey="name" stroke="#64748b" fontSize={11} fontVariant="mono" />
+                  <YAxis stroke="#64748b" fontSize={11} />
+                  <Tooltip
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0].payload;
+                        return (
+                          <div className="bg-slate-950 border border-slate-800 p-2.5 rounded-lg text-xs font-mono shadow-xl space-y-1">
+                            <div className="font-bold text-foreground flex items-center gap-1.5">
+                              <span>{data.flag}</span>
+                              <span>{data.name}</span>
+                            </div>
+                            <div className="text-cyan-400 font-bold">{data.posCount} débits réseau actifs</div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Bar dataKey="posCount" radius={[6, 6, 0, 0]}>
+                    {comparisonData.map((entry, index) => (
+                      <Cell
+                        key={`cell-pos-${index}`}
+                        fill={entry.code === 'cote_d_ivoire' ? '#f97316' : entry.code === 'burkina_faso' ? '#10b981' : '#06b6d4'}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
               ) : (
                 <AreaChart data={comparisonData} margin={{ top: 10, right: 10, left: -5, bottom: 20 }}>
                   <defs>
@@ -578,65 +782,184 @@ export const MultiCountryNetworkMap: React.FC<{
           </div>
         </div>
 
-        {/* Détails Urbains & Logistiques du Pays Sélectionné */}
-        <div className="lg:col-span-5 rounded-2xl border border-slate-800 bg-slate-900/40 p-4 space-y-3 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-xs font-mono pb-2 border-b border-slate-800">
-            <span className="font-bold text-foreground flex items-center gap-2">
-              <span className="text-xl">{selectedCountry.flag}</span>
-              {selectedCountry.name} • Pôles de Débit Clés
-            </span>
-            <Badge className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-[9px] font-mono">
-              +{selectedCountry.growth}% / an
-            </Badge>
-          </div>
+        {/* Colonne Droite : MATRICE COMPARATIVE CÔTE À CÔTE OU DÉTAILS URBAINS */}
+        <div className="lg:col-span-6 rounded-2xl border border-slate-800 bg-slate-900/40 p-4 space-y-3 flex flex-col justify-between">
+          <div className="flex items-center justify-between text-xs font-mono pb-2 border-b border-slate-800 flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-foreground flex items-center gap-1.5">
+                <Scale className="size-4 text-cyan-400" />
+                {detailsTab === 'matrix' ? 'Matrice Comparative Multi-Pays' : `Pôles Urbains • ${focusedCountry.name}`}
+              </span>
+              <Badge className="bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[9px] font-mono">
+                {comparedCountries.length} pays comparés
+              </Badge>
+            </div>
 
-          <div className="space-y-1.5 text-xs font-mono">
-            <div className="flex items-center justify-between text-slate-400">
-              <span>Brasserie Dominante :</span>
-              <strong className="text-foreground">{selectedCountry.topBrewery}</strong>
-            </div>
-            <div className="flex items-center justify-between text-slate-400">
-              <span>Boisson Leader Locale :</span>
-              <strong className="text-cyan-400">{selectedCountry.topBrand}</strong>
-            </div>
-            <div className="flex items-center justify-between text-slate-400">
-              <span>Ventes Réelles :</span>
-              <strong className="text-foreground font-bold">{selectedCountry.totalSalesCount.toLocaleString('fr-FR')} tickets ({selectedCountry.shareOfSales})</strong>
-            </div>
-            <div className="flex items-center justify-between text-slate-400">
-              <span>Références en Souffrance :</span>
-              <strong className={selectedCountry.distressedProducts > 0 ? 'text-rose-400 font-bold' : 'text-emerald-400'}>
-                {selectedCountry.distressedProducts} produit(s)
-              </strong>
-            </div>
-          </div>
-
-          {/* Villes clés réelles */}
-          <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
-            {selectedCountry.cities.map((city, idx) => (
-              <div
-                key={idx}
-                className="p-2 rounded-xl border border-slate-800/80 bg-slate-950/60 flex items-center justify-between text-xs font-mono"
+            <div className="flex items-center gap-1 bg-slate-950 p-0.5 rounded-lg border border-slate-800">
+              <button
+                onClick={() => setDetailsTab('matrix')}
+                className={`px-2 py-0.5 rounded text-[10px] font-mono transition-colors ${
+                  detailsTab === 'matrix' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
+                }`}
               >
-                <div className="flex items-center gap-2">
-                  <MapPin className="size-3.5 text-cyan-400 shrink-0" />
-                  <span className="font-bold text-slate-200">{city.name}</span>
+                Tableau Comparatif
+              </button>
+              <button
+                onClick={() => setDetailsTab('cities')}
+                className={`px-2 py-0.5 rounded text-[10px] font-mono transition-colors ${
+                  detailsTab === 'cities' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Pôles Clés
+              </button>
+            </div>
+          </div>
+
+          {/* VUE 1 : MATRICE COMPARATIVE MULTI-PAYS CÔTE À CÔTE */}
+          {detailsTab === 'matrix' ? (
+            <div className="space-y-2 overflow-x-auto">
+              <div className="min-w-[380px]">
+                {/* En-tête de colonnes */}
+                <div className="grid grid-cols-12 gap-2 pb-2 border-b border-slate-800 text-[11px] font-mono text-slate-400 font-bold">
+                  <div className="col-span-4 text-slate-300">Indicateurs Clés</div>
+                  {comparedCountries.map((c) => (
+                    <div key={c.id} className={`${comparedCountries.length === 1 ? 'col-span-8' : comparedCountries.length === 2 ? 'col-span-4' : 'col-span-2.5'} flex items-center justify-between gap-1`}>
+                      <span className="truncate flex items-center gap-1 text-foreground">
+                        <span>{c.flag}</span>
+                        <span className="truncate">{c.name}</span>
+                      </span>
+                      {comparedCountries.length > 1 && (
+                        <button
+                          onClick={() => toggleCountrySelection(c.id)}
+                          className="text-slate-500 hover:text-rose-400 transition-colors p-0.5"
+                          title="Retirer du comparatif"
+                        >
+                          <X className="size-3" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground text-[10px]">{city.pos} maquis</span>
-                  <Badge variant="outline" className="text-[10px] border-cyan-500/30 text-cyan-300">
-                    {city.volumeShare}
-                  </Badge>
+                {/* Ligne 1 : Volume de Ventes */}
+                <div className="grid grid-cols-12 gap-2 py-1.5 border-b border-slate-800/60 text-xs font-mono items-center">
+                  <div className="col-span-4 text-slate-400 text-[11px]">Volume ({unit})</div>
+                  {comparedCountries.map((c) => {
+                    const vol = formatProductVolume(c.volumeCols, unit, c.name);
+                    return (
+                      <div key={c.id} className={`${comparedCountries.length === 1 ? 'col-span-8' : comparedCountries.length === 2 ? 'col-span-4' : 'col-span-2.5'} font-bold text-cyan-400 truncate`}>
+                        {vol.formatted}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Ligne 2 : Part des Ventes Globales */}
+                <div className="grid grid-cols-12 gap-2 py-1.5 border-b border-slate-800/60 text-xs font-mono items-center">
+                  <div className="col-span-4 text-slate-400 text-[11px]">Part Réseau %</div>
+                  {comparedCountries.map((c) => (
+                    <div key={c.id} className={`${comparedCountries.length === 1 ? 'col-span-8' : comparedCountries.length === 2 ? 'col-span-4' : 'col-span-2.5'} font-bold text-emerald-400`}>
+                      {c.shareOfSales}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Ligne 3 : Nombre Réel de Transactions */}
+                <div className="grid grid-cols-12 gap-2 py-1.5 border-b border-slate-800/60 text-xs font-mono items-center">
+                  <div className="col-span-4 text-slate-400 text-[11px]">Tickets Vente</div>
+                  {comparedCountries.map((c) => (
+                    <div key={c.id} className={`${comparedCountries.length === 1 ? 'col-span-8' : comparedCountries.length === 2 ? 'col-span-4' : 'col-span-2.5'} text-foreground font-semibold`}>
+                      {c.totalSalesCount.toLocaleString('fr-FR')}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Ligne 4 : Chiffre d'Affaires */}
+                <div className="grid grid-cols-12 gap-2 py-1.5 border-b border-slate-800/60 text-xs font-mono items-center">
+                  <div className="col-span-4 text-slate-400 text-[11px]">Chiffre d&apos;Affaires</div>
+                  {comparedCountries.map((c) => (
+                    <div key={c.id} className={`${comparedCountries.length === 1 ? 'col-span-8' : comparedCountries.length === 2 ? 'col-span-4' : 'col-span-2.5'} text-emerald-400 font-bold truncate`}>
+                      {c.revenueFcfa >= 1000000 ? `${(c.revenueFcfa / 1000000).toFixed(1)}M F` : `${(c.revenueFcfa / 1000).toFixed(0)}k F`}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Ligne 5 : Débits Actifs (POS) */}
+                <div className="grid grid-cols-12 gap-2 py-1.5 border-b border-slate-800/60 text-xs font-mono items-center">
+                  <div className="col-span-4 text-slate-400 text-[11px]">Débits (POS)</div>
+                  {comparedCountries.map((c) => (
+                    <div key={c.id} className={`${comparedCountries.length === 1 ? 'col-span-8' : comparedCountries.length === 2 ? 'col-span-4' : 'col-span-2.5'} text-foreground`}>
+                      {c.posCount} POS
+                    </div>
+                  ))}
+                </div>
+
+                {/* Ligne 6 : Boisson Leader */}
+                <div className="grid grid-cols-12 gap-2 py-1.5 border-b border-slate-800/60 text-xs font-mono items-center">
+                  <div className="col-span-4 text-slate-400 text-[11px]">Boisson Leader</div>
+                  {comparedCountries.map((c) => (
+                    <div key={c.id} className={`${comparedCountries.length === 1 ? 'col-span-8' : comparedCountries.length === 2 ? 'col-span-4' : 'col-span-2.5'} text-cyan-300 truncate text-[11px]`}>
+                      {c.topBrand}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Ligne 7 : Brasserie Dominante */}
+                <div className="grid grid-cols-12 gap-2 py-1.5 border-b border-slate-800/60 text-xs font-mono items-center">
+                  <div className="col-span-4 text-slate-400 text-[11px]">Brasserie Leader</div>
+                  {comparedCountries.map((c) => (
+                    <div key={c.id} className={`${comparedCountries.length === 1 ? 'col-span-8' : comparedCountries.length === 2 ? 'col-span-4' : 'col-span-2.5'} text-slate-300 truncate text-[11px]`}>
+                      {c.topBrewery}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Ligne 8 : Pôles Clés */}
+                <div className="grid grid-cols-12 gap-2 py-1.5 text-xs font-mono items-center">
+                  <div className="col-span-4 text-slate-400 text-[11px]">Pôles Urbains</div>
+                  {comparedCountries.map((c) => (
+                    <div key={c.id} className={`${comparedCountries.length === 1 ? 'col-span-8' : comparedCountries.length === 2 ? 'col-span-4' : 'col-span-2.5'} text-slate-400 truncate text-[10px]`}>
+                      {c.cities.slice(0, 2).map((city) => city.name.split(' ')[0]).join(', ')}
+                    </div>
+                  ))}
                 </div>
               </div>
-            ))}
-          </div>
+            </div>
+          ) : (
+            /* VUE 2 : DÉTAIL FIN DES PÔLES URBAINS DU PAYS SÉLECTIONNÉ */
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs font-mono pb-1 border-b border-slate-800/60">
+                <span className="text-slate-400">Pôles de débit pour {focusedCountry.name} :</span>
+                <span className="text-cyan-400 font-bold">{focusedCountry.cities.length} ville(s) recensée(s)</span>
+              </div>
+              <div className="space-y-2 max-h-[190px] overflow-y-auto pr-1">
+                {focusedCountry.cities.map((city, idx) => (
+                  <div
+                    key={idx}
+                    className="p-2 rounded-xl border border-slate-800/80 bg-slate-950/60 flex items-center justify-between text-xs font-mono"
+                  >
+                    <div className="flex items-center gap-2">
+                      <MapPin className="size-3.5 text-cyan-400 shrink-0" />
+                      <span className="font-bold text-slate-200">{city.name}</span>
+                    </div>
 
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground text-[10px]">{city.pos} maquis</span>
+                      <Badge variant="outline" className="text-[10px] border-cyan-500/30 text-cyan-300">
+                        {city.volumeShare}
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Pied du comparateur : CA Consolidé de la sélection courante */}
           <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] font-mono text-slate-400">
-            <span>CA Consolidé :</span>
+            <span>CA Total ({comparedCountries.length} pays sélectionnés) :</span>
             <span className="font-bold text-emerald-400 text-xs">
-              {selectedCountry.revenueFcfa.toLocaleString('fr-FR')} FCFA
+              {comparedCountries.reduce((sum, c) => sum + c.revenueFcfa, 0).toLocaleString('fr-FR')} FCFA
             </span>
           </div>
         </div>
@@ -650,11 +973,11 @@ export const MultiCountryNetworkMap: React.FC<{
           </div>
           <div>
             <div className="font-bold text-foreground flex items-center gap-2">
-              Corridor Logistique Réel • Traçabilité GlobalSale
+              Corridor Logistique Réel • Traçabilité Multi-Pays GlobalSale
               <Badge className="bg-emerald-500 text-slate-950 text-[9px] font-bold">Flux Réels</Badge>
             </div>
             <div className="text-slate-300 text-[11px] mt-0.5">
-              Toutes les données de ventes nationales et sous-régionales proviennent directement des 58 082 tickets de vente GlobalSale. Les transferts de stock et approvisionnements du Hub Côte d&apos;Ivoire vers les points de vente connectés du Burkina Faso et de RD Congo sont calibrés sur la vélocité réelle constatée sur le terrain.
+              Comparaison en direct des flux de ventes entre {comparedCountries.map((c) => c.name).join(', ')}. Les volumes et stocks sont consolidés sans intermédiaire à partir des 58 082 tickets de vente réels.
             </div>
           </div>
         </div>
@@ -663,11 +986,11 @@ export const MultiCountryNetworkMap: React.FC<{
           size="sm"
           className="h-8 font-mono text-xs bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold gap-1.5 shrink-0"
           onClick={() => {
-            alert(`Synchronisation validée pour ${selectedCountry.name} (${selectedCountry.posCount} POS - ${selectedCountry.totalSalesCount} ventes réelles).`);
+            alert(`Comparatif exporté pour ${comparedCountries.map((c) => c.name).join(', ')} (${comparedCountries.reduce((s, c) => s + c.totalSalesCount, 0).toLocaleString('fr-FR')} ventes réelles).`);
           }}
         >
           <Zap className="size-3.5" />
-          <span>Synchroniser {selectedCountry.name}</span>
+          <span>Synchroniser la Sélection</span>
         </Button>
       </div>
     </div>
