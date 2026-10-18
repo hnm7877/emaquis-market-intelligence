@@ -37,6 +37,7 @@ interface NavItem {
 
 const mainNavItems: NavItem[] = [
   { label: "Vue d'ensemble", href: '/', icon: LayoutDashboard },
+  { label: 'Bourse & Dashboard IA', href: '/autonomous-dashboard', icon: Sparkles, badge: 'Live 3D' },
   { label: 'Géographie', href: '/geography', icon: MapPin },
   { label: 'Produits', href: '/products', icon: Package },
   { label: 'Marques', href: '/brands', icon: Award },
@@ -49,6 +50,7 @@ const mainNavItems: NavItem[] = [
 ];
 
 const intelligenceNavItems: NavItem[] = [
+  { label: 'Tableau Autonome 3D', href: '/autonomous-dashboard', icon: Sparkles, badge: 'VGPU' },
   { label: 'Agent IA DeerFlow', href: '/ai-intelligence', icon: Bot, badge: 'IA' },
   { label: 'Couverture Réseau', href: '/data-coverage', icon: Database },
   { label: 'Portail Partenaire', href: '/partner', icon: Building2 },

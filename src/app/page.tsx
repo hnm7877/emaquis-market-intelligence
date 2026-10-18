@@ -173,6 +173,12 @@ export default function MarketOverviewPage() {
             <ShieldCheck className="size-3.5 text-emerald-500" />
             <span>Données RGPD &amp; Anonymisées</span>
           </Badge>
+          <Link href="/autonomous-dashboard">
+            <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs font-mono border-orange-500/40 bg-orange-500/10 text-orange-400 hover:bg-orange-500/20">
+              <Sparkles className="size-3.5" />
+              <span>Bourse &amp; 3D Live</span>
+            </Button>
+          </Link>
           <Link href="/ai-intelligence">
             <Button size="sm" className="h-8 gap-1.5 text-xs bg-gradient-to-r from-orange-500 to-amber-500 text-white hover:from-orange-600 hover:to-amber-600 shadow-xs">
               <Sparkles className="size-3.5" />
