@@ -211,19 +211,29 @@ export function FilterBar(props: FilterBarProps = {}) {
     return options;
   }, [dynamicFilters?.communes, contextualData?.communes]);
 
-  // Options catégories
+  // Options catégories 100% dynamiques depuis la base globale
   const categoriesList = useMemo(() => {
-    return dynamicFilters?.categories?.length
-      ? ['Toutes catégories', ...dynamicFilters.categories]
+    const raw = dynamicFilters?.categories?.length
+      ? dynamicFilters.categories
       : [
-          'Toutes catégories',
           'Bières',
           'Boissons gazeuses',
-          'Boissons énergisantes',
-          'Spiritueux',
-          'Vins & Champagnes',
-          'Eaux & Jus',
+          'Eaux',
+          'Boissons énergisantes ',
+          'Vin Rouge',
+          'Vin Blanc',
+          'Champagne',
+          'Vin Rosé',
+          'Vin Mousseux',
+          'Liqueurs',
+          'Cocktails',
+          'Vin en carton',
+          'Pet',
+          'Shot',
+          'Bière à Pression',
+          'Jus',
         ];
+    return Array.from(new Set(['Toutes catégories', ...raw.filter(Boolean)]));
   }, [dynamicFilters?.categories]);
 
   // Options marques

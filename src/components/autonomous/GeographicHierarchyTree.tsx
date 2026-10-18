@@ -293,7 +293,7 @@ export const GeographicHierarchyTree: React.FC<{
               Volumes réels ({currentNode.name.split(' (')[0]})
             </span>
             <Badge variant="outline" className="text-[10px] font-mono text-cyan-300 border-cyan-500/30">
-              {currentNode.volume.toLocaleString('fr-FR')} casiers
+              {currentNode.volume.toLocaleString('fr-FR')} cols (≈ {Math.round(currentNode.volume / 12).toLocaleString('fr-FR')} casiers)
             </Badge>
           </div>
 
@@ -328,7 +328,7 @@ export const GeographicHierarchyTree: React.FC<{
                           <div className="bg-slate-950 border border-slate-800 p-2.5 rounded-lg text-xs font-mono shadow-xl space-y-1">
                             <div className="font-bold text-foreground">#{data.rank} {data.fullName}</div>
                             <div className="text-cyan-400 font-semibold">
-                              {data.volume.toLocaleString('fr-FR')} casiers ({data.share}%)
+                              {data.volume.toLocaleString('fr-FR')} cols ({data.share}%) · ≈ {Math.round(data.volume / 12).toLocaleString('fr-FR')} casiers
                             </div>
                             {data.level === 'establishment' ? (
                               <div className="text-slate-400 text-[10px]">
@@ -470,10 +470,10 @@ export const GeographicHierarchyTree: React.FC<{
                     <div className="flex items-center gap-3 text-right shrink-0">
                       <div>
                         <div className="font-mono text-xs font-bold text-foreground">
-                          {node.volume.toLocaleString('fr-FR')} c
+                          {node.volume.toLocaleString('fr-FR')} cols
                         </div>
                         <div className="text-[10px] font-mono text-cyan-400">
-                          {node.share}%
+                          {node.share}% · ≈ {Math.round(node.volume / 12).toLocaleString('fr-FR')} cas.
                         </div>
                       </div>
 

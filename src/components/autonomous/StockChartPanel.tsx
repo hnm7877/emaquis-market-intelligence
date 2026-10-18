@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -32,18 +32,39 @@ const INTRADAY_MARKET_DATA = [
 ];
 
 const CATEGORY_SHARE = [
-  { name: 'Bières Blondes & Brunes', value: 68.4, color: '#f97316', volume: '329 800 c' },
-  { name: 'Vins & Spiritueux', value: 14.2, color: '#a855f7', volume: '68 450 c' },
-  { name: 'Sodas & Gazeuses', value: 9.8, color: '#38bdf8', volume: '47 250 c' },
-  { name: 'Boissons Énergisantes', value: 5.1, color: '#10b981', volume: '24 590 c' },
-  { name: 'Eaux Minérales & Jus', value: 2.5, color: '#06b6d4', volume: '12 100 c' },
+  { name: 'Bières', value: 68.4, color: '#f97316', volume: '329 800 cols' },
+  { name: 'Boissons gazeuses', value: 14.2, color: '#2f00bb', volume: '68 450 cols' },
+  { name: 'Eaux', value: 9.8, color: '#ff24d3', volume: '47 250 cols' },
+  { name: 'Boissons énergisantes', value: 5.1, color: '#d17a7a', volume: '24 590 cols' },
+  { name: 'Vin Rouge', value: 2.5, color: '#aa0606', volume: '12 100 cols' },
 ];
 
 export const StockChartPanel: React.FC<{
   selectedCategory?: string;
   onSelectCategory?: (category: string) => void;
-}> = ({ selectedCategory = 'Bières Blondes & Brunes', onSelectCategory }) => {
+  categoriesData?: any;
+}> = ({ selectedCategory, onSelectCategory, categoriesData }) => {
   const [activeTab, setActiveTab] = useState<'intraday' | 'categories'>('intraday');
+
+  // Catégories dynamiques récupérées en temps réel depuis la base MongoDB
+  const dynamicCategories = useMemo(() => {
+    const cats = categoriesData?.categories;
+    if (Array.isArray(cats) && cats.length > 0) {
+      const palette = ['#fabf45', '#2f00bb', '#ff24d3', '#d17a7a', '#aa0606', '#20d8ff', '#8c3c8c', '#561f1f', '#16d7da', '#f4cb01', '#5cd89d'];
+      return cats.map((c: any, idx: number) => {
+        const vol = Number(c.volume) || 0;
+        const share = Number(c.volumeShare) || Number(c.sharePercent) || 0;
+        return {
+          name: c.name || c.category || 'Catégorie',
+          value: share,
+          color: c.color || palette[idx % palette.length],
+          volume: vol >= 1000 ? `${(vol / 1000).toFixed(1)}k cols` : `${vol} cols`,
+          rawVolume: vol,
+        };
+      });
+    }
+    return CATEGORY_SHARE;
+  }, [categoriesData]);
 
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-950/80 backdrop-blur-xl p-5 shadow-2xl space-y-4">
@@ -166,7 +187,7 @@ export const StockChartPanel: React.FC<{
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
-                  data={CATEGORY_SHARE}
+                  data={dynamicCategories}
                   cx="50%"
                   cy="50%"
                   innerRadius={60}
@@ -174,7 +195,7 @@ export const StockChartPanel: React.FC<{
                   paddingAngle={4}
                   dataKey="value"
                 >
-                  {CATEGORY_SHARE.map((entry, index) => (
+                  {dynamicCategories.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
@@ -200,10 +221,10 @@ export const StockChartPanel: React.FC<{
 
           <div className="md:col-span-7 space-y-2">
             <div className="text-[11px] font-mono text-slate-400 pb-1">
-              POIDS DES FAMILLES DANS LE RÉSEAU MAQUIS
+              POIDS DES FAMILLES DANS LE RÉSEAU MAQUIS (DONNÉES TEMPS RÉEL)
             </div>
 
-            {CATEGORY_SHARE.map((cat) => {
+            {dynamicCategories.map((cat) => {
               const isSelected = selectedCategory === cat.name;
               return (
                 <button

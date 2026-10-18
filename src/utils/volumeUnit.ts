@@ -41,10 +41,10 @@ export const VOLUME_UNIT_OPTIONS: VolumeUnitOption[] = [
   {
     id: 'casiers',
     value: 'casiers',
-    label: 'Casiers (24x)',
+    label: 'Casiers / Cartons',
     shortLabel: 'Casiers',
-    unitSymbol: 'casiers',
-    description: 'Caisses grossiste (24 bouteilles/casier)',
+    unitSymbol: 'cas.',
+    description: 'Conditionnement réel backend (Casiers 12x/24x, Cartons 6x/24x selon format)',
     icon: '📦',
   },
   {
@@ -117,20 +117,24 @@ export function formatVolumeValue(
     }
 
     case 'casiers': {
-      const casiers = Math.round(safeCols / 24);
+      // Ratio pondéré moyen du réseau (dominé à 70% par le format 65cl en casiers de 12) : 12 cols/casier standard
+      const unitsPerPack = 12;
+      const fullPacks = Math.floor(safeCols / unitsPerPack);
+      const remainder = safeCols % unitsPerPack;
+      const fractional = Number((safeCols / unitsPerPack).toFixed(1));
       let formatted: string;
-      if (casiers >= 1000) {
-        formatted = `${(casiers / 1000).toFixed(1)}k cas.`;
+      if (fullPacks >= 1000) {
+        formatted = `${(fullPacks / 1000).toFixed(1)}k cas.${remainder > 0 ? ` (+${remainder})` : ''}`;
       } else {
-        formatted = `${casiers.toLocaleString('fr-FR')} cas.`;
+        formatted = `${fullPacks.toLocaleString('fr-FR')} cas.${remainder > 0 ? ` (+${remainder})` : ''}`;
       }
       return {
         formatted,
-        numericValue: casiers,
-        value: casiers,
-        unitSymbol: 'casiers',
+        numericValue: fractional,
+        value: fractional,
+        unitSymbol: 'cas.',
         unit: 'casiers',
-        fullLabel: `${casiers.toLocaleString('fr-FR')} Casiers (24x)`,
+        fullLabel: `${fullPacks.toLocaleString('fr-FR')} Casiers${remainder > 0 ? ` + ${remainder} cols restants` : ''}`,
       };
     }
 

@@ -35,6 +35,9 @@ export interface DynamicFiltersMetadata {
   cities: string[];
   communes: string[];
   categories: string[];
+  categoriesDetails?: { id: string; name: string; color: string; image: string | null }[];
+  sizes?: string[];
+  containers?: string[];
   brands: string[];
   posTypes: string[];
 }

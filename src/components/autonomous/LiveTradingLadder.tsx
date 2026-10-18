@@ -637,7 +637,11 @@ export const LiveTradingLadder: React.FC<LiveTradingLadderProps> = ({
                         {formattedVol.formatted}
                       </div>
                       <div className="text-[10px] font-mono text-slate-400">
-                        {unit !== 'cols' ? `${product.volume.toLocaleString('fr-FR')} cols` : 'Volume BD Réel'}
+                        {unit === 'casiers' && formattedVol.remainderCols !== undefined
+                          ? `${formattedVol.fullPackages?.toLocaleString('fr-FR')} ${formattedVol.unitLabel} · ${formattedVol.remainderCols} col(s) restant(s)`
+                          : unit !== 'cols'
+                          ? `${product.volume.toLocaleString('fr-FR')} cols`
+                          : 'Volume BD Réel'}
                       </div>
                     </div>
 

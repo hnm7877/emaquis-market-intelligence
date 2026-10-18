@@ -24,6 +24,7 @@ import { useCategoriesQuery } from '@/hooks/market/useMarketQueries';
 import { FilterBar } from '@/components/layout/FilterBar';
 import { useMarketFilterStore } from '@/stores/useMarketFilterStore';
 import { formatGrowth, growthColorClass, growthBadgeClass } from '@/utils/metrics';
+import { calculateProductPackage } from '@/utils/packagingConverter';
 
 export default function CategoriesPage() {
   const { filters, setFilter, resetFilters } = useMarketFilterStore();
@@ -155,7 +156,7 @@ export default function CategoriesPage() {
               {totalVolume.toLocaleString('fr-FR')} cols
             </div>
             <div className="text-[11px] text-muted-foreground mt-0.5">
-              Toutes ventes cumulées
+              ≈ {Math.round(totalVolume / 12).toLocaleString('fr-FR')} casiers équivalents (base 12x)
             </div>
           </div>
         </Card>
@@ -272,24 +273,32 @@ export default function CategoriesPage() {
                   </div>
 
                   {/* Volume & Revenue stats */}
-                  <div className="pt-2 border-t border-border/40 grid grid-cols-2 gap-2 text-[11px]">
-                    <div>
-                      <div className="text-muted-foreground text-[10px]">Volume Vendu</div>
-                      <div className="font-bold text-foreground font-mono">
-                        {vol.toLocaleString('fr-FR')} cols
+                  {(() => {
+                    const pack = calculateProductPackage(vol, cat.name, undefined, cat.name);
+                    return (
+                      <div className="pt-2 border-t border-border/40 grid grid-cols-2 gap-2 text-[11px]">
+                        <div>
+                          <div className="text-muted-foreground text-[10px]">Volume Vendu</div>
+                          <div className="font-bold text-foreground font-mono">
+                            {vol.toLocaleString('fr-FR')} cols
+                          </div>
+                          <div className="text-[10px] text-amber-400 font-mono mt-0.5" title={pack.formattedDetailed}>
+                            ≈ {pack.formatted}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-muted-foreground text-[10px]">Chiffre Ventes</div>
+                          <div className="font-bold text-foreground font-mono">
+                            {rev > 0
+                              ? rev >= 1_000_000
+                                ? `${(rev / 1_000_000).toFixed(1)}M F`
+                                : `${(rev / 1_000).toFixed(0)}k F`
+                              : '0 F'}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-muted-foreground text-[10px]">Chiffre Ventes</div>
-                      <div className="font-bold text-foreground font-mono">
-                        {rev > 0
-                          ? rev >= 1_000_000
-                            ? `${(rev / 1_000_000).toFixed(1)}M F`
-                            : `${(rev / 1_000).toFixed(0)}k F`
-                          : '0 F'}
-                      </div>
-                    </div>
-                  </div>
+                    );
+                  })()}
                 </CardContent>
               </Card>
             );
@@ -373,7 +382,10 @@ export default function CategoriesPage() {
                           {cat.productsCount || 0}
                         </td>
                         <td className="py-2.5 px-3 text-right font-semibold text-foreground font-mono">
-                          {vol.toLocaleString('fr-FR')} cols
+                          <div>{vol.toLocaleString('fr-FR')} cols</div>
+                          <div className="text-[10px] text-amber-400/90 font-normal" title={calculateProductPackage(vol, cat.name, undefined, cat.name).formattedDetailed}>
+                            ≈ {calculateProductPackage(vol, cat.name, undefined, cat.name).formatted}
+                          </div>
                         </td>
                         <td className="py-2.5 px-3 text-right font-mono font-bold text-foreground">
                           {share}%

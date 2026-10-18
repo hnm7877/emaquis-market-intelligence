@@ -56,7 +56,7 @@ import { useMarketFilterStore } from '@/stores/useMarketFilterStore';
 import { PAYS } from '@/constants/countries';
 import { resolveProductImage } from '@/utils/productImages';
 import { getBrandLogo } from '@/utils/brandLogos';
-import { DisplayVolumeUnit, DISPLAY_VOLUME_UNITS, formatProductVolume } from '@/utils/productVolumeConverter';
+import { DisplayVolumeUnit, DISPLAY_VOLUME_UNITS, formatProductVolume, aggregateCategoryPackages } from '@/utils/productVolumeConverter';
 
 type DashboardSectionTab = 'ladder' | 'recharts' | 'duel' | 'countries' | 'geography';
 
@@ -67,7 +67,7 @@ export default function AutonomousDashboardPage() {
   const [activeTab, setActiveTab] = useState<DashboardSectionTab>('ladder');
   const [activeTerritory, setActiveTerritory] = useState('Abidjan');
   const [territoryLevel, setTerritoryLevel] = useState('city');
-  const [selectedCategory, setSelectedCategory] = useState('Bières Blondes & Brunes');
+  const [selectedCategory, setSelectedCategory] = useState('Bières');
   const [volumeUnit, setVolumeUnit] = useState<DisplayVolumeUnit>('cols');
   const [isGlossaryOpen, setIsGlossaryOpen] = useState(false);
   const [isNewsModalOpen, setIsNewsModalOpen] = useState(false);
@@ -145,6 +145,16 @@ export default function AutonomousDashboardPage() {
     refetchCoverage,
   ]);
 
+  // Synchronisation dynamique de la catégorie sélectionnée avec les catégories réelles de la BD
+  useEffect(() => {
+    if (categoriesData?.categories?.length > 0) {
+      const exists = categoriesData.categories.some((c: any) => c.name === selectedCategory);
+      if (!exists) {
+        setSelectedCategory(categoriesData.categories[0].name);
+      }
+    }
+  }, [categoriesData, selectedCategory]);
+
   // Calcul du volume réel total depuis les zones de la base
   const totalRealVolume = useMemo(() => {
     if (overviewData?.kpis?.salesVolume) return overviewData.kpis.salesVolume;
@@ -157,8 +167,18 @@ export default function AutonomousDashboardPage() {
 
   // Formatage du volume total selon l'unité choisie (L, cL, cols, casiers)
   const formattedTotalVolume = useMemo(() => {
+    // En mode casiers, on cumule fidèlement les vrais conditionnements produit par produit selon la logique backend
+    if (volumeUnit === 'casiers' && productsData?.products && Array.isArray(productsData.products) && productsData.products.length > 0) {
+      const agg = aggregateCategoryPackages(productsData.products, 'Total Réseau');
+      return {
+        formatted: agg.formatted,
+        rawNumber: agg.effectivePackages,
+        unitLabel: 'cas.',
+        formattedDetailed: agg.formattedDetailed,
+      };
+    }
     return formatProductVolume(totalRealVolume, volumeUnit, 'Total Réseau', '65cl');
-  }, [totalRealVolume, volumeUnit]);
+  }, [totalRealVolume, volumeUnit, productsData]);
 
   // Calcul du CA réel total
   const totalRealRevenue = useMemo(() => {
@@ -662,6 +682,7 @@ export default function AutonomousDashboardPage() {
           <StockChartPanel
             selectedCategory={selectedCategory}
             onSelectCategory={(cat) => setSelectedCategory(cat)}
+            categoriesData={categoriesData}
           />
         </div>
       )}
