@@ -178,3 +178,11 @@
 @media (prefers-reduced-motion: reduce) {
   .mi-geo-dot, .mi-geo-pin, .mi-geo-label { animation-duration: 0.01ms; animation-delay: 0ms; }
 }
+
+/* Carte MapLibre : fiches au survol et curseur de placement du dépôt */
+.mi-geo-popup .maplibregl-popup-content { background: rgba(2, 6, 23, 0.96); border: 1px solid rgba(255,255,255,0.14); border-radius: 10px; padding: 8px 10px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+.mi-geo-popup .maplibregl-popup-tip { display: none; }
+.mi-geo-popup { animation: mi-fade 0.15s ease-out; }
+.mi-cursor-crosshair .maplibregl-canvas { cursor: crosshair; }
+.maplibregl-ctrl-attrib.maplibregl-compact { background: rgba(2,6,23,0.7); }
+.maplibregl-ctrl-attrib a { color: #94a3b8; }

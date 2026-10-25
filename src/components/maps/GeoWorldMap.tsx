@@ -1,14 +1,16 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Layers, Maximize2, Minimize2, Scan } from 'lucide-react';
-import 'leaflet/dist/leaflet.css';
-import { escapeHtml } from '@/lib/security/escapeHtml';
+import maplibregl, { type GeoJSONSource, type Map as MlMap, type StyleSpecification } from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
+import { Box, Layers, Maximize2, Minimize2, Scan } from 'lucide-react';
 import { anonymizeEstablishmentName } from '@/utils/anonymize';
 import { useMarketRealtimeStore } from '@/stores/useMarketRealtimeStore';
 import { PAYS, normalizeCountry } from '@/constants/countries';
+import { circlePolygon, type LngLat } from '@/lib/geo';
 
 export type GeoMetric = 'volume' | 'revenue' | 'pos' | 'growth';
+export type GeoTool = 'explore' | 'heat' | 'white' | 'depot' | 'route' | 'timeline';
 
 export interface MapZone {
   id: string;
@@ -22,6 +24,8 @@ export interface MapZone {
   demandIndex?: number | null;
   latitude: number;
   longitude: number;
+  hourly?: number[];
+  registeredPos?: number;
 }
 
 export interface MapEstablishment {
@@ -36,84 +40,162 @@ export interface MapEstablishment {
   revenue: number;
 }
 
+export interface MapWhiteZone {
+  id: string;
+  zone: string;
+  city: string;
+  country: string;
+  latitude: number;
+  longitude: number;
+  registeredPos: number;
+}
+
 interface Props {
   zones: MapZone[];
   establishments: MapEstablishment[];
+  whiteZones?: MapWhiteZone[];
   metric: GeoMetric;
+  tool: GeoTool;
+  /** Heure affichée par la carte de chaleur (0 → 23) */
+  hour?: number;
+  /** Avant / après : 0 = période précédente, 1 = période en cours */
+  blend?: number;
+  depot?: LngLat | null;
+  depotRadii?: number[];
+  route?: LngLat[];
+  routeIds?: string[];
   selectedZoneId?: string | null;
   focusCountry?: string | null;
+  /** Point à centrer (liste d'un outil) */
+  focusPoint?: { latitude: number; longitude: number } | null;
   onSelectZone?: (zone: MapZone) => void;
   onSelectCountry?: (country: string) => void;
+  onMapClick?: (lngLat: LngLat) => void;
 }
 
-const BASEMAPS = [
-  {
-    id: 'dark',
-    label: 'Sombre',
-    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
-    labels: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
+/**
+ * Fonds gratuits, sans clé et sans filigrane :
+ * - OpenFreeMap (tuiles vectorielles OpenStreetMap, usage libre et illimité) ;
+ * - imagerie Esri World Imagery limitée à son zoom réel (au-delà, MapLibre agrandit
+ *   la dernière image au lieu d'afficher « Map data not yet available »).
+ */
+const GLYPHS = 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf';
+const SATELLITE: StyleSpecification = {
+  version: 8,
+  glyphs: GLYPHS,
+  sources: {
+    sat: {
+      type: 'raster',
+      tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+      tileSize: 256,
+      maxzoom: 17,
+      attribution: '© Esri',
+    },
   },
-  { id: 'satellite', label: 'Satellite', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' },
-  { id: 'streets', label: 'Rues', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png' },
-] as const;
+  layers: [{ id: 'sat', type: 'raster', source: 'sat' }],
+};
+const BASEMAPS: { id: string; label: string; style: string | StyleSpecification }[] = [
+  { id: 'dark', label: 'Sombre', style: 'https://tiles.openfreemap.org/styles/dark' },
+  { id: 'light', label: 'Clair', style: 'https://tiles.openfreemap.org/styles/positron' },
+  { id: 'streets', label: 'Rues', style: 'https://tiles.openfreemap.org/styles/liberty' },
+  { id: 'satellite', label: 'Satellite', style: SATELLITE },
+];
+const FONT = ['Noto Sans Regular'];
 
-/** Niveau de détail selon le zoom : pays → communes → maquis */
-const levelFor = (zoom: number) => (zoom < 6 ? 'country' : zoom < 12 ? 'commune' : 'establishment');
-
-const flagOf = (country: string) => PAYS.find((p) => p.code === normalizeCountry(country))?.flag || '🌍';
-
+const flagOf = (country: string) => PAYS.find((p) => p.code === normalizeCountry(country))?.flag || '';
 const compact = (n: number) => {
   const v = Math.abs(n);
   if (v >= 1_000_000) return `${(n / 1_000_000).toFixed(1)} M`;
   if (v >= 10_000) return `${(n / 1_000).toFixed(1)} k`;
   return Math.round(n).toLocaleString('fr-FR');
 };
+const growthColor = (g: number | null) => (g == null ? '#64748b' : g >= 10 ? '#10b981' : g >= 0 ? '#84cc16' : g > -10 ? '#f97316' : '#f43f5e');
+const metricColor = (m: GeoMetric) => (m === 'revenue' ? '#a78bfa' : m === 'pos' ? '#22d3ee' : '#f59e0b');
 
-const metricValue = (z: { volume: number; revenue?: number; posCount: number; growth?: number | null }, m: GeoMetric) =>
-  m === 'revenue' ? z.revenue || 0 : m === 'pos' ? z.posCount : m === 'growth' ? z.growth ?? 0 : z.volume;
+/** Valeur d'une zone, avec le curseur avant / après (période précédente estimée par l'évolution) */
+function valueOf(z: { volume: number; revenue?: number; posCount: number; growth: number | null }, m: GeoMetric, blend: number) {
+  const factor = z.growth == null || z.growth <= -100 ? 1 : 1 / (1 + z.growth / 100) + (1 - 1 / (1 + z.growth / 100)) * blend;
+  if (m === 'growth') return z.growth ?? 0;
+  if (m === 'pos') return z.posCount;
+  return (m === 'revenue' ? z.revenue || 0 : z.volume) * factor;
+}
+const labelOf = (v: number, m: GeoMetric, g: number | null) =>
+  m === 'growth' ? (g == null ? 'n/d' : `${g >= 0 ? '+' : ''}${g.toFixed(1)} %`) : m === 'revenue' ? `${compact(v)} F` : m === 'pos' ? `${compact(v)} maquis` : compact(v);
 
-const metricLabel = (v: number, m: GeoMetric) =>
-  m === 'revenue' ? `${compact(v)} F` : m === 'pos' ? `${compact(v)} maquis` : m === 'growth' ? `${v >= 0 ? '+' : ''}${v.toFixed(1)} %` : compact(v);
+/** Rayon selon le zoom (le zoom doit être au premier niveau de l'expression), × facteur d'apparition */
+const zoomRadius = (g = 1) =>
+  ['interpolate', ['linear'], ['zoom'], 4, ['*', ['get', 'r'], 0.6 * g], 9, ['*', ['get', 'r'], g], 14, ['*', ['get', 'r'], 1.35 * g]] as unknown as number;
 
-/** Couleur : ambre pour les quantités, vert / rouge pour l'évolution */
-const colorFor = (z: MapZone, m: GeoMetric) => {
-  if (m === 'growth') {
-    if (z.growth == null) return '#64748b';
-    return z.growth >= 10 ? '#10b981' : z.growth >= 0 ? '#84cc16' : z.growth > -10 ? '#f97316' : '#f43f5e';
+const EMPTY: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
+const pt = (lng: number, lat: number, properties: Record<string, unknown>): GeoJSON.Feature => ({
+  type: 'Feature',
+  properties,
+  geometry: { type: 'Point', coordinates: [lng, lat] },
+});
+
+/** Fiche au survol, construite en texte (aucun HTML injecté) */
+function tipNode(title: string, lines: string[], hint?: string) {
+  const root = document.createElement('div');
+  root.className = 'mi-tip';
+  const b = document.createElement('b');
+  b.textContent = title;
+  root.appendChild(b);
+  for (const l of lines) {
+    const d = document.createElement('div');
+    d.textContent = l;
+    root.appendChild(d);
   }
-  return m === 'revenue' ? '#a78bfa' : m === 'pos' ? '#22d3ee' : '#f59e0b';
-};
+  if (hint) {
+    const e = document.createElement('em');
+    e.textContent = hint;
+    root.appendChild(e);
+  }
+  return root;
+}
 
 /**
- * Grande carte tous pays : bulles par pays vues de loin, communes en zoomant, puis maquis
- * (anonymisés). Ondes à chaque vente reçue en direct. Tous les textes sont échappés.
+ * Grande carte tous pays (MapLibre GL, libre et gratuite) : pays vus de loin, communes en
+ * zoomant, maquis anonymisés de près ; carte de chaleur horaire, zones blanches, dépôt et
+ * rayons, tournée, avant / après ; ondes des ventes reçues en direct.
  */
-export function GeoWorldMap({ zones, establishments, metric, selectedZoneId, focusCountry, onSelectZone, onSelectCountry }: Props) {
+export function GeoWorldMap(props: Props) {
+  const {
+    zones,
+    establishments,
+    whiteZones = [],
+    metric,
+    tool,
+    hour = 21,
+    blend = 1,
+    depot,
+    depotRadii = [5, 10, 20],
+    route = [],
+    routeIds = [],
+    selectedZoneId,
+    focusCountry,
+  } = props;
   const wrapRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<any>(null);
-  const LRef = useRef<any>(null);
-  const dataLayer = useRef<any>(null);
-  const pulseLayer = useRef<any>(null);
-  const baseLayers = useRef<any[]>([]);
+  const mapRef = useRef<MlMap | null>(null);
   const fitted = useRef(false);
-  const [zoom, setZoom] = useState(3);
-  const [ready, setReady] = useState(false);
-  const [basemap, setBasemap] = useState<(typeof BASEMAPS)[number]['id']>('dark');
+  const grow = useRef(1);
+  const [styleReady, setStyleReady] = useState(0);
+  const [basemap, setBasemap] = useState('dark');
   const [fullscreen, setFullscreen] = useState(false);
+  const [tilted, setTilted] = useState(false);
   const lastPulse = useMarketRealtimeStore((s) => s.lastPulse);
-  const handlers = useRef({ onSelectZone, onSelectCountry });
+  const cb = useRef(props);
   useEffect(() => {
-    handlers.current = { onSelectZone, onSelectCountry };
-  }, [onSelectZone, onSelectCountry]);
+    cb.current = props;
+  });
 
   const located = useMemo(() => zones.filter((z) => Number.isFinite(z.latitude) && Number.isFinite(z.longitude) && (z.latitude || z.longitude)), [zones]);
 
   // Agrégat par pays (centre pondéré par le volume)
   const countries = useMemo(() => {
-    const m = new Map<string, { country: string; volume: number; revenue: number; posCount: number; lat: number; lng: number; w: number; zones: MapZone[]; growthSum: number; growthW: number }>();
+    const m = new Map<string, { country: string; volume: number; revenue: number; posCount: number; lat: number; lng: number; w: number; n: number; gs: number; gw: number }>();
     for (const z of located) {
-      const c = m.get(z.country) || { country: z.country, volume: 0, revenue: 0, posCount: 0, lat: 0, lng: 0, w: 0, zones: [], growthSum: 0, growthW: 0 };
+      const c = m.get(z.country) || { country: z.country, volume: 0, revenue: 0, posCount: 0, lat: 0, lng: 0, w: 0, n: 0, gs: 0, gw: 0 };
       const w = Math.max(z.volume, 1);
       c.volume += z.volume;
       c.revenue += z.revenue || 0;
@@ -121,235 +203,458 @@ export function GeoWorldMap({ zones, establishments, metric, selectedZoneId, foc
       c.lat += z.latitude * w;
       c.lng += z.longitude * w;
       c.w += w;
+      c.n += 1;
       if (z.growth != null) {
-        c.growthSum += z.growth * w;
-        c.growthW += w;
+        c.gs += z.growth * w;
+        c.gw += w;
       }
-      c.zones.push(z);
       m.set(z.country, c);
     }
-    return [...m.values()].map((c) => ({ ...c, lat: c.lat / c.w, lng: c.lng / c.w, growth: c.growthW ? c.growthSum / c.growthW : null }));
+    return [...m.values()].map((c) => ({ ...c, lat: c.lat / c.w, lng: c.lng / c.w, growth: c.gw ? c.gs / c.gw : null }));
   }, [located]);
 
-  const fitTo = useCallback((pts: [number, number][], maxZoom = 13) => {
+  const [layersVersion, setLayersVersion] = useState(0);
+  const countriesRef = useRef(countries);
+  useEffect(() => {
+    countriesRef.current = countries;
+  }, [countries]);
+
+  const flyToCountry = useCallback((country: string) => {
     const map = mapRef.current;
+    const pts = cb.current.zones.filter((z) => z.country === country && Number.isFinite(z.latitude));
     if (!map || !pts.length) return;
-    if (pts.length === 1) map.flyTo(pts[0], Math.min(maxZoom, 12), { duration: 0.8 });
-    else map.flyToBounds(pts, { padding: [40, 40], maxZoom, duration: 0.8 });
+    const b = new maplibregl.LngLatBounds();
+    pts.forEach((z) => b.extend([z.longitude, z.latitude]));
+    map.fitBounds(b, { padding: 60, maxZoom: 11.5, duration: 1000 });
   }, []);
 
-  // Création unique de la carte
+  const handlersBound = useRef(false);
+
+  // ---------- Données GeoJSON ----------
+  const zoneData = useMemo<GeoJSON.FeatureCollection>(() => {
+    const vals = located.map((z) => Math.abs(valueOf(z, metric, blend)));
+    const max = Math.max(...vals, 1);
+    const sorted = [...located].sort((a, b) => Math.abs(valueOf(b, metric, blend)) - Math.abs(valueOf(a, metric, blend)));
+    const rank = new Map(sorted.map((z, i) => [z.id, i]));
+    const hourMax = Math.max(...located.map((z) => z.hourly?.[hour] || 0), 1);
+    const routeSet = new Set(routeIds);
+    return {
+      type: 'FeatureCollection',
+      features: located.map((z) => {
+        const v = valueOf(z, metric, blend);
+        return pt(z.longitude, z.latitude, {
+          id: z.id,
+          r: 7 + Math.sqrt(Math.abs(v) / max) * 30,
+          color: metric === 'growth' ? growthColor(z.growth) : metricColor(metric),
+          label: z.zone,
+          value: labelOf(v, metric, z.growth),
+          rank: rank.get(z.id) ?? 999,
+          heat: (z.hourly?.[hour] || 0) / hourMax,
+          selected: z.id === selectedZoneId ? 1 : 0,
+          inRoute: routeSet.has(z.id) ? 1 : 0,
+        });
+      }),
+    };
+  }, [located, metric, blend, hour, selectedZoneId, routeIds]);
+
+  const countryData = useMemo<GeoJSON.FeatureCollection>(() => {
+    const max = Math.max(...countries.map((c) => Math.abs(valueOf(c, metric, blend))), 1);
+    return {
+      type: 'FeatureCollection',
+      features: countries.map((c) => {
+        const v = valueOf(c, metric, blend);
+        return pt(c.lng, c.lat, {
+          country: c.country,
+          r: 16 + Math.sqrt(Math.abs(v) / max) * 34,
+          color: metric === 'growth' ? growthColor(c.growth) : metricColor(metric),
+          label: c.country,
+          value: labelOf(v, metric, c.growth),
+        });
+      }),
+    };
+  }, [countries, metric, blend]);
+
+  const estData = useMemo<GeoJSON.FeatureCollection>(
+    () => ({
+      type: 'FeatureCollection',
+      features: establishments
+        .slice(0, 500)
+        .filter((e) => Number.isFinite(e.latitude) && Number.isFinite(e.longitude))
+        .map((e, i) => pt(e.longitude, e.latitude, { i, gps: e.hasDirectGps ? 1 : 0 })),
+    }),
+    [establishments],
+  );
+
+  const whiteData = useMemo<GeoJSON.FeatureCollection>(() => {
+    const max = Math.max(...whiteZones.map((w) => w.registeredPos), 1);
+    return {
+      type: 'FeatureCollection',
+      features: whiteZones.map((w, i) => pt(w.longitude, w.latitude, { i, r: 8 + Math.sqrt(w.registeredPos / max) * 22, label: w.zone, value: `${w.registeredPos} inscrit${w.registeredPos > 1 ? 's' : ''}` })),
+    };
+  }, [whiteZones]);
+
+  const depotData = useMemo<GeoJSON.FeatureCollection>(
+    () => (depot ? { type: 'FeatureCollection', features: [...[...depotRadii].sort((a, b) => b - a).map((km) => circlePolygon(depot, km)), pt(depot[0], depot[1], { depot: 1 })] } : EMPTY),
+    [depot, depotRadii],
+  );
+
+  const routeData = useMemo<GeoJSON.FeatureCollection>(
+    () => ({
+      type: 'FeatureCollection',
+      features: [
+        ...(route.length > 1 ? [{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: route } } as GeoJSON.Feature] : []),
+        ...route.slice(depot ? 1 : 0).map((c, i) => pt(c[0], c[1], { n: String(i + 1) })),
+      ],
+    }),
+    [route, depot],
+  );
+
+  // ---------- Création de la carte ----------
   useEffect(() => {
-    let cancelled = false;
-    import('leaflet').then((L) => {
-      if (cancelled || !hostRef.current || mapRef.current) return;
-      LRef.current = L;
-      const map = L.map(hostRef.current, { center: [8, 0], zoom: 3, minZoom: 2, zoomControl: false, attributionControl: false, worldCopyJump: true });
-      L.control.zoom({ position: 'bottomright' }).addTo(map);
-      dataLayer.current = L.layerGroup().addTo(map);
-      pulseLayer.current = L.layerGroup().addTo(map);
-      map.on('zoomend', () => setZoom(map.getZoom()));
-      mapRef.current = map;
-      setReady(true);
+    if (!hostRef.current) return;
+    const map = new maplibregl.Map({
+      container: hostRef.current,
+      style: BASEMAPS[0].style,
+      center: [2, 8],
+      zoom: 3,
+      minZoom: 1.5,
+      maxZoom: 19,
+      attributionControl: { compact: true },
+      dragRotate: true,
+      pitchWithRotate: true,
     });
+    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'bottom-right');
+    map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-right');
+    map.on('style.load', () => setStyleReady((n) => n + 1));
+    mapRef.current = map;
     return () => {
-      cancelled = true;
-      mapRef.current?.remove();
+      map.remove();
       mapRef.current = null;
     };
   }, []);
 
-  // Fond de carte
+  // ---------- Couches (recréées après chaque changement de fond) ----------
   useEffect(() => {
-    const L = LRef.current;
     const map = mapRef.current;
-    if (!ready || !L || !map) return;
-    baseLayers.current.forEach((l) => map.removeLayer(l));
-    const b = BASEMAPS.find((x) => x.id === basemap)!;
-    const layers = [L.tileLayer(b.url, { maxZoom: 19 })];
-    if ('labels' in b && b.labels) layers.push(L.tileLayer(b.labels, { maxZoom: 19, opacity: 0.85 }));
-    layers.forEach((l) => l.addTo(map).bringToBack());
-    baseLayers.current = layers;
-  }, [ready, basemap]);
+    if (!map || !styleReady) return;
+    const src = (id: string, data: GeoJSON.FeatureCollection) => {
+      if (!map.getSource(id)) map.addSource(id, { type: 'geojson', data });
+    };
+    src('mi-zones', EMPTY);
+    src('mi-countries', EMPTY);
+    src('mi-est', EMPTY);
+    src('mi-white', EMPTY);
+    src('mi-depot', EMPTY);
+    src('mi-route', EMPTY);
+    const add = (layer: maplibregl.LayerSpecification) => {
+      if (!map.getLayer(layer.id)) map.addLayer(layer);
+    };
+
+    add({ id: 'mi-depot-fill', type: 'fill', source: 'mi-depot', filter: ['==', '$type', 'Polygon'], paint: { 'fill-color': '#f59e0b', 'fill-opacity': 0.035 } });
+    add({ id: 'mi-depot-line', type: 'line', source: 'mi-depot', filter: ['==', '$type', 'Polygon'], paint: { 'line-color': '#f59e0b', 'line-width': 1.5, 'line-dasharray': [2, 2] } });
+    add({
+      id: 'mi-heat',
+      type: 'heatmap',
+      source: 'mi-zones',
+      paint: {
+        'heatmap-weight': ['get', 'heat'],
+        'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 3, 1, 12, 3],
+        'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 3, 25, 12, 60],
+        'heatmap-opacity': 0.85,
+        'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'], 0, 'rgba(0,0,0,0)', 0.2, '#7c2d12', 0.45, '#ea580c', 0.7, '#f59e0b', 1, '#fef3c7'],
+      },
+    });
+    add({
+      id: 'mi-white-circle',
+      type: 'circle',
+      source: 'mi-white',
+      paint: { 'circle-radius': zoomRadius(), 'circle-color': 'rgba(148,163,184,0.12)', 'circle-stroke-color': '#cbd5e1', 'circle-stroke-width': 1.5 },
+    });
+    add({
+      id: 'mi-countries-circle',
+      type: 'circle',
+      source: 'mi-countries',
+      maxzoom: 5.2,
+      paint: {
+        'circle-radius': ['get', 'r'],
+        'circle-color': ['get', 'color'],
+        'circle-opacity': 0.85,
+        'circle-stroke-color': '#020617',
+        'circle-stroke-width': 2,
+        'circle-blur': 0.05,
+      },
+    });
+    add({
+      id: 'mi-zones-circle',
+      type: 'circle',
+      source: 'mi-zones',
+      minzoom: 5.2,
+      paint: {
+        'circle-radius': zoomRadius(),
+        'circle-color': ['get', 'color'],
+        'circle-opacity': 0.82,
+        'circle-stroke-color': ['case', ['==', ['get', 'selected'], 1], '#ffffff', ['==', ['get', 'inRoute'], 1], '#fde68a', '#020617'],
+        'circle-stroke-width': ['case', ['any', ['==', ['get', 'selected'], 1], ['==', ['get', 'inRoute'], 1]], 3, 1.5],
+      },
+    });
+    add({
+      id: 'mi-est-circle',
+      type: 'circle',
+      source: 'mi-est',
+      minzoom: 11.5,
+      paint: { 'circle-radius': 4, 'circle-color': '#0b1220', 'circle-stroke-width': 2, 'circle-stroke-color': ['case', ['==', ['get', 'gps'], 1], '#10b981', '#f59e0b'] },
+    });
+    add({ id: 'mi-route-line', type: 'line', source: 'mi-route', filter: ['==', '$type', 'LineString'], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#fde68a', 'line-width': 3, 'line-dasharray': [1, 1.6] } });
+    add({ id: 'mi-route-stop', type: 'circle', source: 'mi-route', filter: ['==', '$type', 'Point'], paint: { 'circle-radius': 10, 'circle-color': '#fde68a', 'circle-stroke-color': '#020617', 'circle-stroke-width': 2 } });
+    add({ id: 'mi-route-num', type: 'symbol', source: 'mi-route', filter: ['==', '$type', 'Point'], layout: { 'text-field': ['get', 'n'], 'text-font': FONT, 'text-size': 11, 'text-allow-overlap': true }, paint: { 'text-color': '#020617' } });
+    add({ id: 'mi-depot-pin', type: 'circle', source: 'mi-depot', filter: ['==', '$type', 'Point'], paint: { 'circle-radius': 9, 'circle-color': '#020617', 'circle-stroke-color': '#f59e0b', 'circle-stroke-width': 4 } });
+
+    const label = (id: string, source: string, extra: Partial<maplibregl.SymbolLayerSpecification> = {}) =>
+      add({
+        id,
+        type: 'symbol',
+        source,
+        layout: {
+          'text-field': ['format', ['get', 'label'], { 'font-scale': 1 }, '\n', {}, ['get', 'value'], { 'font-scale': 0.85, 'text-color': '#fcd34d' }],
+          'text-font': FONT,
+          'text-size': 12,
+          'text-offset': [0, 1.4],
+          'text-anchor': 'top',
+          'text-optional': true,
+          ...(extra.layout || {}),
+        },
+        paint: { 'text-color': '#f8fafc', 'text-halo-color': '#020617', 'text-halo-width': 1.6, ...(extra.paint || {}) },
+        ...(extra.minzoom != null ? { minzoom: extra.minzoom } : {}),
+        ...(extra.maxzoom != null ? { maxzoom: extra.maxzoom } : {}),
+      } as maplibregl.LayerSpecification);
+    label('mi-countries-label', 'mi-countries', { maxzoom: 5.2, layout: { 'text-size': 13 } as never });
+    label('mi-zones-label', 'mi-zones', { minzoom: 5.2, layout: { 'symbol-sort-key': ['get', 'rank'] } as never });
+    label('mi-white-label', 'mi-white', { paint: { 'text-color': '#cbd5e1' } as never });
+
+    setLayersVersion((n) => n + 1);
+    // Survol et clics : enregistrés une seule fois (ils survivent aux changements de fond)
+    if (handlersBound.current) return;
+    handlersBound.current = true;
+    const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 14, className: 'mi-geo-popup', maxWidth: '260px' });
+    const hover = (layer: string, build: (p: Record<string, unknown>) => HTMLElement | null) => {
+      map.on('mouseenter', layer, () => (map.getCanvas().style.cursor = 'pointer'));
+      map.on('mouseleave', layer, () => {
+        map.getCanvas().style.cursor = '';
+        popup.remove();
+      });
+      map.on('mousemove', layer, (e) => {
+        const f = e.features?.[0];
+        const node = f && build(f.properties as Record<string, unknown>);
+        if (node) popup.setLngLat(e.lngLat).setDOMContent(node).addTo(map);
+      });
+    };
+    const zoneById = (id: unknown) => cb.current.zones.find((z) => z.id === id);
+    hover('mi-zones-circle', (p) => {
+      const z = zoneById(p.id);
+      if (!z) return null;
+      return tipNode(
+        z.zone,
+        [
+          `${z.city} · ${flagOf(z.country)} ${z.country}`,
+          `Volume : ${compact(z.volume)} · CA : ${compact(z.revenue || 0)} F`,
+          `${z.posCount.toLocaleString('fr-FR')} maquis actifs${z.registeredPos ? ` sur ${z.registeredPos} inscrits` : ''}`,
+          `Évolution : ${z.growth == null ? 'n/d' : `${z.growth >= 0 ? '+' : ''}${z.growth.toFixed(1)} %`}`,
+        ],
+        cb.current.tool === 'route' ? 'Clic : ajouter / retirer de la tournée' : 'Clic : fiche de la commune',
+      );
+    });
+    hover('mi-countries-circle', (p) => {
+      const c = countriesRef.current.find((x) => x.country === p.country);
+      if (!c) return null;
+      return tipNode(`${flagOf(c.country)} ${c.country}`, [`${c.n} communes · ${c.posCount.toLocaleString('fr-FR')} maquis`, `Volume : ${compact(c.volume)}`, `CA : ${compact(c.revenue)} F`], 'Clic : zoomer sur ce pays');
+    });
+    hover('mi-white-circle', (p) => {
+      const w = cb.current.whiteZones?.[Number(p.i)];
+      if (!w) return null;
+      return tipNode(w.zone, [`${w.city} · ${w.country}`, `${w.registeredPos} établissement(s) inscrit(s), aucune vente sur la période`], 'Zone à prospecter');
+    });
+    hover('mi-est-circle', (p) => {
+      const e = cb.current.establishments[Number(p.i)];
+      if (!e) return null;
+      return tipNode(anonymizeEstablishmentName(e.name, e.id, Number(p.i)), [`${e.zone} · ${e.city}`, `${compact(e.volume)} unités · ${compact(e.revenue)} F`, e.hasDirectGps ? 'Position GPS' : 'Position par adresse']);
+    });
+
+    map.on('click', 'mi-countries-circle', (e) => {
+      const country = e.features?.[0]?.properties?.country as string | undefined;
+      if (!country) return;
+      cb.current.onSelectCountry?.(country);
+      flyToCountry(country);
+    });
+    map.on('click', 'mi-zones-circle', (e) => {
+      const z = zoneById(e.features?.[0]?.properties?.id);
+      if (!z) return;
+      cb.current.onSelectZone?.(z);
+      if (cb.current.tool !== 'route' && map.getZoom() < 11) map.flyTo({ center: [z.longitude, z.latitude], zoom: 12, duration: 900 });
+    });
+    map.on('click', (e) => {
+      const hit = map.queryRenderedFeatures(e.point, { layers: ['mi-zones-circle', 'mi-countries-circle'].filter((l) => map.getLayer(l)) });
+      if (!hit.length) cb.current.onMapClick?.([e.lngLat.lng, e.lngLat.lat]);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- couches créées une fois par fond de carte
+  }, [styleReady]);
+
+  // ---------- Mise à jour des données (sans recréer les couches) ----------
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !layersVersion) return;
+    const set = (id: string, data: GeoJSON.FeatureCollection) => (map.getSource(id) as GeoJSONSource | undefined)?.setData(data);
+    set('mi-zones', zoneData);
+    set('mi-countries', countryData);
+    set('mi-est', estData);
+    set('mi-white', tool === 'white' ? whiteData : EMPTY);
+    set('mi-depot', depotData);
+    set('mi-route', routeData);
+  }, [layersVersion, zoneData, countryData, estData, whiteData, depotData, routeData, tool]);
+
+  // Visibilité selon l'outil
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !layersVersion) return;
+    const vis = (id: string, on: boolean) => map.getLayer(id) && map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
+    const heat = tool === 'heat';
+    vis('mi-heat', heat);
+    ['mi-zones-circle', 'mi-countries-circle'].forEach((l) => map.getLayer(l) && map.setPaintProperty(l, 'circle-opacity', heat ? 0.25 : 0.82));
+    vis('mi-white-circle', tool === 'white');
+    vis('mi-white-label', tool === 'white');
+  }, [layersVersion, tool]);
+
+  // Apparition animée des bulles (taille 0 → 1) à chaque changement de vue
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !layersVersion) return;
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    let raf = 0;
+    const start = performance.now();
+    const step = (t: number) => {
+      const k = Math.min(1, (t - start) / 650);
+      grow.current = 1 - Math.pow(1 - k, 3);
+      if (map.getLayer('mi-zones-circle')) map.setPaintProperty('mi-zones-circle', 'circle-radius', zoomRadius(Math.max(grow.current, 0.001)));
+      if (map.getLayer('mi-countries-circle')) map.setPaintProperty('mi-countries-circle', 'circle-radius', ['*', ['get', 'r'], grow.current]);
+      if (k < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [layersVersion, metric]);
 
   // Premier cadrage : tous les pays d'un coup
   useEffect(() => {
-    if (!ready || fitted.current || !located.length) return;
+    const map = mapRef.current;
+    if (!map || !layersVersion || fitted.current || !located.length) return;
     fitted.current = true;
-    mapRef.current.fitBounds(located.map((z) => [z.latitude, z.longitude]), { padding: [40, 40], maxZoom: 7 });
-    setZoom(mapRef.current.getZoom());
-  }, [ready, located]);
+    const b = new maplibregl.LngLatBounds();
+    located.forEach((z) => b.extend([z.longitude, z.latitude]));
+    map.fitBounds(b, { padding: 70, maxZoom: 6, duration: 0 });
+  }, [layersVersion, located]);
 
-  // Pays choisi depuis la page
   useEffect(() => {
-    if (!ready || !focusCountry) return;
-    const c = countries.find((x) => x.country === focusCountry);
-    if (c) fitTo(c.zones.map((z) => [z.latitude, z.longitude]), 12);
-  }, [ready, focusCountry, countries, fitTo]);
+    if (focusCountry && layersVersion) flyToCountry(focusCountry);
+  }, [focusCountry, layersVersion, flyToCountry]);
 
-  // Commune choisie depuis la page (tableau, recherche)
   useEffect(() => {
-    if (!ready || !selectedZoneId) return;
+    const map = mapRef.current;
     const z = located.find((x) => x.id === selectedZoneId);
-    if (z && mapRef.current.getZoom() < 9) mapRef.current.flyTo([z.latitude, z.longitude], 12, { duration: 0.8 });
-  }, [ready, selectedZoneId, located]);
+    if (map && z && tool !== 'route' && map.getZoom() < 9) map.flyTo({ center: [z.longitude, z.latitude], zoom: 11.5, duration: 900 });
+  }, [selectedZoneId, located, tool]);
 
-  const level = levelFor(zoom);
-
-  // Calques de données (recalculés au changement de niveau, de métrique ou de données)
   useEffect(() => {
-    const L = LRef.current;
-    const group = dataLayer.current;
-    if (!ready || !L || !group) return;
-    group.clearLayers();
+    const map = mapRef.current;
+    const f = props.focusPoint;
+    if (map && f && Number.isFinite(f.latitude)) map.flyTo({ center: [f.longitude, f.latitude], zoom: Math.max(map.getZoom(), 11.5), duration: 900 });
+  }, [props.focusPoint]);
 
-    const bubble = (lat: number, lng: number, size: number, color: string, label: string, sub: string, tip: string, selected: boolean, delay: number, onClick: () => void) => {
-      const icon = L.divIcon({
-        className: 'mi-geo-bubble',
-        iconSize: [size, size],
-        iconAnchor: [size / 2, size / 2],
-        html: `<div class="mi-geo-dot${selected ? ' is-selected' : ''}" style="--c:${color};--d:${delay}ms;width:${size}px;height:${size}px"></div>${
-          label ? `<div class="mi-geo-label" style="--d:${delay}ms"><b>${label}</b><span>${sub}</span></div>` : ''
-        }`,
-      });
-      const mk = L.marker([lat, lng], { icon, riseOnHover: true });
-      mk.bindTooltip(tip, { direction: 'top', offset: [0, -size / 2], opacity: 1, className: 'mi-geo-tip' });
-      mk.on('click', onClick);
-      mk.addTo(group);
-    };
-
-    if (level === 'country') {
-      const max = Math.max(...countries.map((c) => Math.abs(metricValue(c, metric))), 1);
-      countries.forEach((c, i) => {
-        const v = metricValue(c, metric);
-        const size = 34 + Math.sqrt(Math.abs(v) / max) * 62;
-        const color = metric === 'growth' ? colorFor({ growth: c.growth } as MapZone, metric) : colorFor({} as MapZone, metric);
-        const name = escapeHtml(c.country);
-        bubble(
-          c.lat,
-          c.lng,
-          size,
-          color,
-          `${flagOf(c.country)} ${name}`,
-          metric === 'growth' && c.growth == null ? 'n/d' : escapeHtml(metricLabel(v, metric)),
-          `<div class="mi-tip"><b>${flagOf(c.country)} ${name}</b><div>${c.zones.length} communes · ${c.posCount.toLocaleString('fr-FR')} maquis</div><div>Volume : ${compact(c.volume)}</div><div>CA : ${compact(c.revenue)} F</div><em>Cliquez pour zoomer</em></div>`,
-          false,
-          i * 60,
-          () => {
-            handlers.current.onSelectCountry?.(c.country);
-            fitTo(c.zones.map((z) => [z.latitude, z.longitude]), 12);
-          },
-        );
-      });
-      return;
-    }
-
-    const max = Math.max(...located.map((z) => Math.abs(metricValue(z, metric))), 1);
-    const sorted = [...located].sort((a, b) => Math.abs(metricValue(b, metric)) - Math.abs(metricValue(a, metric)));
-    sorted.forEach((z, i) => {
-      const v = metricValue(z, metric);
-      const size = (level === 'establishment' ? 16 : 14) + Math.sqrt(Math.abs(v) / max) * 40;
-      const name = escapeHtml(z.zone);
-      const showLabel = i < 25 || z.id === selectedZoneId;
-      const growth = z.growth == null ? 'n/d' : `${z.growth >= 0 ? '+' : ''}${z.growth.toFixed(1)} %`;
-      bubble(
-        z.latitude,
-        z.longitude,
-        size,
-        colorFor(z, metric),
-        showLabel ? name : '',
-        metric === 'growth' && z.growth == null ? 'n/d' : escapeHtml(metricLabel(v, metric)),
-        `<div class="mi-tip"><b>${name}</b><div>${escapeHtml(z.city)} · ${flagOf(z.country)} ${escapeHtml(z.country)}</div><div>Volume : ${compact(z.volume)}</div><div>CA : ${compact(z.revenue || 0)} F</div><div>${z.posCount.toLocaleString('fr-FR')} maquis · évolution ${growth}</div></div>`,
-        z.id === selectedZoneId,
-        Math.min(i, 30) * 25,
-        () => {
-          handlers.current.onSelectZone?.(z);
-          if (mapRef.current.getZoom() < 12) mapRef.current.flyTo([z.latitude, z.longitude], 13, { duration: 0.7 });
-        },
-      );
-    });
-
-    if (level === 'establishment') {
-      establishments.slice(0, 500).forEach((e, i) => {
-        if (!Number.isFinite(e.latitude) || !Number.isFinite(e.longitude)) return;
-        const icon = L.divIcon({
-          className: 'mi-geo-bubble',
-          iconSize: [10, 10],
-          iconAnchor: [5, 5],
-          html: `<div class="mi-geo-pin${e.hasDirectGps ? ' is-gps' : ''}" style="--d:${Math.min(i, 60) * 10}ms"></div>`,
-        });
-        const name = escapeHtml(anonymizeEstablishmentName(e.name, e.id, i));
-        L.marker([e.latitude, e.longitude], { icon })
-          .bindTooltip(
-            `<div class="mi-tip"><b>${name}</b><div>${escapeHtml(e.zone)} · ${escapeHtml(e.city)}</div><div>${compact(e.volume)} unités · ${compact(e.revenue)} F</div><div>${e.hasDirectGps ? 'Position GPS' : 'Position par adresse'}</div></div>`,
-            { direction: 'top', opacity: 1, className: 'mi-geo-tip' },
-          )
-          .addTo(group);
-      });
-    }
-  }, [ready, level, metric, countries, located, establishments, selectedZoneId, fitTo]);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map && depot) map.flyTo({ center: depot, zoom: Math.max(map.getZoom(), 10), duration: 800 });
+  }, [depot]);
 
   // Ondes des ventes reçues en direct (résumé WebSocket toutes les 3 s)
   useEffect(() => {
-    const L = LRef.current;
-    const group = pulseLayer.current;
-    if (!ready || !L || !group || !lastPulse?.zones?.length) return;
+    const map = mapRef.current;
+    if (!map || !lastPulse?.zones?.length) return;
+    const markers: maplibregl.Marker[] = [];
     for (const pz of lastPulse.zones.slice(0, 25)) {
       const commune = String(pz.commune || '').toLowerCase();
       const city = String(pz.city || '').toLowerCase();
       const z = located.find((r) => r.zone.toLowerCase() === commune) || located.find((r) => r.city.toLowerCase() === city);
       if (!z) continue;
-      const mk = L.marker([z.latitude, z.longitude], {
-        interactive: false,
-        icon: L.divIcon({ className: 'mi-live-ping', html: '<span></span><span></span>', iconSize: [0, 0] }),
-      }).addTo(group);
-      setTimeout(() => group.removeLayer(mk), 2600);
+      const el = document.createElement('div');
+      el.className = 'mi-live-ping';
+      el.innerHTML = '<span></span><span></span>';
+      markers.push(new maplibregl.Marker({ element: el }).setLngLat([z.longitude, z.latitude]).addTo(map));
     }
-  }, [ready, lastPulse, located]);
+    const t = setTimeout(() => markers.forEach((m) => m.remove()), 2600);
+    return () => {
+      clearTimeout(t);
+      markers.forEach((m) => m.remove());
+    };
+  }, [lastPulse, located]);
 
-  // Plein écran
+  // Fond de carte
+  const changeBasemap = (id: string) => {
+    const b = BASEMAPS.find((x) => x.id === id);
+    if (!b || !mapRef.current || id === basemap) return;
+    setBasemap(id);
+    mapRef.current.setStyle(b.style);
+  };
+
+  // Plein écran (le conteneur entier, pour garder les commandes)
   useEffect(() => {
     const onChange = () => {
       setFullscreen(document.fullscreenElement === wrapRef.current);
-      setTimeout(() => mapRef.current?.invalidateSize(), 100);
+      setTimeout(() => mapRef.current?.resize(), 120);
     };
     document.addEventListener('fullscreenchange', onChange);
     return () => document.removeEventListener('fullscreenchange', onChange);
   }, []);
-  const toggleFullscreen = () => {
-    if (document.fullscreenElement) void document.exitFullscreen();
-    else void wrapRef.current?.requestFullscreen?.();
+
+  const toggleTilt = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.easeTo({ pitch: tilted ? 0 : 55, bearing: tilted ? 0 : -15, duration: 800 });
+    setTilted(!tilted);
   };
 
-  return (
-    <div ref={wrapRef} className="relative h-[68vh] min-h-[460px] w-full overflow-hidden rounded-2xl border border-slate-800 bg-slate-950">
-      <div ref={hostRef} className="absolute inset-0" />
+  const fitAll = () => {
+    const map = mapRef.current;
+    if (!map || !located.length) return;
+    const b = new maplibregl.LngLatBounds();
+    located.forEach((z) => b.extend([z.longitude, z.latitude]));
+    map.fitBounds(b, { padding: 70, maxZoom: 6, duration: 1000 });
+  };
 
-      {/* Commandes */}
-      <div className="absolute right-3 top-3 z-[500] flex items-center gap-1.5">
+  const btn = 'rounded-lg border border-slate-700/80 bg-slate-950/90 p-2 text-slate-300 backdrop-blur transition-colors hover:text-white';
+
+  return (
+    <div ref={wrapRef} className={`relative h-[72vh] min-h-[480px] w-full overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 ${tool === 'depot' ? 'mi-cursor-crosshair' : ''}`}>
+      <div ref={hostRef} style={{ position: 'absolute', inset: 0 }} />
+
+      <div className="absolute right-3 top-3 z-10 flex flex-wrap items-center justify-end gap-1.5">
         <div className="flex items-center rounded-lg border border-slate-700/80 bg-slate-950/90 p-0.5 backdrop-blur">
-          <Layers className="mx-1.5 size-3.5 text-slate-400" />
+          <Layers className="mx-1.5 hidden size-3.5 text-slate-400 sm:block" />
           {BASEMAPS.map((b) => (
             <button
               key={b.id}
-              onClick={() => setBasemap(b.id)}
+              onClick={() => changeBasemap(b.id)}
               className={`rounded-md px-2 py-1 text-[11px] transition-colors ${basemap === b.id ? 'bg-amber-500 font-semibold text-slate-950' : 'text-slate-300 hover:text-white'}`}
             >
               {b.label}
             </button>
           ))}
         </div>
-        <button
-          onClick={() => fitTo(located.map((z) => [z.latitude, z.longitude]), 7)}
-          className="rounded-lg border border-slate-700/80 bg-slate-950/90 p-2 text-slate-300 backdrop-blur transition-colors hover:text-white"
-          title="Voir tous les pays"
-          aria-label="Voir tous les pays"
-        >
+        <button onClick={toggleTilt} className={`${btn} ${tilted ? 'text-amber-300' : ''}`} title="Vue inclinée 3D" aria-label="Vue inclinée 3D">
+          <Box className="size-3.5" />
+        </button>
+        <button onClick={fitAll} className={btn} title="Voir tous les pays" aria-label="Voir tous les pays">
           <Scan className="size-3.5" />
         </button>
         <button
-          onClick={toggleFullscreen}
-          className="rounded-lg border border-slate-700/80 bg-slate-950/90 p-2 text-slate-300 backdrop-blur transition-colors hover:text-white"
+          onClick={() => (document.fullscreenElement ? void document.exitFullscreen() : void wrapRef.current?.requestFullscreen?.())}
+          className={btn}
           title={fullscreen ? 'Quitter le plein écran' : 'Plein écran'}
           aria-label="Plein écran"
         >
@@ -357,42 +662,24 @@ export function GeoWorldMap({ zones, establishments, metric, selectedZoneId, foc
         </button>
       </div>
 
-      {/* Niveau de détail */}
-      <div className="absolute left-3 top-3 z-[500] hidden items-center gap-1 rounded-lg sm:flex border border-slate-700/80 bg-slate-950/90 p-1 text-[11px] backdrop-blur">
-        {(['country', 'commune', 'establishment'] as const).map((l, i) => (
-          <span key={l} className={`rounded-md px-2 py-0.5 transition-colors ${level === l ? 'bg-amber-500/20 font-semibold text-amber-300' : 'text-slate-500'}`}>
-            {i + 1}. {l === 'country' ? 'Pays' : l === 'commune' ? 'Communes' : 'Maquis'}
-          </span>
-        ))}
-      </div>
-
-      {/* Légende */}
-      <div className="absolute bottom-3 left-3 z-[500] hidden max-w-[260px] sm:block rounded-lg border border-slate-700/80 bg-slate-950/90 px-3 py-2 text-[10px] text-slate-300 backdrop-blur">
-        {metric === 'growth' ? (
-          <div className="flex flex-wrap gap-x-3 gap-y-1">
-            {[
-              ['#10b981', '≥ +10 %'],
-              ['#84cc16', '0 à +10 %'],
-              ['#f97316', '0 à −10 %'],
-              ['#f43f5e', '< −10 %'],
-              ['#64748b', 'n/d'],
-            ].map(([c, l]) => (
-              <span key={l} className="flex items-center gap-1">
-                <span className="size-2 rounded-full" style={{ background: c }} />
-                {l}
-              </span>
-            ))}
-          </div>
-        ) : (
-          <div>Taille de la bulle = {metric === 'revenue' ? "chiffre d'affaires" : metric === 'pos' ? 'nombre de maquis' : 'volume vendu'}</div>
-        )}
-        <div className="mt-1 text-slate-500">Zoomez pour passer des pays aux communes puis aux maquis · onde ambre = vente en direct</div>
-      </div>
-
-      {!ready && <div className="absolute inset-0 z-[400] animate-pulse bg-slate-900/60" />}
-      {ready && !located.length && (
-        <div className="absolute inset-0 z-[400] flex items-center justify-center text-xs text-slate-400">Aucune zone localisée pour ces filtres.</div>
+      {props.metric === 'growth' && tool !== 'heat' && (
+        <div className="absolute bottom-3 left-3 z-10 hidden flex-wrap gap-x-3 gap-y-1 rounded-lg border border-slate-700/80 bg-slate-950/90 px-3 py-2 text-[10px] text-slate-300 backdrop-blur sm:flex">
+          {[
+            ['#10b981', '≥ +10 %'],
+            ['#84cc16', '0 à +10 %'],
+            ['#f97316', '0 à −10 %'],
+            ['#f43f5e', '< −10 %'],
+            ['#64748b', 'n/d'],
+          ].map(([c, l]) => (
+            <span key={l} className="flex items-center gap-1">
+              <span className="size-2 rounded-full" style={{ background: c }} />
+              {l}
+            </span>
+          ))}
+        </div>
       )}
+
+      {!located.length && <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center text-xs text-slate-400">Aucune zone localisée pour ces filtres.</div>}
     </div>
   );
 }

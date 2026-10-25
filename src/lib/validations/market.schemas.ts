@@ -131,7 +131,23 @@ export const GeoZoneSchema = z.object({
     .object({ festive: z.number(), dry: z.number(), rainy: z.number() })
     .optional(),
   precision: LocationPrecisionSchema.optional(),
+  /** Volume vendu par heure (0 → 23 h, fuseau Abidjan) */
+  hourly: z.array(z.number()).length(24).optional(),
+  /** Établissements inscrits dans la commune (avec ou sans ventes) */
+  registeredPos: z.number().optional(),
 });
+
+/** Commune avec des établissements inscrits mais aucune vente sur la période */
+export const WhiteZoneSchema = z.object({
+  id: z.string(),
+  zone: z.string(),
+  city: z.string(),
+  country: z.string(),
+  latitude: z.number(),
+  longitude: z.number(),
+  registeredPos: z.number(),
+});
+export type WhiteZone = z.infer<typeof WhiteZoneSchema>;
 
 export type GeoZone = z.infer<typeof GeoZoneSchema>;
 
@@ -158,6 +174,7 @@ export const GeographyResponseSchema = z.object({
   comparisonLabel: z.string().optional(),
   zones: z.array(GeoZoneSchema).default([]),
   establishments: z.array(EstablishmentMarkerSchema).optional(),
+  whiteZones: z.array(WhiteZoneSchema).optional(),
   unlocated: z
     .object({ posCount: z.number(), volume: z.number(), revenue: z.number() })
     .optional(),

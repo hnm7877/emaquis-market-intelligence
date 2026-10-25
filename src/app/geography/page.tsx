@@ -28,7 +28,10 @@ import { formatGrowth, growthColorClass, isAvailable } from '@/utils/metrics';
 import { useGeographyQuery } from '@/hooks/market/useMarketQueries';
 import { useMarketRealtimeStore } from '@/stores/useMarketRealtimeStore';
 import { PAYS, normalizeCountry } from '@/constants/countries';
-import type { GeoMetric, MapZone } from '@/components/maps/GeoWorldMap';
+import type { GeoMetric, GeoTool, MapWhiteZone, MapZone } from '@/components/maps/GeoWorldMap';
+import { GEO_TOOLS, GeoToolsPanel } from '@/components/geography/GeoToolsPanel';
+import { CountryCompare } from '@/components/geography/CountryCompare';
+import { optimizeRoute, type LngLat } from '@/lib/geo';
 import type { FilterState } from '@/types/market';
 
 // Carte chargée seulement côté navigateur (Leaflet a besoin de window)
@@ -38,7 +41,7 @@ const GeoWorldMap = dynamic(() => import('@/components/maps/GeoWorldMap').then((
 });
 
 type Scope = 'all' | 'filters';
-type View = 'map' | 'charts' | 'table';
+type View = 'map' | 'compare' | 'charts' | 'table';
 type SortKey = 'volume' | 'revenue' | 'posCount' | 'growth' | 'perPos';
 
 const EASE = [0.23, 1, 0.32, 1] as const;
@@ -63,7 +66,7 @@ function readUrl() {
   return {
     scope: p.get('scope') === 'filters' ? ('filters' as Scope) : undefined,
     metric: metric && METRICS.some((m) => m.id === metric) ? metric : undefined,
-    view: view && ['map', 'charts', 'table'].includes(view) ? view : undefined,
+    view: view && ['map', 'compare', 'charts', 'table'].includes(view) ? view : undefined,
     country: (p.get('pays') || '').slice(0, 60) || undefined,
     q: (p.get('q') || '').slice(0, 60) || undefined,
   };
@@ -72,6 +75,12 @@ function readUrl() {
 export default function GeographyPage() {
   const [scope, setScope] = useState<Scope>('all');
   const [view, setView] = useState<View>('map');
+  const [tool, setTool] = useState<GeoTool>('explore');
+  const [hour, setHour] = useState(21);
+  const [blend, setBlend] = useState(1);
+  const [depot, setDepot] = useState<LngLat | null>(null);
+  const [radii, setRadii] = useState<number[]>([5, 10, 20]);
+  const [routeIds, setRouteIds] = useState<string[]>([]);
   const [metric, setMetric] = useState<GeoMetric>('volume');
   const [search, setSearch] = useState('');
   const [country, setCountry] = useState<string | null>(null);
@@ -110,10 +119,13 @@ export default function GeographyPage() {
         demandIndex: z.demandIndex ?? null,
         latitude: Number(z.latitude),
         longitude: Number(z.longitude),
+        hourly: Array.isArray(z.hourly) && z.hourly.length === 24 ? z.hourly.map((v: number) => Number(v) || 0) : undefined,
+        registeredPos: typeof z.registeredPos === 'number' ? z.registeredPos : undefined,
       })),
     [geo],
   );
   const establishments = useMemo(() => (geo?.establishments || []) as any[], [geo]);
+  const whiteZones: MapWhiteZone[] = useMemo(() => (geo?.whiteZones || []) as MapWhiteZone[], [geo]);
 
   // Pays présents dans les données
   const countries = useMemo(() => {
@@ -139,6 +151,24 @@ export default function GeographyPage() {
       ),
     [zones, country, q],
   );
+
+  // Tournée : ordre de visite le plus court (depuis le dépôt s'il est placé)
+  const routeOrder = useMemo(() => {
+    const stops = routeIds.map((id) => zones.find((z) => z.id === id)).filter(Boolean) as MapZone[];
+    if (!stops.length) return [];
+    const start: LngLat = depot || [stops[0].longitude, stops[0].latitude];
+    return optimizeRoute(start, stops.map((z) => [z.longitude, z.latitude])).map((i) => stops[i]);
+  }, [routeIds, zones, depot]);
+  const routeLine: LngLat[] = useMemo(() => [...(depot ? [depot] : []), ...routeOrder.map((z) => [z.longitude, z.latitude] as LngLat)], [depot, routeOrder]);
+
+  const onSelectZone = useCallback(
+    (z: MapZone) => {
+      if (tool === 'route') setRouteIds((ids) => (ids.includes(z.id) ? ids.filter((x) => x !== z.id) : [...ids, z.id].slice(0, 25)));
+      else setSelected(z);
+    },
+    [tool],
+  );
+  const [focus, setFocus] = useState<{ id?: string; latitude: number; longitude: number } | null>(null);
 
   const totals = useMemo(() => {
     const volume = filtered.reduce((s, z) => s + z.volume, 0);
@@ -320,7 +350,8 @@ export default function GeographyPage() {
           onChange={setView}
           options={[
             { id: 'map', label: 'Carte' },
-            { id: 'charts', label: 'Comparaison' },
+            { id: 'compare', label: 'Pays face à face' },
+            { id: 'charts', label: 'Classement' },
             { id: 'table', label: 'Tableau' },
           ]}
         />
@@ -334,15 +365,73 @@ export default function GeographyPage() {
       <AnimatePresence mode="wait">
         <motion.div key={view} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2, ease: EASE }} className="space-y-4">
           {view === 'map' && (
+            <div className="flex gap-1.5 overflow-x-auto no-scrollbar" role="tablist" aria-label="Outils de la carte">
+              {GEO_TOOLS.map((t) => {
+                const on = tool === t.id;
+                const Icon = t.icon;
+                return (
+                  <button
+                    key={t.id}
+                    role="tab"
+                    aria-selected={on}
+                    title={t.hint}
+                    onClick={() => {
+                      setTool(t.id);
+                      if (t.id !== 'route') setSelected(null);
+                    }}
+                    className={`relative flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-colors ${
+                      on ? 'border-amber-500/60 bg-amber-500/15 font-semibold text-amber-300' : 'border-border/70 text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Icon className="size-3.5" />
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {view === 'map' && (
+            <GeoToolsPanel
+              tool={tool}
+              zones={filtered}
+              establishments={establishments}
+              whiteZones={whiteZones}
+              hour={hour}
+              setHour={setHour}
+              blend={blend}
+              setBlend={setBlend}
+              depot={depot}
+              setDepot={setDepot}
+              radii={radii}
+              setRadii={setRadii}
+              routeIds={routeIds}
+              setRouteIds={setRouteIds}
+              routeOrder={routeOrder}
+              comparisonLabel={geo?.comparisonLabel}
+              onFocusZone={(z) => setFocus({ ...z })}
+            />
+          )}
+          {view === 'compare' && <CountryCompare zones={zones} />}
+          {view === 'map' && (
             <div className="relative">
               <GeoWorldMap
                 zones={filtered}
                 establishments={establishments}
+                whiteZones={country ? whiteZones.filter((w) => w.country === country) : whiteZones}
                 metric={metric}
+                tool={tool}
+                hour={hour}
+                blend={tool === 'timeline' ? blend : 1}
+                depot={depot}
+                depotRadii={radii}
+                route={routeLine}
+                routeIds={routeIds}
+                focusPoint={focus}
                 selectedZoneId={selected?.id}
                 focusCountry={country}
-                onSelectZone={setSelected}
+                onSelectZone={onSelectZone}
                 onSelectCountry={(c) => setCountry(c)}
+                onMapClick={(ll) => tool === 'depot' && setDepot(ll)}
               />
               <AnimatePresence>
                 {selected && (
