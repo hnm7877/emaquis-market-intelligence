@@ -1,1471 +1,612 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
-  Package,
-  Search,
-  LayoutGrid,
-  List,
-  TrendingUp,
-  Award,
-  DollarSign,
-  RotateCw,
-  Layers,
-  Flame,
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown,
-  Eye,
-  X,
-  MapPin,
-  Sparkles,
-  BarChart3,
-  RefreshCw,
-  ShoppingBag,
-  Download,
-  Copy,
-  Check,
+  ArrowDownUp,
+  Boxes,
   ChevronLeft,
   ChevronRight,
-  SlidersHorizontal,
+  Download,
+  LayoutGrid,
+  Package,
+  Percent,
+  Rows3,
+  Search,
   ShieldAlert,
-  Zap,
+  Tag,
+  TrendingDown,
+  TrendingUp,
+  Wallet,
+  X,
 } from 'lucide-react';
-import { useProductsQuery, useBrandsQuery, useCategoriesQuery } from '@/hooks/market/useMarketQueries';
-import { FilterBar } from '@/components/layout/FilterBar';
-import { useMarketFilterStore } from '@/stores/useMarketFilterStore';
-import { VOLUME_UNIT_OPTIONS, formatVolumeValue } from '@/utils/volumeUnit';
-import { getBrandLogo } from '@/utils/brandLogos';
-import { formatGrowth, growthColorClass, growthBadgeClass } from '@/utils/metrics';
+import { useProductsQuery } from '@/hooks/market/useMarketQueries';
+import { useMarketRealtimeStore } from '@/stores/useMarketRealtimeStore';
+import { useProductsUiStore, type ProductSegment, type ProductSort } from '@/stores/useProductsUiStore';
+import type { ProductItem } from '@/lib/validations/market.schemas';
+import { AnimatedNumber } from '@/components/ui/AnimatedNumber';
+import { PriceLadder } from '@/components/products/PriceLadder';
+import { ProductDrawer, RISK_META } from '@/components/products/ProductDrawer';
+import { resolveProductImage } from '@/utils/productImages';
+import { DISPLAY_VOLUME_UNITS, formatProductVolume } from '@/utils/productVolumeConverter';
 
-type SortField = 'volume' | 'revenue' | 'rotation' | 'growth' | 'risk' | 'name' | 'rank';
-type SortDirection = 'asc' | 'desc';
-type SegmentFilter = 'ALL' | 'TOP_10' | 'GROWTH' | 'HIGH_RISK' | 'HIGH_ROTATION';
+const EASE = [0.23, 1, 0.32, 1] as const;
+const int = (n: number) => Math.round(n || 0).toLocaleString('fr-FR');
+const money = (n: number) => (Math.abs(n) >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)} M` : int(n));
+const F = (n: number | null | undefined) => (n == null ? '—' : `${int(n)} F`);
+const RISK_ORDER: Record<string, number> = { HIGH: 3, MEDIUM: 2, LOW: 1, UNKNOWN: 0 };
 
-// Helper de normalisation sans accent et insensible à la casse
-const normalizeText = (text: string) =>
-  (text || '')
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
+const SEGMENTS: { id: ProductSegment; label: string; hint: string }[] = [
+  { id: 'all', label: 'Tous', hint: 'Tous les produits' },
+  { id: 'risk', label: 'Risque de rupture', hint: 'Risque élevé ou modéré (stock réel des établissements)' },
+  { id: 'rising', label: 'En progression', hint: 'Ventes en hausse vs période précédente' },
+  { id: 'falling', label: 'En recul', hint: 'Ventes en baisse vs période précédente' },
+  { id: 'margin', label: 'Fortes marges', hint: 'Marge des établissements ≥ 35 %' },
+  { id: 'spread', label: 'Prix dispersés', hint: 'La moitié des établissements a un écart de prix ≥ 20 %' },
+  { id: 'unsold', label: 'Sans ventes', hint: 'Au catalogue mais aucune vente sur la période' },
+];
 
+const spreadOf = (p: ProductItem) => {
+  const s = p.pricing?.shelfPrice;
+  return s && s.count >= 3 ? s.p75 / Math.max(1, s.p25) : null;
+};
+
+function matchesSegment(p: ProductItem, seg: ProductSegment) {
+  switch (seg) {
+    case 'risk':
+      return p.stockoutRisk === 'HIGH' || p.stockoutRisk === 'MEDIUM';
+    case 'rising':
+      return p.volume > 0 && (p.growth ?? 0) > 0;
+    case 'falling':
+      return p.volume > 0 && (p.growth ?? 0) < 0;
+    case 'margin':
+      return (p.pricing?.marginRate ?? -1) >= 35;
+    case 'spread':
+      return (spreadOf(p) ?? 0) >= 1.2;
+    case 'unsold':
+      return p.volume === 0;
+    default:
+      return true;
+  }
+}
+
+const sortValue = (p: ProductItem, key: ProductSort): number | string => {
+  switch (key) {
+    case 'revenue':
+      return p.revenue ?? 0;
+    case 'avgPrice':
+      return p.pricing?.avgSalePrice ?? -1;
+    case 'margin':
+      return p.pricing?.marginRate ?? -999;
+    case 'rotation':
+      return p.rotationRate;
+    case 'cover':
+      return p.stock?.medianDaysCover ?? 9999;
+    case 'risk':
+      return (RISK_ORDER[p.stockoutRisk] ?? 0) * 1e9 + p.volume;
+    case 'growth':
+      return p.growth ?? -999;
+    case 'name':
+      return p.name.toLowerCase();
+    default:
+      return p.volume;
+  }
+};
+
+/**
+ * Produits : données reçues par WebSocket (React Query garde le cache, Zod les contrôle).
+ * Recherche, segments, tri et pagination s'appliquent dans le navigateur : aucune requête.
+ */
 export default function ProductsPage() {
-  const { filters, setFilter, resetFilters, volumeUnit, setVolumeUnit } = useMarketFilterStore();
-  
-  // États de filtrage, affichage et navigation
-  const [search, setSearch] = useState('');
-  const [filterBrand, setFilterBrand] = useState('ALL');
-  const [filterCategory, setFilterCategory] = useState('ALL');
-  const [selectedSegment, setSelectedSegment] = useState<SegmentFilter>('ALL');
-  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
-  const [density, setDensity] = useState<'normal' | 'compact'>('normal');
-  
-  // Tri dynamique
-  const [sortField, setSortField] = useState<SortField>('volume');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-  
-  // Pagination
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState<number | 'all'>(24);
-  
-  // Drawer / Modal détail produit & Feedback Copie
-  const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
-  const [copiedSku, setCopiedSku] = useState<string | null>(null);
-
-  // Requêtes API Market Intelligence
-  const { data: apiProductsData, isLoading, refetch, isFetching } = useProductsQuery();
-  const { data: apiBrandsData } = useBrandsQuery();
-
-  const productsList = useMemo(() => {
-    return apiProductsData?.products || [];
-  }, [apiProductsData]);
-
-  // Récupération dynamique et directe des marques réelles
-  const dynamicBrands = useMemo(() => {
-    const brandSet = new Set<string>();
-    if (apiBrandsData?.brands?.length) {
-      apiBrandsData.brands.forEach((b: any) => {
-        const name = (typeof b === 'string' ? b : b.name || '').trim();
-        if (name) brandSet.add(name);
-      });
-    }
-    productsList.forEach((p: any) => {
-      const b = (p.brand || '').trim();
-      if (b && b !== 'Non spécifié') brandSet.add(b);
-    });
-    return ['ALL', ...Array.from(brandSet).sort()];
-  }, [apiBrandsData, productsList]);
-
-  // Récupération dynamique des catégories réelles avec comptage précis
-  const dynamicCategories = useMemo(() => {
-    const catMap = new Map<string, number>();
-    productsList.forEach((p: any) => {
-      const c = (p.category || '').trim();
-      if (c) {
-        catMap.set(c, (catMap.get(c) || 0) + 1);
-      }
-    });
-
-    const list = Array.from(catMap.entries()).map(([name, count]) => ({ name, count }));
-    list.sort((a, b) => b.count - a.count);
-    return [{ name: 'ALL', count: productsList.length }, ...list];
-  }, [productsList]);
-
-  // Filtrage combiné : Recherche + Marque + Catégorie + Segment Preset + Tri
-  const filtered = useMemo(() => {
-    const normSearch = normalizeText(search);
-    const normBrandFilter = normalizeText(filterBrand);
-    const normCatFilter = normalizeText(filterCategory);
-
-    let result = productsList.filter((p: any) => {
-      const pName = normalizeText(p.name);
-      const pBrand = normalizeText(p.brand);
-      const pCat = normalizeText(p.category);
-      const pFormat = normalizeText(p.format);
-
-      const matchSearch =
-        !normSearch ||
-        pName.includes(normSearch) ||
-        pBrand.includes(normSearch) ||
-        pCat.includes(normSearch) ||
-        pFormat.includes(normSearch);
-
-      const matchBrand =
-        filterBrand === 'ALL' ||
-        normBrandFilter === 'all' ||
-        pBrand === normBrandFilter ||
-        pBrand.includes(normBrandFilter) ||
-        normBrandFilter.includes(pBrand);
-
-      const matchCat =
-        filterCategory === 'ALL' ||
-        normCatFilter === 'all' ||
-        pCat === normCatFilter ||
-        pCat.includes(normCatFilter) ||
-        normCatFilter.includes(pCat);
-
-      // Filtrage par segment d'intelligence
-      let matchSegment = true;
-      if (selectedSegment === 'GROWTH') {
-        matchSegment = (p.growth || 0) >= 15;
-      } else if (selectedSegment === 'HIGH_RISK') {
-        matchSegment = p.stockoutRisk === 'HIGH' || p.stockoutRisk === 'Élevé';
-      } else if (selectedSegment === 'HIGH_ROTATION') {
-        matchSegment = (p.rotationRate || 0) >= 10;
-      }
-
-      return matchSearch && matchBrand && matchCat && matchSegment;
-    });
-
-    // Tri dynamique configurable
-    result = [...result].sort((a: any, b: any) => {
-      let comparison = 0;
-      switch (sortField) {
-        case 'revenue':
-          comparison = (b.revenue || 0) - (a.revenue || 0);
-          break;
-        case 'rotation':
-          comparison = (b.rotationRate || 0) - (a.rotationRate || 0);
-          break;
-        case 'growth':
-          comparison = (b.growth || 0) - (a.growth || 0);
-          break;
-        case 'risk': {
-          const riskWeight: Record<string, number> = { HIGH: 3, MEDIUM: 2, LOW: 1, Élevé: 3, Modéré: 2, Faible: 1 };
-          comparison = (riskWeight[b.stockoutRisk] || 0) - (riskWeight[a.stockoutRisk] || 0);
-          break;
-        }
-        case 'name':
-          comparison = (a.name || '').localeCompare(b.name || '');
-          break;
-        case 'volume':
-        default:
-          comparison = (b.volume || 0) - (a.volume || 0);
-          break;
-      }
-
-      return sortDirection === 'asc' ? -comparison : comparison;
-    });
-
-    if (selectedSegment === 'TOP_10') {
-      result = result.slice(0, 10);
-    }
-
-    return result;
-  }, [productsList, search, filterBrand, filterCategory, selectedSegment, sortField, sortDirection]);
-
-  // Réinitialiser la page courante quand les filtres changent
+  const ui = useProductsUiStore();
   useEffect(() => {
-    setCurrentPage(1);
-  }, [search, filterBrand, filterCategory, selectedSegment, sortField, sortDirection, pageSize]);
+    void useProductsUiStore.persist.rehydrate();
+  }, []);
+  const { data, isLoading } = useProductsQuery();
+  const isConnected = useMarketRealtimeStore((s) => s.isConnected);
+  const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState<ProductItem | null>(null);
 
-  // Totaux statistiques contextuels
-  const currentVolume = useMemo(() => {
-    return filtered.reduce((acc: number, p: any) => acc + (p.volume ?? (p as any).volumeSales ?? 0), 0);
-  }, [filtered]);
+  const products: ProductItem[] = useMemo(() => (data?.products || []) as ProductItem[], [data]);
 
-  const currentRevenue = useMemo(() => {
-    return filtered.reduce((acc: number, p: any) => acc + (p.revenue ?? 0), 0);
-  }, [filtered]);
-
-  const currentProductsWithSales = useMemo(() => {
-    return filtered.filter((p: any) => (p.volume || 0) > 0).length;
-  }, [filtered]);
-
-  const currentTopProduct = filtered.length > 0 ? filtered[0] : null;
-  const currentAvgPrice = currentVolume > 0 ? Math.round(currentRevenue / currentVolume) : 850;
-
-  // Pagination dynamique
-  const totalPages = pageSize === 'all' ? 1 : Math.ceil(filtered.length / Number(pageSize)) || 1;
-  const paginatedProducts = useMemo(() => {
-    if (pageSize === 'all') return filtered;
-    const size = Number(pageSize);
-    const start = (currentPage - 1) * size;
-    return filtered.slice(start, start + size);
-  }, [filtered, currentPage, pageSize]);
-
-  // Gestion du tri par colonne
-  const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setSortField(field);
-      setSortDirection(field === 'name' ? 'asc' : 'desc');
+  // Lignes mises à jour par le direct : bref surlignage
+  const prevVolumes = useRef(new Map<string, number>());
+  const [flash, setFlash] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const changed = new Set<string>();
+    for (const p of products) {
+      const prev = prevVolumes.current.get(p.id);
+      if (prev != null && prev !== p.volume) changed.add(p.id);
+      prevVolumes.current.set(p.id, p.volume);
     }
-  };
+    if (!changed.size) return;
+    setFlash(changed);
+    const t = setTimeout(() => setFlash(new Set()), 1600);
+    return () => clearTimeout(t);
+  }, [products]);
 
-  // Exportation CSV
-  const handleExportCSV = () => {
-    if (!filtered || filtered.length === 0) return;
+  // Garder la fiche ouverte à jour avec les chiffres poussés
+  const selectedLive = selected ? products.find((p) => p.id === selected.id) || selected : null;
 
-    const headers = [
-      'Rang',
-      'Produit (SKU)',
-      'Marque',
-      'Categorie',
-      'Format',
-      `Volume (${volumeUnit.toUpperCase()})`,
-      'Chiffre Affaires (FCFA)',
-      'Progression (%)',
-      'Rotation Hebdo',
-      'Reassort (jours)',
-      'Risque Rupture',
-      'Top Communes',
-    ];
+  const categories = useMemo(() => [...new Set(products.filter((p) => p.volume > 0).map((p) => p.category))].sort(), [products]);
+  const brands = useMemo(
+    () => [...new Set(products.filter((p) => p.volume > 0 && (ui.category === 'all' || p.category === ui.category)).map((p) => p.brand))].sort(),
+    [products, ui.category],
+  );
 
-    const rows = filtered.map((p: any, idx: number) => {
-      const vol = p.volume ?? (p as any).volumeSales ?? 0;
-      const rev = p.revenue ?? 0;
-      const formattedVol = formatVolumeValue(vol, volumeUnit, rev).formatted;
-      const topZ = Array.isArray(p.topCommunes) && p.topCommunes.length > 0 ? p.topCommunes.join(' | ') : '';
-
-      return [
-        idx + 1,
-        `"${(p.name || '').replace(/"/g, '""')}"`,
-        `"${(p.brand || '').replace(/"/g, '""')}"`,
-        `"${(p.category || '').replace(/"/g, '""')}"`,
-        `"${(p.format || '').replace(/"/g, '""')}"`,
-        `"${formattedVol}"`,
-        rev,
-        p.growth ?? 'n/d',
-        p.rotationRate ?? 0,
-        p.reorderFrequencyDays ?? '',
-        p.stockoutRisk || 'LOW',
-        `"${topZ}"`,
-      ];
+  const q = ui.search.trim().toLowerCase();
+  const base = useMemo(
+    () =>
+      products.filter(
+        (p) =>
+          (ui.category === 'all' || p.category === ui.category) &&
+          (ui.brand === 'all' || p.brand === ui.brand) &&
+          (!q || p.name.toLowerCase().includes(q) || p.brand.toLowerCase().includes(q) || p.category.toLowerCase().includes(q)),
+      ),
+    [products, ui.category, ui.brand, q],
+  );
+  const segmentCounts = useMemo(() => Object.fromEntries(SEGMENTS.map((s) => [s.id, base.filter((p) => matchesSegment(p, s.id)).length])), [base]);
+  const filtered = useMemo(() => {
+    const list = base.filter((p) => matchesSegment(p, ui.segment));
+    return list.sort((a, b) => {
+      const va = sortValue(a, ui.sort);
+      const vb = sortValue(b, ui.sort);
+      return (typeof va === 'string' ? va.localeCompare(String(vb)) : (va as number) - (vb as number)) * ui.dir;
     });
+  }, [base, ui.segment, ui.sort, ui.dir]);
 
-    const csvContent = '\uFEFF' + [headers.join(';'), ...rows.map((r) => r.join(';'))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `market_intelligence_produits_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const pages = Math.max(1, Math.ceil(filtered.length / ui.pageSize));
+  const current = Math.min(page, pages);
+  const rows = filtered.slice((current - 1) * ui.pageSize, current * ui.pageSize);
+
+  // Indicateurs de la sélection (pondérés par les volumes réels)
+  const kpi = useMemo(() => {
+    const sold = filtered.filter((p) => p.volume > 0);
+    const volume = sold.reduce((s, p) => s + p.volume, 0);
+    const revenue = sold.reduce((s, p) => s + (p.revenue || 0), 0);
+    const withCost = sold.filter((p) => p.pricing?.unitCost != null && p.pricing?.avgSalePrice != null);
+    const costVol = withCost.reduce((s, p) => s + p.volume, 0);
+    const marginSum = withCost.reduce((s, p) => s + (p.pricing!.unitMargin || 0) * p.volume, 0);
+    const revWithCost = withCost.reduce((s, p) => s + (p.pricing!.avgSalePrice || 0) * p.volume, 0);
+    return {
+      volume,
+      revenue,
+      avgPrice: volume ? revenue / volume : 0,
+      marginRate: revWithCost ? (marginSum / revWithCost) * 100 : null,
+      marginCoverage: volume ? costVol / volume : 0,
+      atRisk: sold.filter((p) => p.stockoutRisk === 'HIGH').length,
+      tracked: sold.filter((p) => p.stockoutRisk !== 'UNKNOWN').length,
+      active: sold.length,
+    };
+  }, [filtered]);
+
+  const setSort = (key: ProductSort) => ui.set({ sort: key, dir: ui.sort === key ? (ui.dir === 1 ? -1 : 1) : key === 'name' ? 1 : -1 });
+
+  const exportCsv = () => {
+    const cell = (v: unknown) => {
+      let s = String(v ?? '');
+      if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+      return `"${s.replace(/"/g, '""')}"`;
+    };
+    const head = [
+      'Produit', 'Marque', 'Catégorie', 'Format', 'Volume', 'CA (F)', 'Prix moyen encaissé (F)', 'Prix affiché min', 'Prix affiché médian', 'Prix affiché max',
+      'Coût bouteille (F)', 'Prix casier (F)', 'Prix carton (F)', 'Marge (%)', 'Rotation /sem/maquis', 'Couverture (j)', 'Risque rupture', 'Réassort (j)', 'Évolution (%)', 'Top communes',
+    ];
+    const lines = filtered.map((p) => {
+      const c = (t: string) => p.pricing?.containers?.find((x) => x.type === t)?.avgPrice ?? '';
+      return [
+        p.name, p.brand, p.category, p.format, p.volume, Math.round(p.revenue || 0), p.pricing?.avgSalePrice ?? '', p.pricing?.shelfPrice?.min ?? '', p.pricing?.shelfPrice?.median ?? '',
+        p.pricing?.shelfPrice?.max ?? '', p.pricing?.unitCost ?? '', c('casier'), c('carton'), p.pricing?.marginRate ?? '', p.rotationRate, p.stock?.medianDaysCover ?? '',
+        RISK_META[p.stockoutRisk]?.label ?? p.stockoutRisk, p.reorderFrequencyDays ?? '', p.growth ?? '', p.topCommunes.join(' / '),
+      ]
+        .map(cell)
+        .join(';');
+    });
+    const blob = new Blob([`﻿${[head.map(cell).join(';'), ...lines].join('\n')}`], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `emaquis-produits-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
   };
 
-  // Copie rapide du SKU
-  const handleCopySku = (name: string) => {
-    navigator.clipboard.writeText(name);
-    setCopiedSku(name);
-    setTimeout(() => setCopiedSku(null), 2000);
-  };
-
-  // Réinitialisation complète des filtres locaux
-  const handleResetLocalFilters = () => {
-    setSearch('');
-    setFilterBrand('ALL');
-    setFilterCategory('ALL');
-    setSelectedSegment('ALL');
-    setSortField('volume');
-    setSortDirection('desc');
-    resetFilters();
-  };
-
-  const isFilteringActive = Boolean(
-    search || filterBrand !== 'ALL' || filterCategory !== 'ALL' || selectedSegment !== 'ALL'
+  const th = (key: ProductSort, label: string, align: 'left' | 'right' = 'right') => (
+    <th className={`px-3 py-2 ${align === 'right' ? 'text-right' : 'text-left'}`}>
+      <button onClick={() => setSort(key)} className={`inline-flex items-center gap-1 ${ui.sort === key ? 'text-amber-400' : ''}`}>
+        {label}
+        <ArrowDownUp className="size-3 opacity-60" />
+      </button>
+    </th>
   );
 
   return (
-    <div className="space-y-4 sm:space-y-6 max-w-7xl mx-auto pb-12" suppressHydrationWarning>
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 pb-2 border-b border-border/60">
+    <div className="mx-auto max-w-[1600px] space-y-4 pb-12">
+      {/* En-tête */}
+      <motion.header initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, ease: EASE }} className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-lg sm:text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
-              <Package className="size-5 text-amber-500 shrink-0" />
-              Catalogue Produits &amp; Débits
-            </h1>
-            <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-400 border-emerald-500/30 gap-1.5 py-0.5">
-              <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              {isLoading ? 'Chargement...' : `${currentProductsWithSales} SKUs actifs`}
-            </Badge>
+          <div className="flex items-center gap-2 text-[11px]">
+            <span className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 ${isConnected ? 'bg-amber-500/15 text-amber-400' : 'bg-muted text-muted-foreground'}`}>
+              <span className={`size-1.5 rounded-full ${isConnected ? 'animate-pulse bg-amber-400' : 'bg-muted-foreground'}`} />
+              {isConnected ? 'En direct' : 'Reconnexion…'}
+            </span>
+            <span className="text-muted-foreground">
+              {int(kpi.active)} produits vendus · {data?.comparisonLabel || 'période choisie'}
+              {data?.analysisSpanDays ? ` · ${data.analysisSpanDays} j analysés` : ''}
+            </span>
           </div>
-          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1 sm:line-clamp-none">
-            Données de ventes consolidées depuis GlobalSales, rotations et analyse géographique.
-          </p>
+          <h1 className="mt-1 flex items-center gap-2 text-xl font-black tracking-tight md:text-2xl">
+            <Package className="size-5 text-amber-500 md:size-6" />
+            Produits & prix du marché
+          </h1>
+          <p className="text-xs text-muted-foreground">Volumes, prix réellement pratiqués, prix d&apos;achat casier / carton, marges et risques de rupture calculés sur le stock réel.</p>
         </div>
-
-        {/* Search, Export, Refresh & View Mode Switcher */}
-        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap w-full sm:w-auto justify-between sm:justify-end">
-          {/* Recherche rapide */}
-          <div className="relative flex-1 sm:flex-none w-full sm:w-56 md:w-60">
-            <Search className="size-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Rechercher produit, marque..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="h-8 text-xs w-full pl-8 bg-background/80"
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="relative">
+            <span className="sr-only">Rechercher</span>
+            <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={ui.search}
+              onChange={(e) => {
+                ui.set({ search: e.target.value });
+                setPage(1);
+              }}
+              placeholder="Produit, marque, catégorie…"
+              className="h-8 w-60 rounded-lg border border-border/70 bg-background/80 pl-8 pr-7 text-xs focus:border-amber-500/60 focus:outline-none"
             />
-            {search && (
-              <button
-                onClick={() => setSearch('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer"
-                title="Effacer"
-              >
-                <X className="size-3" />
+            {ui.search && (
+              <button onClick={() => ui.set({ search: '' })} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground" aria-label="Effacer">
+                <X className="size-3.5" />
               </button>
             )}
+          </label>
+          <div className="flex h-8 items-center rounded-lg border border-border/70 bg-muted/40 p-0.5" role="radiogroup" aria-label="Unité">
+            {DISPLAY_VOLUME_UNITS.map((u) => (
+              <button
+                key={u.id}
+                role="radio"
+                aria-checked={ui.unit === u.id}
+                onClick={() => ui.set({ unit: u.id })}
+                title={u.description}
+                className={`relative h-full rounded-md px-2.5 text-xs transition-colors ${ui.unit === u.id ? 'font-semibold text-slate-950' : 'text-muted-foreground hover:text-foreground'}`}
+              >
+                {ui.unit === u.id && <motion.span layoutId="prod-unit" className="absolute inset-0 rounded-md bg-amber-500" transition={{ type: 'spring', duration: 0.3, bounce: 0.15 }} />}
+                <span className="relative">{u.shortLabel}</span>
+              </button>
+            ))}
           </div>
-
-          <div className="flex items-center gap-1.5 shrink-0">
-            {/* Mode Tableau / Grille */}
-            <div className="flex items-center border border-border rounded-lg p-0.5 bg-muted/40">
-              <Button
-                variant={viewMode === 'table' ? 'secondary' : 'ghost'}
-                size="sm"
-                onClick={() => setViewMode('table')}
-                className="h-7 px-2 sm:px-2.5 text-xs gap-1"
-                aria-label="Mode Tableau"
-              >
-                <List className="size-3.5" />
-                <span className="hidden md:inline">Tableau</span>
-              </Button>
-              <Button
-                variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
-                size="sm"
-                onClick={() => setViewMode('grid')}
-                className="h-7 px-2 sm:px-2.5 text-xs gap-1"
-                aria-label="Mode Grille"
-              >
-                <LayoutGrid className="size-3.5" />
-                <span className="hidden md:inline">Grille</span>
-              </Button>
-            </div>
-
-            {/* Densité en mode tableau */}
-            {viewMode === 'table' && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setDensity(density === 'normal' ? 'compact' : 'normal')}
-                className={`h-7 px-2 text-xs gap-1 hidden sm:flex ${density === 'compact' ? 'bg-muted text-foreground' : 'text-muted-foreground'}`}
-                title={density === 'compact' ? 'Vue normale' : 'Vue compacte'}
-              >
-                <SlidersHorizontal className="size-3" />
-                <span className="hidden md:inline">{density === 'compact' ? 'Compact' : 'Normal'}</span>
-              </Button>
-            )}
-
-            {/* Bouton Export CSV */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleExportCSV}
-              disabled={filtered.length === 0}
-              className="h-7 px-2 sm:px-2.5 text-xs gap-1 border-border/80 hover:bg-amber-500/10 hover:text-amber-400 hover:border-amber-500/40 transition-colors"
-              title="Exporter CSV"
-            >
-              <Download className="size-3" />
-              <span className="hidden sm:inline">CSV</span>
-            </Button>
-
-            {/* Bouton Rafraîchir */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => refetch()}
-              disabled={isFetching}
-              className="h-7 px-2 text-xs"
-              title="Rafraîchir"
-            >
-              <RefreshCw className={`size-3 ${isFetching ? 'animate-spin text-amber-500' : ''}`} />
-            </Button>
+          <div className="flex h-8 items-center rounded-lg border border-border/70 p-0.5">
+            <button onClick={() => ui.set({ view: 'table' })} className={`rounded-md p-1.5 ${ui.view === 'table' ? 'bg-muted text-foreground' : 'text-muted-foreground'}`} aria-label="Tableau">
+              <Rows3 className="size-3.5" />
+            </button>
+            <button onClick={() => ui.set({ view: 'grid' })} className={`rounded-md p-1.5 ${ui.view === 'grid' ? 'bg-muted text-foreground' : 'text-muted-foreground'}`} aria-label="Grille">
+              <LayoutGrid className="size-3.5" />
+            </button>
           </div>
-        </div>
-      </div>
-
-      {/* Global Filter Bar */}
-      <FilterBar filters={filters} onFilterChange={setFilter} onReset={resetFilters} />
-
-      {/* Top 5 KPI Summary Cards (Grid Responsive) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
-        {/* Card 1: Volume */}
-        <Card className="border border-border/70 bg-card/60 backdrop-blur-md relative overflow-hidden group hover:border-amber-500/40 transition-colors">
-          <CardContent className="p-3 sm:p-3.5 space-y-1">
-            <div className="flex items-center justify-between text-muted-foreground">
-              <span className="text-[11px] sm:text-xs font-medium truncate">Volume Vendu</span>
-              <div className="p-1 rounded-md bg-amber-500/10 text-amber-500 shrink-0">
-                <TrendingUp className="size-3 sm:size-3.5" />
-              </div>
-            </div>
-            <div className="text-base sm:text-lg font-bold font-mono text-foreground tracking-tight truncate">
-              {formatVolumeValue(currentVolume, volumeUnit, currentRevenue).formatted}
-            </div>
-            <div className="text-[10px] sm:text-[11px] text-muted-foreground flex items-center justify-between">
-              <span><strong className="text-foreground">{volumeUnit.toUpperCase()}</strong></span>
-              <span className="text-muted-foreground font-medium">ventes observées</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Card 2: CA */}
-        <Card className="border border-border/70 bg-card/60 backdrop-blur-md relative overflow-hidden group hover:border-emerald-500/40 transition-colors">
-          <CardContent className="p-3 sm:p-3.5 space-y-1">
-            <div className="flex items-center justify-between text-muted-foreground">
-              <span className="text-[11px] sm:text-xs font-medium truncate">Chiffre d'Affaires</span>
-              <div className="p-1 rounded-md bg-emerald-500/10 text-emerald-500 shrink-0">
-                <DollarSign className="size-3 sm:size-3.5" />
-              </div>
-            </div>
-            <div className="text-base sm:text-lg font-bold font-mono text-foreground tracking-tight truncate">
-              {currentRevenue >= 1000000
-                ? `${(currentRevenue / 1000000).toFixed(1)}M FCFA`
-                : `${currentRevenue.toLocaleString('fr-FR')} F`}
-            </div>
-            <div className="text-[10px] sm:text-[11px] text-muted-foreground truncate">
-              {isFilteringActive ? `${filtered.length} SKUs` : 'Débits réels'}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Card 3: Top SKU */}
-        <Card className="border border-border/70 bg-card/60 backdrop-blur-md relative overflow-hidden group hover:border-amber-500/40 transition-colors">
-          <CardContent className="p-3 sm:p-3.5 space-y-1">
-            <div className="flex items-center justify-between text-muted-foreground">
-              <span className="text-[11px] sm:text-xs font-medium truncate">Top SKU Leader</span>
-              <div className="p-1 rounded-md bg-amber-500/10 text-amber-500 shrink-0">
-                <Award className="size-3 sm:size-3.5" />
-              </div>
-            </div>
-            <div className="text-xs sm:text-sm font-bold text-foreground truncate" title={currentTopProduct?.name || '-'}>
-              {currentTopProduct?.name || 'Aucun'}
-            </div>
-            <div className="text-[10px] sm:text-[11px] text-muted-foreground flex items-center justify-between">
-              <span className="truncate max-w-[60%]">{currentTopProduct?.brand || '-'}</span>
-              <span className="font-mono font-semibold text-foreground">
-                {currentTopProduct ? formatVolumeValue(currentTopProduct.volume || 0, volumeUnit, currentTopProduct.revenue).formatted : '-'}
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Card 4: SKUs Actifs */}
-        <Card className="border border-border/70 bg-card/60 backdrop-blur-md relative overflow-hidden group hover:border-blue-500/40 transition-colors">
-          <CardContent className="p-3 sm:p-3.5 space-y-1">
-            <div className="flex items-center justify-between text-muted-foreground">
-              <span className="text-[11px] sm:text-xs font-medium truncate">SKUs Débités</span>
-              <div className="p-1 rounded-md bg-blue-500/10 text-blue-500 shrink-0">
-                <Layers className="size-3 sm:size-3.5" />
-              </div>
-            </div>
-            <div className="text-base sm:text-lg font-bold font-mono text-foreground tracking-tight">
-              {currentProductsWithSales} <span className="text-[11px] font-normal text-muted-foreground">/ {filtered.length}</span>
-            </div>
-            <div className="text-[10px] sm:text-[11px] text-muted-foreground">
-              {filtered.length > 0 ? `${Math.round((currentProductsWithSales / filtered.length) * 100)}% activation` : '0%'}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Card 5: Prix & Rotation */}
-        <Card className="border border-border/70 bg-card/60 backdrop-blur-md col-span-2 sm:col-span-1 relative overflow-hidden group hover:border-purple-500/40 transition-colors">
-          <CardContent className="p-3 sm:p-3.5 space-y-1">
-            <div className="flex items-center justify-between text-muted-foreground">
-              <span className="text-[11px] sm:text-xs font-medium truncate">Prix Moyen</span>
-              <div className="p-1 rounded-md bg-purple-500/10 text-purple-500 shrink-0">
-                <RotateCw className="size-3 sm:size-3.5" />
-              </div>
-            </div>
-            <div className="text-base sm:text-lg font-bold font-mono text-foreground tracking-tight">
-              {currentAvgPrice.toLocaleString('fr-FR')} <span className="text-[11px] font-normal text-muted-foreground">FCFA</span>
-            </div>
-            <div className="text-[10px] sm:text-[11px] text-muted-foreground">
-              Rot. moy: ~14x / sem
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Control Bar: Segments, Categories, Volume Switcher & Sorting */}
-      <div className="space-y-2 sm:space-y-2.5">
-        {/* Quick Intelligence Segment Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-xs -mx-1 px-1">
-          <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider pr-1 flex items-center gap-1 shrink-0">
-            <Zap className="size-3 text-amber-500" />
-            Segments :
-          </span>
-
-          <button
-            type="button"
-            onClick={() => setSelectedSegment('ALL')}
-            className={`px-2.5 py-1 rounded-lg border font-medium transition-all shrink-0 flex items-center gap-1 cursor-pointer ${
-              selectedSegment === 'ALL'
-                ? 'bg-foreground text-background border-foreground font-semibold shadow-xs'
-                : 'bg-muted/30 text-muted-foreground border-border/60 hover:bg-muted/60 hover:text-foreground'
-            }`}
-          >
-            <span>Tous</span>
-            <span className="text-[10px] opacity-75">({productsList.length})</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setSelectedSegment(selectedSegment === 'TOP_10' ? 'ALL' : 'TOP_10')}
-            className={`px-2.5 py-1 rounded-lg border font-medium transition-all shrink-0 flex items-center gap-1 cursor-pointer ${
-              selectedSegment === 'TOP_10'
-                ? 'bg-amber-500 text-black border-amber-500 font-semibold shadow-xs'
-                : 'bg-amber-500/10 text-amber-400 border-amber-500/30 hover:bg-amber-500/20'
-            }`}
-          >
-            <Flame className="size-3" />
-            <span>Top 10</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setSelectedSegment(selectedSegment === 'GROWTH' ? 'ALL' : 'GROWTH')}
-            className={`px-2.5 py-1 rounded-lg border font-medium transition-all shrink-0 flex items-center gap-1 cursor-pointer ${
-              selectedSegment === 'GROWTH'
-                ? 'bg-emerald-500 text-black border-emerald-500 font-semibold shadow-xs'
-                : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
-            }`}
-          >
-            <TrendingUp className="size-3" />
-            <span>Croissance (≥15%)</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setSelectedSegment(selectedSegment === 'HIGH_ROTATION' ? 'ALL' : 'HIGH_ROTATION')}
-            className={`px-2.5 py-1 rounded-lg border font-medium transition-all shrink-0 flex items-center gap-1 cursor-pointer ${
-              selectedSegment === 'HIGH_ROTATION'
-                ? 'bg-blue-500 text-white border-blue-500 font-semibold shadow-xs'
-                : 'bg-blue-500/10 text-blue-400 border-blue-500/30 hover:bg-blue-500/20'
-            }`}
-          >
-            <RotateCw className="size-3" />
-            <span>Rotation Rapide</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setSelectedSegment(selectedSegment === 'HIGH_RISK' ? 'ALL' : 'HIGH_RISK')}
-            className={`px-2.5 py-1 rounded-lg border font-medium transition-all shrink-0 flex items-center gap-1 cursor-pointer ${
-              selectedSegment === 'HIGH_RISK'
-                ? 'bg-rose-500 text-white border-rose-500 font-semibold shadow-xs'
-                : 'bg-rose-500/10 text-rose-400 border-rose-500/30 hover:bg-rose-500/20'
-            }`}
-          >
-            <ShieldAlert className="size-3" />
-            <span>Risque Rupture</span>
+          <button onClick={exportCsv} className="flex h-8 items-center gap-1.5 rounded-lg bg-amber-500 px-3 text-xs font-semibold text-slate-950 hover:bg-amber-400">
+            <Download className="size-3.5" /> Exporter
           </button>
         </div>
+      </motion.header>
 
-        {/* Categories Bar & Quick Sorting Dropdowns */}
-        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 p-2.5 sm:p-3 rounded-xl border border-border/70 bg-card/50 backdrop-blur-sm">
-          {/* Category Filter Pills (Scrollable) */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0 scrollbar-none w-full lg:max-w-[55%] shrink-0">
-            {dynamicCategories.map((cat) => {
-              const isAll = cat.name === 'ALL';
-              const active =
-                (isAll && (filterCategory === 'ALL' || !filterCategory)) ||
-                (!isAll && normalizeText(filterCategory) === normalizeText(cat.name));
+      {/* Indicateurs */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+        <Kpi i={0} icon={<Boxes className="size-4" />} label="Volume vendu" value={kpi.volume} format={(n) => formatProductVolume(n, ui.unit, 'Total').formatted} sub={`${int(kpi.active)} produits`} loading={isLoading} />
+        <Kpi i={1} icon={<Wallet className="size-4" />} label="Chiffre d'affaires" value={kpi.revenue} format={money} sub="FCFA" loading={isLoading} />
+        <Kpi i={2} icon={<Tag className="size-4" />} label="Prix moyen encaissé" value={kpi.avgPrice} format={(n) => `${int(n)} F`} sub="par unité vendue" loading={isLoading} />
+        <Kpi
+          i={3}
+          icon={<Percent className="size-4" />}
+          label="Marge des établissements"
+          value={kpi.marginRate ?? 0}
+          format={(n) => (kpi.marginRate == null ? '—' : `${n.toFixed(1)} %`)}
+          sub={kpi.marginRate == null ? 'aucun prix d’achat connu' : `sur ${Math.round(kpi.marginCoverage * 100)} % du volume`}
+          loading={isLoading}
+        />
+        <Kpi i={4} icon={<ShieldAlert className="size-4" />} label="Risque de rupture élevé" value={kpi.atRisk} format={int} sub={`${int(kpi.tracked)} produits suivis en stock`} loading={isLoading} tone="rose" />
+        <Kpi
+          i={5}
+          icon={<TrendingUp className="size-4" />}
+          label="En progression"
+          value={filtered.filter((p) => p.volume > 0 && (p.growth ?? 0) > 0).length}
+          format={int}
+          sub={`${filtered.filter((p) => p.volume > 0 && (p.growth ?? 0) < 0).length} en recul`}
+          loading={isLoading}
+          tone="emerald"
+        />
+      </div>
 
-              return (
-                <button
-                  key={cat.name}
-                  type="button"
-                  onClick={() => setFilterCategory(active && !isAll ? 'ALL' : cat.name)}
-                  className={`text-xs px-2.5 py-1 rounded-lg border font-medium transition-all shrink-0 flex items-center gap-1.5 cursor-pointer ${
-                    active
-                      ? 'bg-amber-500 text-black border-amber-500 font-semibold shadow-xs scale-[1.02]'
-                      : 'bg-muted/40 text-muted-foreground border-border hover:bg-muted/80 hover:text-foreground'
-                  }`}
-                >
-                  <span>{isAll ? 'Toutes catégories' : cat.name}</span>
-                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
-                    active ? 'bg-black/20 text-black' : 'bg-muted text-muted-foreground'
-                  }`}>
-                    {cat.count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Volume Unit Switcher & Brand Selector */}
-          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-between sm:justify-end w-full lg:w-auto shrink-0 pt-2 lg:pt-0 border-t border-border/40 lg:border-t-0">
-            {/* Unit Selector */}
-            <div className="flex items-center bg-muted/60 p-0.5 rounded-lg border border-border shrink-0">
-              {VOLUME_UNIT_OPTIONS.map((opt) => {
-                const isActive = volumeUnit === opt.value;
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => setVolumeUnit(opt.value)}
-                    className={`h-6 px-1.5 sm:px-2 text-[11px] rounded-md font-medium transition-all flex items-center gap-1 cursor-pointer ${
-                      isActive
-                        ? 'bg-amber-500 text-black shadow-xs font-bold'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-                    }`}
-                    title={opt.description}
-                  >
-                    <span>{opt.icon}</span>
-                    <span className="hidden sm:inline">{opt.shortLabel}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Brand Dropdown */}
-            <select
-              value={filterBrand}
-              onChange={(e) => setFilterBrand(e.target.value)}
-              className="h-7 text-xs px-2 rounded-lg border border-border bg-background/80 text-foreground font-medium shrink-0 max-w-[130px] sm:max-w-none"
-            >
-              <option value="ALL">Toutes marques</option>
-              {dynamicBrands
-                .filter((b) => b !== 'ALL')
-                .map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
-                ))}
-            </select>
-
-            {/* Tri Dropdown */}
-            <div className="flex items-center gap-1 shrink-0">
-              <ArrowUpDown className="size-3 text-muted-foreground hidden sm:block" />
-              <select
-                value={`${sortField}_${sortDirection}`}
-                onChange={(e) => {
-                  const [field, dir] = e.target.value.split('_');
-                  setSortField(field as SortField);
-                  setSortDirection(dir as SortDirection);
+      {/* Filtres */}
+      <div className="space-y-2 rounded-xl border border-border/70 bg-card/60 p-3">
+        <div className="flex gap-1.5 overflow-x-auto no-scrollbar" role="tablist" aria-label="Segments">
+          {SEGMENTS.map((s) => {
+            const on = ui.segment === s.id;
+            return (
+              <button
+                key={s.id}
+                role="tab"
+                aria-selected={on}
+                title={s.hint}
+                onClick={() => {
+                  ui.set({ segment: s.id });
+                  setPage(1);
                 }}
-                className="h-7 text-xs px-2 rounded-lg border border-border bg-background/80 text-foreground font-medium"
+                className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-colors ${
+                  on ? 'border-amber-500/60 bg-amber-500/15 font-semibold text-amber-400' : 'border-border/70 text-muted-foreground hover:text-foreground'
+                }`}
               >
-                <option value="volume_desc">Volume ↓</option>
-                <option value="volume_asc">Volume ↑</option>
-                <option value="revenue_desc">CA FCFA ↓</option>
-                <option value="revenue_asc">CA FCFA ↑</option>
-                <option value="rotation_desc">Rotation ↓</option>
-                <option value="growth_desc">Croissance % ↓</option>
-                <option value="risk_desc">Risque Rupture ↓</option>
-                <option value="name_asc">Nom (A-Z)</option>
-              </select>
-            </div>
-          </div>
+                {s.label}
+                <span className={`rounded px-1 font-mono text-[10px] ${on ? 'bg-amber-500/20' : 'bg-muted'}`}>{segmentCounts[s.id] ?? 0}</span>
+              </button>
+            );
+          })}
         </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <Select label="Catégorie" value={ui.category} options={categories} onChange={(v) => { ui.set({ category: v, brand: 'all' }); setPage(1); }} />
+          <Select label="Marque" value={ui.brand} options={brands} onChange={(v) => { ui.set({ brand: v }); setPage(1); }} />
+          {(ui.category !== 'all' || ui.brand !== 'all' || ui.segment !== 'all' || ui.search) && (
+            <button onClick={() => { ui.reset(); setPage(1); }} className="flex items-center gap-1 rounded-lg px-2 py-1 text-muted-foreground hover:text-foreground">
+              <X className="size-3" /> Réinitialiser
+            </button>
+          )}
+          <span className="ml-auto text-muted-foreground">{int(filtered.length)} résultat{filtered.length > 1 ? 's' : ''}</span>
+        </div>
+        {data && data.stockDataAvailable === false && (
+          <p className="text-[11px] text-amber-400">Stock des établissements pas encore synchronisé : le risque de rupture apparaît comme « Stock inconnu » (lancer l&apos;import initial depuis Paramètres).</p>
+        )}
       </div>
 
-      {/* Main Content View: Table or Grid */}
-      {isLoading ? (
-        <div className="space-y-4">
-          <div className="h-64 rounded-xl border border-border/70 bg-card/40 animate-pulse flex items-center justify-center text-muted-foreground text-xs">
-            <RefreshCw className="size-5 animate-spin mr-2 text-amber-500" />
-            Synchronisation des ventes en temps réel...
-          </div>
-        </div>
-      ) : viewMode === 'table' ? (
-        /* ================= TABLE VIEW ================= */
-        <Card className="border border-border/80 bg-card/60 backdrop-blur-md overflow-hidden shadow-sm">
-          <CardHeader className="py-2.5 sm:py-3 px-3 sm:px-4 border-b border-border/60 flex flex-row items-center justify-between">
-            <div className="flex items-center gap-2">
-              <CardTitle className="text-xs sm:text-sm font-semibold text-foreground flex items-center gap-2">
-                <span>Classement SKU &amp; Débits</span>
-                <Badge variant="secondary" className="text-[10px] sm:text-[11px] font-mono font-medium">
-                  {filtered.length} {filtered.length > 1 ? 'produits' : 'produit'}
-                </Badge>
-              </CardTitle>
-            </div>
-            <div className="flex items-center gap-2 sm:gap-3 text-xs text-muted-foreground font-mono">
-              <span className="hidden sm:inline">Unité: <strong className="text-amber-500 uppercase">{volumeUnit}</strong></span>
-              {isFilteringActive && (
-                <button
-                  onClick={handleResetLocalFilters}
-                  className="text-xs text-amber-400 hover:underline flex items-center gap-1 font-sans cursor-pointer"
-                >
-                  <X className="size-3" />
-                  Effacer
-                </button>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto scrollbar-thin">
-              <table className="min-w-[850px] w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="border-b border-border/80 bg-muted/30 text-muted-foreground font-medium select-none">
-                    {/* Rank */}
-                    <th
-                      className="py-2.5 px-3 w-12 text-center cursor-pointer hover:text-foreground transition-colors"
-                      onClick={() => handleSort('volume')}
-                    >
-                      <div className="flex items-center justify-center gap-1">
-                        <span>#</span>
-                        {sortField === 'volume' && (
-                          sortDirection === 'desc' ? <ArrowDown className="size-3 text-amber-500" /> : <ArrowUp className="size-3 text-amber-500" />
-                        )}
-                      </div>
-                    </th>
-
-                    {/* SKU Name */}
-                    <th
-                      className="py-2.5 px-3 cursor-pointer hover:text-foreground transition-colors"
-                      onClick={() => handleSort('name')}
-                    >
-                      <div className="flex items-center gap-1">
-                        <span>Produit (SKU)</span>
-                        {sortField === 'name' && (
-                          sortDirection === 'asc' ? <ArrowUp className="size-3 text-amber-500" /> : <ArrowDown className="size-3 text-amber-500" />
-                        )}
-                      </div>
-                    </th>
-
-                    {/* Category */}
-                    <th className="py-2.5 px-3">Catégorie</th>
-
-                    {/* Volume */}
-                    <th
-                      className="py-2.5 px-3 text-right cursor-pointer hover:text-foreground transition-colors"
-                      onClick={() => handleSort('volume')}
-                    >
-                      <div className="flex items-center justify-end gap-1">
-                        <span>Volume ({volumeUnit})</span>
-                        {sortField === 'volume' && (
-                          sortDirection === 'desc' ? <ArrowDown className="size-3 text-amber-500" /> : <ArrowUp className="size-3 text-amber-500" />
-                        )}
-                      </div>
-                    </th>
-
-                    {/* Revenue */}
-                    <th
-                      className="py-2.5 px-3 text-right cursor-pointer hover:text-foreground transition-colors"
-                      onClick={() => handleSort('revenue')}
-                    >
-                      <div className="flex items-center justify-end gap-1">
-                        <span>Chiffre d'Affaires</span>
-                        {sortField === 'revenue' && (
-                          sortDirection === 'desc' ? <ArrowDown className="size-3 text-amber-500" /> : <ArrowUp className="size-3 text-amber-500" />
-                        )}
-                      </div>
-                    </th>
-
-                    {/* Growth */}
-                    <th
-                      className="py-2.5 px-3 text-right cursor-pointer hover:text-foreground transition-colors"
-                      onClick={() => handleSort('growth')}
-                    >
-                      <div className="flex items-center justify-end gap-1">
-                        <span>Progression</span>
-                        {sortField === 'growth' && (
-                          sortDirection === 'desc' ? <ArrowDown className="size-3 text-amber-500" /> : <ArrowUp className="size-3 text-amber-500" />
-                        )}
-                      </div>
-                    </th>
-
-                    {/* Rotation Rate */}
-                    <th
-                      className="py-2.5 px-3 text-right cursor-pointer hover:text-foreground transition-colors"
-                      onClick={() => handleSort('rotation')}
-                    >
-                      <div className="flex items-center justify-end gap-1">
-                        <span>Rotation</span>
-                        {sortField === 'rotation' && (
-                          sortDirection === 'desc' ? <ArrowDown className="size-3 text-amber-500" /> : <ArrowUp className="size-3 text-amber-500" />
-                        )}
-                      </div>
-                    </th>
-
-                    {/* Reorder */}
-                    <th className="py-2.5 px-3 text-right">Réassort</th>
-
-                    {/* Risk */}
-                    <th
-                      className="py-2.5 px-3 text-center cursor-pointer hover:text-foreground transition-colors"
-                      onClick={() => handleSort('risk')}
-                    >
-                      <div className="flex items-center justify-center gap-1">
-                        <span>Risque Rupture</span>
-                        {sortField === 'risk' && (
-                          sortDirection === 'desc' ? <ArrowDown className="size-3 text-amber-500" /> : <ArrowUp className="size-3 text-amber-500" />
-                        )}
-                      </div>
-                    </th>
-
-                    {/* Top Communes */}
-                    <th className="py-2.5 px-3">Top Communes</th>
-
-                    {/* Action */}
-                    <th className="py-2.5 px-3 text-center w-12">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/40">
-                  {paginatedProducts.length === 0 ? (
-                    <tr>
-                      <td colSpan={11} className="py-14 text-center text-muted-foreground">
-                        <ShoppingBag className="size-8 mx-auto mb-2 opacity-40 text-muted-foreground" />
-                        <p className="font-semibold text-foreground">Aucun produit ne correspond à vos filtres</p>
-                        <p className="text-[11px] mt-0.5 text-muted-foreground">
-                          Modifiez vos critères de recherche ou réinitialisez les filtres.
-                        </p>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleResetLocalFilters}
-                          className="mt-3 text-xs gap-1.5"
-                        >
-                          <RotateCw className="size-3" />
-                          Réinitialiser les filtres
-                        </Button>
+      {/* Liste */}
+      {ui.view === 'table' ? (
+        <div className="overflow-x-auto rounded-xl border border-border/70 bg-card/60">
+          <table className="w-full min-w-[1280px] text-xs">
+            <thead className="border-b border-border/60 text-[10px] uppercase tracking-wider text-muted-foreground">
+              <tr>
+                <th className="px-3 py-2 text-left">#</th>
+                {th('name', 'Produit', 'left')}
+                {th('volume', 'Volume')}
+                {th('revenue', 'CA')}
+                {th('avgPrice', 'Prix moyen')}
+                <th className="w-40 px-3 py-2 text-left">Prix affichés</th>
+                <th className="px-3 py-2 text-right">Achat</th>
+                {th('margin', 'Marge')}
+                {th('rotation', 'Rotation')}
+                {th('cover', 'Couverture')}
+                {th('risk', 'Rupture')}
+                <th className="px-3 py-2 text-right">Réassort</th>
+                {th('growth', 'Évolution')}
+                <th className="px-3 py-2 text-left">Top communes</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/40">
+              {isLoading && !rows.length
+                ? Array.from({ length: 8 }, (_, i) => (
+                    <tr key={i}>
+                      <td colSpan={14} className="px-3 py-3">
+                        <div className="h-5 animate-pulse rounded bg-muted" />
                       </td>
                     </tr>
-                  ) : (
-                    paginatedProducts.map((p: any, idx: number) => {
-                      const absoluteRank = pageSize === 'all' ? idx + 1 : (currentPage - 1) * Number(pageSize) + idx + 1;
-                      const vol = p.volume ?? (p as any).volumeSales ?? 0;
-                      const rev = p.revenue ?? 0;
-                      const growthVal = p.growth ?? null;
-                      const rot = p.rotationRate ?? 0;
-                      const reorder = p.reorderFrequencyDays ?? null;
-                      const topZ = Array.isArray(p.topCommunes) && p.topCommunes.length > 0 ? p.topCommunes : [];
-                      const rowPadding = density === 'compact' ? 'py-1.5' : 'py-2.5';
-
-                      return (
-                        <tr
-                          key={p.id || idx}
-                          onClick={() => setSelectedProduct(p)}
-                          className={`hover:bg-muted/50 transition-colors group cursor-pointer ${
-                            absoluteRank === 1 ? 'bg-amber-500/5' : ''
-                          }`}
-                        >
-                          {/* Rank */}
-                          <td className={`${rowPadding} px-3 text-center font-mono`}>
-                            {absoluteRank === 1 ? (
-                              <span className="inline-flex items-center justify-center size-5 rounded-full bg-amber-500/20 text-amber-400 font-bold text-[11px] border border-amber-500/50">
-                                1
-                              </span>
-                            ) : absoluteRank === 2 ? (
-                              <span className="inline-flex items-center justify-center size-5 rounded-full bg-slate-300/20 text-slate-300 font-bold text-[11px] border border-slate-300/50">
-                                2
-                              </span>
-                            ) : absoluteRank === 3 ? (
-                              <span className="inline-flex items-center justify-center size-5 rounded-full bg-amber-700/20 text-amber-500 font-bold text-[11px] border border-amber-700/50">
-                                3
-                              </span>
-                            ) : (
-                              <span className="text-muted-foreground text-[11px]">{absoluteRank}</span>
-                            )}
-                          </td>
-
-                          {/* Produit avec Image */}
-                          <td className={`${rowPadding} px-3`}>
-                            <div className="flex items-center gap-2.5 min-w-[200px]">
-                              <div className="size-9 sm:size-10 rounded-lg bg-muted/60 border border-border/70 flex items-center justify-center overflow-hidden shrink-0 group-hover:border-amber-500/50 transition-colors">
-                                {p.image ? (
-                                  <img
-                                    src={p.image}
-                                    alt={p.name}
-                                    className="size-full object-contain p-1 group-hover:scale-110 transition-transform duration-200"
-                                    loading="lazy"
-                                    onError={(e) => {
-                                      (e.target as HTMLElement).style.display = 'none';
-                                    }}
-                                  />
-                                ) : (
-                                  <Package className="size-5 text-amber-500/60" />
-                                )}
-                              </div>
-                              <div className="min-w-0">
-                                <div className="font-semibold text-foreground truncate group-hover:text-amber-400 transition-colors">
-                                  {p.name}
-                                </div>
-                                <div className="text-[11px] text-muted-foreground flex items-center gap-1.5">
-                                  <span className="font-medium text-foreground/80 truncate max-w-[120px] flex items-center gap-1">
-                                    {getBrandLogo(p.brand) && (
-                                      <span className="size-3.5 rounded bg-white p-0.5 border border-border inline-flex items-center justify-center shrink-0">
-                                        <img src={getBrandLogo(p.brand)!} alt="" className="size-full object-contain" />
-                                      </span>
-                                    )}
-                                    <span>{p.brand}</span>
-                                  </span>
-                                  {p.format && (
-                                    <>
-                                      <span>•</span>
-                                      <span className="font-mono text-[10px] text-muted-foreground truncate">{p.format}</span>
-                                    </>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-
-                          {/* Catégorie */}
-                          <td className={`${rowPadding} px-3`}>
-                            <span
-                              className="text-[10px] px-2 py-0.5 rounded-full font-medium border whitespace-nowrap"
-                              style={{
-                                backgroundColor: `${p.categoryColor || '#f59e0b'}18`,
-                                borderColor: `${p.categoryColor || '#f59e0b'}40`,
-                                color: p.categoryColor || '#f59e0b',
-                              }}
-                            >
-                              {p.category}
-                            </span>
-                          </td>
-
-                          {/* Volume */}
-                          <td className={`${rowPadding} px-3 text-right font-semibold text-foreground font-mono`}>
-                            <div>{formatVolumeValue(vol, volumeUnit, rev).formatted}</div>
-                            {currentTopProduct && currentTopProduct.volume > 0 && (
-                              <div className="w-14 sm:w-16 h-1 bg-muted rounded-full ml-auto mt-1 overflow-hidden">
-                                <div
-                                  className="h-full bg-amber-500 rounded-full"
-                                  style={{ width: `${Math.min(100, Math.round((vol / currentTopProduct.volume) * 100))}%` }}
-                                />
-                              </div>
-                            )}
-                          </td>
-
-                          {/* CA */}
-                          <td className={`${rowPadding} px-3 text-right font-mono font-medium text-foreground`}>
-                            {rev > 0 ? `${rev.toLocaleString('fr-FR')} F` : '-'}
-                          </td>
-
-                          {/* Progression */}
-                          <td className={`${rowPadding} px-3 text-right`}>
-                            <span
-                              className={`inline-flex items-center gap-0.5 font-medium ${
-                                growthColorClass(growthVal)
-                              }`}
-                            >
-                              {formatGrowth(growthVal)}
-                            </span>
-                          </td>
-
-                          {/* Rotation */}
-                          <td className={`${rowPadding} px-3 text-right font-mono font-medium text-foreground`}>
-                            <span className={`${rot >= 10 ? 'text-amber-400 font-bold' : ''}`}>
-                              {rot}x / sem
-                            </span>
-                          </td>
-
-                          {/* Réassort */}
-                          <td className={`${rowPadding} px-3 text-right font-mono text-muted-foreground`}>
-                            {reorder}j
-                          </td>
-
-                          {/* Risque Rupture */}
-                          <td className={`${rowPadding} px-3 text-center`}>
-                            <Badge
-                              variant="outline"
-                              className={`text-[10px] font-mono py-0 gap-1 ${
-                                p.stockoutRisk === 'HIGH' || p.stockoutRisk === 'Élevé'
-                                  ? 'bg-rose-500/15 text-rose-400 border-rose-500/30'
-                                  : p.stockoutRisk === 'MEDIUM' || p.stockoutRisk === 'Modéré'
-                                  ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
-                                  : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                              }`}
-                            >
-                              <span
-                                className={`size-1 rounded-full ${
-                                  p.stockoutRisk === 'HIGH' || p.stockoutRisk === 'Élevé'
-                                    ? 'bg-rose-400 animate-ping'
-                                    : p.stockoutRisk === 'MEDIUM' || p.stockoutRisk === 'Modéré'
-                                    ? 'bg-amber-400'
-                                    : 'bg-emerald-400'
-                                }`}
-                              />
-                              {p.stockoutRisk === 'HIGH' || p.stockoutRisk === 'Élevé'
-                                ? 'Élevé'
-                                : p.stockoutRisk === 'MEDIUM' || p.stockoutRisk === 'Modéré'
-                                ? 'Moyen'
-                                : 'Faible'}
-                            </Badge>
-                          </td>
-
-                          {/* Top Communes */}
-                          <td className={`${rowPadding} px-3`}>
-                            <div className="flex items-center gap-1 flex-wrap max-w-xs">
-                              {topZ.map((c: string) => (
-                                <span
-                                  key={c}
-                                  className="text-[10px] px-1.5 py-0.2 rounded bg-muted/60 text-muted-foreground border border-border/50"
-                                >
-                                  {c}
-                                </span>
-                              ))}
-                            </div>
-                          </td>
-
-                          {/* Action */}
-                          <td className={`${rowPadding} px-3 text-center`}>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedProduct(p);
-                              }}
-                              className="size-7 p-0 text-muted-foreground hover:text-amber-400"
-                              title="Voir les détails"
-                            >
-                              <Eye className="size-3.5" />
-                            </Button>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
+                  ))
+                : rows.map((p, i) => <Row key={p.id} p={p} rank={(current - 1) * ui.pageSize + i + 1} unit={ui.unit} flash={flash.has(p.id)} onOpen={() => setSelected(p)} />)}
+            </tbody>
+          </table>
+          {!isLoading && !rows.length && <div className="py-12 text-center text-xs text-muted-foreground">Aucun produit pour ces filtres.</div>}
+        </div>
       ) : (
-        /* ================= GRID VIEW ================= */
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
-          {paginatedProducts.length === 0 ? (
-            <div className="col-span-full py-16 text-center text-muted-foreground bg-card/40 rounded-xl border border-border/70">
-              <ShoppingBag className="size-10 mx-auto mb-2 opacity-40 text-muted-foreground" />
-              <p className="font-semibold text-foreground text-sm">Aucun produit ne correspond à vos filtres</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Ajustez votre recherche ou réinitialisez les filtres.</p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleResetLocalFilters}
-                className="mt-3 text-xs gap-1.5"
-              >
-                <RotateCw className="size-3" />
-                Réinitialiser
-              </Button>
-            </div>
-          ) : (
-            paginatedProducts.map((p: any, idx: number) => {
-              const absoluteRank = pageSize === 'all' ? idx + 1 : (currentPage - 1) * Number(pageSize) + idx + 1;
-              const vol = p.volume ?? (p as any).volumeSales ?? 0;
-              const rev = p.revenue ?? 0;
-              const growthVal = p.growth ?? null;
-              const format = p.format || p.size || 'Bouteille 65cl';
-              const topZ = Array.isArray(p.topCommunes) && p.topCommunes.length > 0 ? p.topCommunes : [];
-
-              return (
-                <Card
-                  key={p.id || idx}
-                  onClick={() => setSelectedProduct(p)}
-                  className="group border border-border/80 bg-card/70 backdrop-blur-md overflow-hidden hover:border-amber-500/60 hover:shadow-xl transition-all duration-300 flex flex-col justify-between cursor-pointer"
-                >
-                  {/* Image Showcase */}
-                  <div className="relative h-40 sm:h-48 w-full bg-gradient-to-b from-muted/20 via-muted/50 to-muted/80 flex items-center justify-center p-3 border-b border-border/50 overflow-hidden">
-                    {p.image ? (
-                      <img
-                        src={p.image}
-                        alt={p.name}
-                        className="max-h-full max-w-full object-contain drop-shadow-lg group-hover:scale-110 transition-transform duration-300"
-                        loading="lazy"
-                        onError={(e) => {
-                          (e.target as HTMLElement).style.display = 'none';
-                        }}
-                      />
-                    ) : (
-                      <Package className="size-14 sm:size-16 text-amber-500/40" />
-                    )}
-
-                    {/* Rank Pill on Image */}
-                    <div className="absolute top-2 left-2 flex items-center gap-1.5">
-                      <span className="size-5 rounded-full bg-background/80 backdrop-blur-md font-mono font-bold text-[10px] text-foreground flex items-center justify-center border border-border/60">
-                        #{absoluteRank}
-                      </span>
-                      <span
-                        className="text-[10px] px-2 py-0.5 rounded-full backdrop-blur-md font-semibold border shadow-xs"
-                        style={{
-                          backgroundColor: `${p.categoryColor || '#f59e0b'}25`,
-                          borderColor: `${p.categoryColor || '#f59e0b'}50`,
-                          color: p.categoryColor || '#f59e0b',
-                        }}
-                      >
-                        {p.category}
-                      </span>
-                    </div>
-
-                    {/* Growth Badge on Image */}
-                    <div className="absolute top-2 right-2">
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full backdrop-blur-md border ${
-                          growthBadgeClass(growthVal)
-                        }`}
-                      >
-                        {formatGrowth(growthVal)}
-                      </span>
-                    </div>
-
-                    <div className="absolute bottom-1 right-2 text-[10px] text-muted-foreground font-mono bg-background/70 backdrop-blur-xs px-1.5 py-0.5 rounded border border-border/40 truncate max-w-[120px]">
-                      {format}
-                    </div>
-                  </div>
-
-                  {/* Card Content */}
-                  <CardContent className="p-3 sm:p-3.5 space-y-2.5 sm:space-y-3 flex-1 flex flex-col justify-between text-xs">
-                    <div>
-                      <h3 className="font-bold text-foreground text-sm tracking-tight truncate group-hover:text-amber-400 transition-colors">
-                        {p.name}
-                      </h3>
-                      <div className="text-[11px] text-muted-foreground truncate mt-0.5 flex items-center gap-1.5">
-                        <span>Marque :</span>
-                        {getBrandLogo(p.brand) && (
-                          <span className="size-4 rounded bg-white p-0.5 border border-border inline-flex items-center justify-center shrink-0">
-                            <img src={getBrandLogo(p.brand)!} alt="" className="size-full object-contain" />
-                          </span>
-                        )}
-                        <span className="text-foreground font-medium truncate">{p.brand}</span>
-                      </div>
-                    </div>
-
-                    {/* Volume & Rotation Grid */}
-                    <div className="pt-2 border-t border-border/40 grid grid-cols-2 gap-2 text-[11px]">
-                      <div>
-                        <div className="text-muted-foreground text-[10px]">Volume ({volumeUnit})</div>
-                        <div className="font-bold text-foreground font-mono">
-                          {formatVolumeValue(vol, volumeUnit, rev).formatted}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-muted-foreground text-[10px]">Rotation Hebdo</div>
-                        <div className="font-bold text-foreground font-mono">
-                          {p.rotationRate ?? 0} u./POS/sem
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* CA & Top Communes */}
-                    <div className="pt-2 border-t border-border/30 space-y-1.5">
-                      {rev > 0 && (
-                        <div className="text-[11px] flex items-center justify-between text-muted-foreground">
-                          <span>CA</span>
-                          <span className="font-bold text-foreground font-mono">
-                            {rev.toLocaleString('fr-FR')} FCFA
-                          </span>
-                        </div>
-                      )}
-                      <div className="flex items-center gap-1 truncate text-[10px] text-muted-foreground">
-                        <MapPin className="size-2.5 text-amber-500 shrink-0" />
-                        <span className="truncate">{topZ.join(', ')}</span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })
-          )}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {rows.map((p, i) => (
+            <Card key={p.id} p={p} rank={(current - 1) * ui.pageSize + i + 1} unit={ui.unit} delay={Math.min(i, 12) * 0.03} onOpen={() => setSelected(p)} />
+          ))}
         </div>
       )}
 
-      {/* Pagination & Results Summary Footer (Responsive) */}
-      {filtered.length > 0 && (
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 text-xs text-muted-foreground border-t border-border/60">
-          <div className="flex items-center gap-2 flex-wrap justify-center sm:justify-start">
-            <span>
-              Affichage de{' '}
-              <strong className="text-foreground">
-                {pageSize === 'all'
-                  ? `1 à ${filtered.length}`
-                  : `${(currentPage - 1) * Number(pageSize) + 1} à ${Math.min(currentPage * Number(pageSize), filtered.length)}`}
-              </strong>{' '}
-              sur <strong className="text-foreground">{filtered.length}</strong>
-            </span>
-
-            {/* Page Size Selector */}
-            <div className="flex items-center gap-1 ml-1 sm:ml-2">
-              <span className="text-[11px] text-muted-foreground">Par page:</span>
-              <select
-                value={pageSize}
-                onChange={(e) => {
-                  const val = e.target.value === 'all' ? 'all' : Number(e.target.value);
-                  setPageSize(val);
-                }}
-                className="h-6 text-[11px] px-1.5 rounded border border-border bg-background/80 text-foreground font-mono"
-              >
-                <option value={12}>12</option>
-                <option value={24}>24</option>
-                <option value={48}>48</option>
-                <option value="all">Tous</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Navigation Buttons */}
-          {pageSize !== 'all' && totalPages > 1 && (
-            <div className="flex items-center gap-1.5">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-                className="h-7 px-2 text-xs"
-              >
-                <ChevronLeft className="size-3.5" />
-                <span className="hidden sm:inline">Précédent</span>
-              </Button>
-
-              <span className="px-2 font-mono text-[11px]">
-                <strong className="text-foreground">{currentPage}</strong> / {totalPages}
-              </span>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-                className="h-7 px-2 text-xs"
-              >
-                <span className="hidden sm:inline">Suivant</span>
-                <ChevronRight className="size-3.5" />
-              </Button>
-            </div>
-          )}
+      {/* Pagination */}
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+        <label className="flex items-center gap-1.5">
+          Par page
+          <select value={ui.pageSize} onChange={(e) => { ui.set({ pageSize: Number(e.target.value) }); setPage(1); }} className="rounded-md border border-border/70 bg-background px-1.5 py-0.5">
+            {[25, 50, 100].map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="flex items-center gap-2">
+          <button disabled={current <= 1} onClick={() => setPage(current - 1)} className="rounded-md border border-border/70 p-1 disabled:opacity-40" aria-label="Page précédente">
+            <ChevronLeft className="size-4" />
+          </button>
+          Page {current} / {pages}
+          <button disabled={current >= pages} onClick={() => setPage(current + 1)} className="rounded-md border border-border/70 p-1 disabled:opacity-40" aria-label="Page suivante">
+            <ChevronRight className="size-4" />
+          </button>
         </div>
-      )}
+      </div>
 
-      {/* Slide-over Product Details Drawer / Modal (Responsive) */}
-      {selectedProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="relative w-full max-w-xl bg-card border border-border/90 rounded-2xl shadow-2xl overflow-hidden p-4 sm:p-6 space-y-4 sm:space-y-5 animate-in zoom-in-95 duration-200 max-h-[92vh] overflow-y-auto">
-            {/* Modal Header */}
-            <div className="flex items-start justify-between gap-3 border-b border-border/60 pb-3 sm:pb-4">
-              <div className="flex items-center gap-3">
-                <div className="size-14 sm:size-16 rounded-xl bg-muted/60 border border-border/80 flex items-center justify-center p-2 overflow-hidden shrink-0">
-                  {selectedProduct.image ? (
-                    <img
-                      src={selectedProduct.image}
-                      alt={selectedProduct.name}
-                      className="size-full object-contain"
-                    />
-                  ) : (
-                    <Package className="size-7 sm:size-8 text-amber-500" />
-                  )}
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h2 className="text-base sm:text-lg font-bold text-foreground">{selectedProduct.name}</h2>
-                    <span
-                      className="text-[10px] px-2 py-0.5 rounded-full font-medium border"
-                      style={{
-                        backgroundColor: `${selectedProduct.categoryColor || '#f59e0b'}18`,
-                        borderColor: `${selectedProduct.categoryColor || '#f59e0b'}40`,
-                        color: selectedProduct.categoryColor || '#f59e0b',
-                      }}
-                    >
-                      {selectedProduct.category}
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5 flex-wrap">
-                    {getBrandLogo(selectedProduct.brand) && (
-                      <span className="size-4.5 rounded bg-white p-0.5 border border-border inline-flex items-center justify-center shrink-0 shadow-2xs">
-                        <img src={getBrandLogo(selectedProduct.brand)!} alt="" className="size-full object-contain" />
-                      </span>
-                    )}
-                    <span>Marque : <strong className="text-foreground">{selectedProduct.brand}</strong></span>
-                    <span>•</span>
-                    <span>Format : {selectedProduct.format || 'Standard'}</span>
-                  </p>
-                </div>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setSelectedProduct(null)}
-                className="size-8 p-0 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer shrink-0"
-              >
-                <X className="size-4" />
-              </Button>
-            </div>
+      {data?.methodology && <p className="text-[10px] leading-relaxed text-muted-foreground">Méthode : {data.methodology}</p>}
 
-            {/* Metrics Breakdown in 5 Units */}
-            <div className="space-y-2">
-              <h4 className="text-[11px] sm:text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                <BarChart3 className="size-3.5 text-amber-500" />
-                Volumes dans toutes les unités
-              </h4>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 text-xs">
-                {VOLUME_UNIT_OPTIONS.map((u) => {
-                  const res = formatVolumeValue(selectedProduct.volume || 0, u.value, selectedProduct.revenue);
-                  const isCurrent = volumeUnit === u.value;
-                  return (
-                    <div
-                      key={u.id}
-                      className={`p-2 sm:p-2.5 rounded-xl border text-center transition-all ${
-                        isCurrent
-                          ? 'bg-amber-500/10 border-amber-500 text-foreground font-semibold shadow-xs'
-                          : 'bg-muted/30 border-border/60 text-muted-foreground'
-                      }`}
-                    >
-                      <div className="text-[10px]">{u.icon} {u.shortLabel}</div>
-                      <div className="text-xs font-bold font-mono text-foreground mt-1">
-                        {res.formatted}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Financials & Velocity KPIs */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 p-3 rounded-xl bg-muted/30 border border-border/60 text-xs">
-              <div>
-                <span className="text-[10px] text-muted-foreground">Chiffre d'Affaires</span>
-                <div className="font-bold text-foreground font-mono mt-0.5">
-                  {(selectedProduct.revenue || 0).toLocaleString('fr-FR')} FCFA
-                </div>
-              </div>
-              <div>
-                <span className="text-[10px] text-muted-foreground">Rotation Hebdo</span>
-                <div className="font-bold text-amber-500 font-mono mt-0.5">
-                  {selectedProduct.rotationRate ?? 0} u./POS/sem
-                </div>
-              </div>
-              <div>
-                <span className="text-[10px] text-muted-foreground">Risque de Rupture</span>
-                <div className="font-semibold text-foreground mt-0.5 flex items-center gap-1">
-                  <span
-                    className={`size-1.5 rounded-full ${
-                      selectedProduct.stockoutRisk === 'HIGH' || selectedProduct.stockoutRisk === 'Élevé'
-                        ? 'bg-rose-500 animate-ping'
-                        : selectedProduct.stockoutRisk === 'MEDIUM' || selectedProduct.stockoutRisk === 'Modéré'
-                        ? 'bg-amber-500'
-                        : 'bg-emerald-500'
-                    }`}
-                  />
-                  {selectedProduct.stockoutRisk === 'HIGH' || selectedProduct.stockoutRisk === 'Élevé'
-                    ? 'Élevé'
-                    : selectedProduct.stockoutRisk === 'MEDIUM' || selectedProduct.stockoutRisk === 'Modéré'
-                    ? 'Modéré'
-                    : 'Faible'}
-                </div>
-              </div>
-            </div>
-
-            {/* Top Communes Distribution */}
-            <div className="space-y-2">
-              <h4 className="text-[11px] sm:text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                <MapPin className="size-3.5 text-amber-500" />
-                Top Communes débitrices réelles
-              </h4>
-              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-                {(Array.isArray(selectedProduct.topCommunes) ? selectedProduct.topCommunes : []).map(
-                  (c: string, i: number) => (
-                    <Badge
-                      key={c}
-                      variant="outline"
-                      className="text-xs bg-muted/40 text-foreground border-border px-2.5 sm:px-3 py-1 gap-1.5"
-                    >
-                      <span className="size-1.5 rounded-full bg-amber-500" />
-                      <strong>#{i + 1}</strong> {c}
-                    </Badge>
-                  )
-                )}
-              </div>
-            </div>
-
-            {/* Logistics & Commercial Recommendation */}
-            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs space-y-1">
-              <div className="font-semibold text-amber-400 flex items-center gap-1.5">
-                <Sparkles className="size-3.5 text-amber-500" />
-                Recommandation Market Intelligence
-              </div>
-              <p className="text-[11px] text-muted-foreground leading-relaxed">
-                {(selectedProduct.rotationRate ?? 0) >= 10
-                  ? `Forte rotation observée (~${selectedProduct.rotationRate} unités / point de vente / semaine). Estimation : réassort conseillé tous les ${selectedProduct.reorderFrequencyDays} jours (dérivé de la vélocité des ventes, sans donnée de stock).`
-                  : `Rotation observée : ~${selectedProduct.rotationRate ?? 0} unités / point de vente / semaine. Estimation : réassort tous les ${selectedProduct.reorderFrequencyDays} jours (dérivé de la vélocité des ventes, sans donnée de stock).`}
-              </p>
-            </div>
-
-            {/* Quick Actions */}
-            <div className="pt-3 border-t border-border/60 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setFilter('brand', selectedProduct.brand);
-                    setSelectedProduct(null);
-                  }}
-                  className="text-xs gap-1.5 flex-1 sm:flex-none"
-                >
-                  <span>Filtrer sur {selectedProduct.brand}</span>
-                </Button>
-
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleCopySku(selectedProduct.name)}
-                  className="text-xs gap-1 text-muted-foreground hover:text-foreground flex-1 sm:flex-none"
-                >
-                  {copiedSku === selectedProduct.name ? (
-                    <>
-                      <Check className="size-3 text-emerald-400" />
-                      <span className="text-emerald-400">Copié !</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="size-3" />
-                      <span>Copier</span>
-                    </>
-                  )}
-                </Button>
-              </div>
-
-              <Button
-                variant="default"
-                size="sm"
-                onClick={() => setSelectedProduct(null)}
-                className="text-xs bg-amber-500 hover:bg-amber-600 text-black font-semibold"
-              >
-                Fermer
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ProductDrawer product={selectedLive} unit={ui.unit} onClose={() => setSelected(null)} />
     </div>
+  );
+}
+
+function Row({ p, rank, unit, flash, onOpen }: { p: ProductItem; rank: number; unit: import('@/utils/productVolumeConverter').DisplayVolumeUnit; flash: boolean; onOpen: () => void }) {
+  const img = resolveProductImage(p.image ?? null, p.name, p.brand);
+  const pr = p.pricing;
+  const risk = RISK_META[p.stockoutRisk] || RISK_META.UNKNOWN;
+  const casier = pr?.containers?.find((c) => c.type === 'casier');
+  const carton = pr?.containers?.find((c) => c.type === 'carton');
+  return (
+    <tr onClick={onOpen} className={`cursor-pointer transition-colors duration-700 hover:bg-muted/40 ${flash ? 'bg-amber-500/15' : ''}`}>
+      <td className="px-3 py-2 font-mono text-muted-foreground">{rank}</td>
+      <td className="px-3 py-2">
+        <div className="flex items-center gap-2.5">
+          <div className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted">
+            {img ? <img src={img} alt="" loading="lazy" className="size-full object-contain" /> : <Package className="size-4 text-muted-foreground" />}
+          </div>
+          <div className="min-w-0">
+            <div className="max-w-[220px] truncate font-semibold text-foreground">{p.name}</div>
+            <div className="max-w-[220px] truncate text-[10px] text-muted-foreground">
+              {p.brand} · {p.category}
+              {p.format ? ` · ${p.format}` : ''}
+            </div>
+          </div>
+        </div>
+      </td>
+      <td className="px-3 py-2 text-right font-mono font-semibold">{formatProductVolume(p.volume, unit, p.name, p.format).formatted}</td>
+      <td className="px-3 py-2 text-right font-mono text-violet-400">{money(p.revenue || 0)}</td>
+      <td className="px-3 py-2 text-right font-mono font-semibold text-emerald-400">{F(pr?.avgSalePrice)}</td>
+      <td className="px-3 py-2">
+        {pr?.shelfPrice ? (
+          <div title={`${pr.shelfPrice.count} établissements : ${pr.shelfPrice.min} → ${pr.shelfPrice.max} F`}>
+            <PriceLadder shelf={pr.shelfPrice} avgSale={pr.avgSalePrice} unitCost={pr.unitCost} compact />
+            <div className="mt-1 flex justify-between font-mono text-[10px] text-muted-foreground">
+              <span>{int(pr.shelfPrice.min)}</span>
+              <span>{int(pr.shelfPrice.max)}</span>
+            </div>
+          </div>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
+      </td>
+      <td className="px-3 py-2 text-right">
+        <div className="font-mono">{F(pr?.unitCost)}</div>
+        <div className="text-[10px] text-muted-foreground">
+          {casier ? `casier ${int(casier.avgPrice)}` : ''}
+          {casier && carton ? ' · ' : ''}
+          {carton ? `carton ${int(carton.avgPrice)}` : ''}
+        </div>
+      </td>
+      <td className={`px-3 py-2 text-right font-mono ${pr?.marginRate == null ? 'text-muted-foreground' : pr.marginRate >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+        {pr?.marginRate == null ? '—' : `${pr.marginRate} %`}
+      </td>
+      <td className="px-3 py-2 text-right font-mono">{p.rotationRate}</td>
+      <td className="px-3 py-2 text-right font-mono">{p.stock?.medianDaysCover == null ? '—' : `${p.stock.medianDaysCover} j`}</td>
+      <td className="px-3 py-2 text-right">
+        <span className={`inline-flex rounded-md border px-1.5 py-0.5 text-[10px] font-semibold ${risk.cls}`} title={p.stock?.exposedSalesShare != null ? `${Math.round(p.stock.exposedSalesShare * 100)} % des ventes exposées` : undefined}>
+          {risk.label}
+        </span>
+      </td>
+      <td className="px-3 py-2 text-right font-mono">{p.reorderFrequencyDays != null ? `${p.reorderFrequencyDays} j` : '—'}</td>
+      <td className="px-3 py-2 text-right">
+        <GrowthCell value={p.growth} />
+      </td>
+      <td className="px-3 py-2 text-[11px] text-muted-foreground">
+        <div className="max-w-[160px] truncate">{p.topCommunes.join(', ') || '—'}</div>
+      </td>
+    </tr>
+  );
+}
+
+function Card({ p, rank, unit, delay, onOpen }: { p: ProductItem; rank: number; unit: import('@/utils/productVolumeConverter').DisplayVolumeUnit; delay: number; onOpen: () => void }) {
+  const img = resolveProductImage(p.image ?? null, p.name, p.brand);
+  const risk = RISK_META[p.stockoutRisk] || RISK_META.UNKNOWN;
+  return (
+    <motion.button
+      onClick={onOpen}
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25, delay, ease: EASE }}
+      whileTap={{ scale: 0.98 }}
+      className="flex flex-col rounded-xl border border-border/70 bg-card/60 p-3 text-left transition-colors hover:border-amber-500/40"
+    >
+      <div className="flex items-start gap-3">
+        <div className="relative flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted">
+          {img ? <img src={img} alt="" loading="lazy" className="size-full object-contain" /> : <Package className="size-5 text-muted-foreground" />}
+          <span className="absolute left-0.5 top-0.5 rounded bg-background/90 px-1 font-mono text-[9px]">#{rank}</span>
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-semibold">{p.name}</div>
+          <div className="truncate text-[11px] text-muted-foreground">{p.brand}</div>
+          <span className={`mt-1 inline-flex rounded border px-1 text-[9px] font-semibold ${risk.cls}`}>{risk.label}</span>
+        </div>
+        <GrowthCell value={p.growth} />
+      </div>
+      <div className="mt-3 grid grid-cols-3 gap-2 text-[11px]">
+        <div>
+          <div className="text-muted-foreground">Volume</div>
+          <div className="font-mono font-semibold">{formatProductVolume(p.volume, unit, p.name, p.format).formatted}</div>
+        </div>
+        <div>
+          <div className="text-muted-foreground">Prix moyen</div>
+          <div className="font-mono font-semibold text-emerald-400">{F(p.pricing?.avgSalePrice)}</div>
+        </div>
+        <div>
+          <div className="text-muted-foreground">Marge</div>
+          <div className="font-mono font-semibold">{p.pricing?.marginRate == null ? '—' : `${p.pricing.marginRate} %`}</div>
+        </div>
+      </div>
+      <div className="mt-2">
+        <PriceLadder shelf={p.pricing?.shelfPrice ?? null} avgSale={p.pricing?.avgSalePrice ?? null} unitCost={p.pricing?.unitCost ?? null} compact />
+      </div>
+    </motion.button>
+  );
+}
+
+function GrowthCell({ value }: { value: number | null }) {
+  if (value == null) return <span className="text-muted-foreground">—</span>;
+  const up = value >= 0;
+  return (
+    <span className={`inline-flex items-center gap-0.5 whitespace-nowrap font-mono text-[11px] font-semibold ${up ? 'text-emerald-400' : 'text-rose-400'}`}>
+      {up ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
+      {up ? '+' : ''}
+      {value.toFixed(1)} %
+    </span>
+  );
+}
+
+function Select({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (v: string) => void }) {
+  return (
+    <label className="flex items-center gap-1.5 rounded-lg border border-border/70 bg-background/60 px-2 py-1">
+      <span className="text-muted-foreground">{label}</span>
+      <select value={value} onChange={(e) => onChange(e.target.value)} className="max-w-[180px] cursor-pointer bg-transparent font-medium focus:outline-none">
+        <option value="all">Toutes</option>
+        {options.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+const TONE = {
+  amber: 'text-amber-400 bg-amber-500/10',
+  rose: 'text-rose-400 bg-rose-500/10',
+  emerald: 'text-emerald-400 bg-emerald-500/10',
+};
+
+function Kpi({
+  i,
+  icon,
+  label,
+  value,
+  format,
+  sub,
+  loading,
+  tone = 'amber',
+}: {
+  i: number;
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+  format: (n: number) => string;
+  sub: string;
+  loading: boolean;
+  tone?: keyof typeof TONE;
+}) {
+  return (
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: i * 0.04, ease: EASE }} className="rounded-xl border border-border/80 bg-card/60 p-3">
+      <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+        <span>{label}</span>
+        <span className={`rounded-lg p-1.5 ${TONE[tone]}`}>{icon}</span>
+      </div>
+      <div className="mt-1 text-lg font-extrabold">
+        <AnimatePresence mode="wait">
+          {loading && !value ? <span className="inline-block h-6 w-20 animate-pulse rounded bg-muted" /> : <AnimatedNumber value={value} format={format} fromZero />}
+        </AnimatePresence>
+      </div>
+      <div className="truncate text-[11px] text-muted-foreground">{sub}</div>
+    </motion.div>
   );
 }

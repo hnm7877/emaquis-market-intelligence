@@ -105,8 +105,8 @@ export interface ProductPerformance {
   growthPercent: number | null;
   growth?: number | null;
   rotationRate: number;
-  reorderFrequencyDays: number;
-  stockoutRisk: 'Faible' | 'Modéré' | 'Élevé' | 'LOW' | 'MEDIUM' | 'HIGH';
+  reorderFrequencyDays: number | null;
+  stockoutRisk: 'Faible' | 'Modéré' | 'Élevé' | 'LOW' | 'MEDIUM' | 'HIGH' | 'UNKNOWN';
   topZones?: string[];
   topCommunes?: string[];
 }

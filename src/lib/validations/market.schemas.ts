@@ -199,8 +199,38 @@ export const ProductItemSchema = z.object({
   growth: z.number().nullable(),
   rotationRate: z.number(),
   posCount: z.number().optional(),
-  reorderFrequencyDays: z.number(),
-  stockoutRisk: z.string().default('LOW'),
+  /** Intervalle médian observé entre deux réassorts (null = pas assez d'historique) */
+  reorderFrequencyDays: z.number().nullable().default(null),
+  /** HIGH | MEDIUM | LOW | UNKNOWN (stock non synchronisé) */
+  stockoutRisk: z.string().default('UNKNOWN'),
+  unitsPerPackage: z.number().optional(),
+  packageType: z.string().optional(),
+  stock: z
+    .object({
+      trackedPos: z.number(),
+      outOfStockPos: z.number(),
+      lowCoverPos: z.number(),
+      medianDaysCover: z.number().nullable(),
+      exposedSalesShare: z.number().nullable(),
+      stockoutEvents: z.number(),
+      stockoutEstablishments: z.number(),
+    })
+    .optional(),
+  pricing: z
+    .object({
+      avgSalePrice: z.number().nullable(),
+      shelfPrice: z.object({ count: z.number(), min: z.number(), p25: z.number(), median: z.number(), p75: z.number(), max: z.number() }).nullable(),
+      unitCost: z.number().nullable(),
+      unitCostSource: z.string().nullable(),
+      containers: z.array(
+        z.object({ type: z.string(), avgPrice: z.number(), bottlesPerContainer: z.number(), lots: z.number(), establishments: z.number() }),
+      ),
+      purchaseLots: z.number(),
+      purchaseEstablishments: z.number(),
+      unitMargin: z.number().nullable(),
+      marginRate: z.number().nullable(),
+    })
+    .optional(),
   topCommunes: z.array(z.string()).default([]),
 });
 
@@ -226,6 +256,7 @@ export const ProductsResponseSchema = z.object({
   totalProducts: z.number().default(0),
   comparisonLabel: z.string().optional(),
   analysisSpanDays: z.number().optional(),
+  stockDataAvailable: z.boolean().optional(),
   methodology: z.string().optional(),
   products: z.array(ProductItemSchema).default([]),
 });

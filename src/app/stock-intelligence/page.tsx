@@ -264,7 +264,7 @@ export default function StockIntelligencePage() {
                 </div>
                 <div>
                   <span className="text-[10px] text-muted-foreground block">Réassort estimé</span>
-                  <span className="font-bold font-mono">Tous les {p.reorderFrequencyDays} jours</span>
+                  <span className="font-bold font-mono">{p.reorderFrequencyDays != null ? `Tous les ${p.reorderFrequencyDays} jours` : 'Pas assez d’historique'}</span>
                 </div>
               </div>
 
