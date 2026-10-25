@@ -25,6 +25,7 @@ import { useMarketRealtimeStore } from '@/stores/useMarketRealtimeStore';
 import { useProductsUiStore, type ProductSegment, type ProductSort } from '@/stores/useProductsUiStore';
 import type { ProductItem } from '@/lib/validations/market.schemas';
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber';
+import { InfoTip } from '@/components/ui/InfoTip';
 import { PriceLadder } from '@/components/products/PriceLadder';
 import { ProductDrawer, RISK_META } from '@/components/products/ProductDrawer';
 import { resolveProductImage } from '@/utils/productImages';
@@ -34,6 +35,24 @@ const EASE = [0.23, 1, 0.32, 1] as const;
 const int = (n: number) => Math.round(n || 0).toLocaleString('fr-FR');
 const money = (n: number) => (Math.abs(n) >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)} M` : int(n));
 const F = (n: number | null | undefined) => (n == null ? '—' : `${int(n)} F`);
+/** Explications courtes des colonnes du tableau */
+const HELP: Record<string, string> = {
+  rank: 'Position du produit selon le tri choisi.',
+  name: 'Nom du produit, sa marque, sa catégorie et son format. Cliquez sur une ligne pour ouvrir la fiche complète.',
+  volume: "Quantité vendue sur la période choisie, dans l'unité sélectionnée en haut (bouteilles, cL, litres ou casiers).",
+  revenue: "Chiffre d'affaires : total encaissé par les établissements pour ce produit sur la période, en francs CFA.",
+  avgPrice: "Prix réellement payé par les clients pour une unité, en moyenne : chiffre d'affaires ÷ quantité vendue.",
+  shelf: "Prix affichés par les établissements qui vendent ce produit. La barre va du moins cher au plus cher ; la partie foncée regroupe la moitié des établissements. Point vert = prix moyen payé, losange bleu = coût d'achat.",
+  purchase: "Coût d'achat moyen d'une bouteille pour les établissements, d'après leurs livraisons. En dessous : prix moyen payé pour un casier ou un carton.",
+  margin: "Ce que gagne l'établissement sur chaque bouteille, en % du prix de vente : (prix moyen payé − coût d'achat) ÷ prix moyen payé.",
+  rotation: "Vitesse de vente : nombre moyen de bouteilles vendues par semaine dans chaque établissement qui vend le produit.",
+  cover: "Nombre de jours que le stock actuel peut tenir au rythme des ventes (valeur du milieu entre les établissements).",
+  risk: 'Risque de manquer de stock. Élevé = au moins 35 % des ventes se font dans des établissements en rupture ou avec moins de 3 jours de stock. « Stock inconnu » = stock pas encore synchronisé.',
+  restock: 'Tous les combien de jours les établissements se réapprovisionnent, d’après les hausses de stock réellement observées.',
+  growth: 'Variation des ventes par rapport à la période précédente de même durée. Vert = hausse, rouge = baisse.',
+  communes: 'Les 3 communes où ce produit se vend le plus sur la période.',
+};
+
 const RISK_ORDER: Record<string, number> = { HIGH: 3, MEDIUM: 2, LOW: 1, UNKNOWN: 0 };
 
 const SEGMENTS: { id: ProductSegment; label: string; hint: string }[] = [
@@ -210,12 +229,23 @@ export default function ProductsPage() {
     URL.revokeObjectURL(a.href);
   };
 
-  const th = (key: ProductSort, label: string, align: 'left' | 'right' = 'right') => (
+  const th = (key: ProductSort, label: string, help: string, align: 'left' | 'right' = 'right') => (
     <th className={`px-3 py-2 ${align === 'right' ? 'text-right' : 'text-left'}`}>
-      <button onClick={() => setSort(key)} className={`inline-flex items-center gap-1 ${ui.sort === key ? 'text-amber-400' : ''}`}>
+      <span className="inline-flex items-center">
+        <button onClick={() => setSort(key)} className={`inline-flex items-center gap-1 ${ui.sort === key ? 'text-amber-400' : ''}`} title={`Trier par ${label.toLowerCase()}`}>
+          {label}
+          <ArrowDownUp className="size-3 opacity-60" />
+        </button>
+        <InfoTip title={label} text={help} />
+      </span>
+    </th>
+  );
+  const plain = (label: string, help: string, cls: string) => (
+    <th className={`px-3 py-2 ${cls}`}>
+      <span className="inline-flex items-center">
         {label}
-        <ArrowDownUp className="size-3 opacity-60" />
-      </button>
+        <InfoTip title={label} text={help} />
+      </span>
     </th>
   );
 
@@ -290,23 +320,25 @@ export default function ProductsPage() {
 
       {/* Indicateurs */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
-        <Kpi i={0} icon={<Boxes className="size-4" />} label="Volume vendu" value={kpi.volume} format={(n) => formatProductVolume(n, ui.unit, 'Total').formatted} sub={`${int(kpi.active)} produits`} loading={isLoading} />
-        <Kpi i={1} icon={<Wallet className="size-4" />} label="Chiffre d'affaires" value={kpi.revenue} format={money} sub="FCFA" loading={isLoading} />
-        <Kpi i={2} icon={<Tag className="size-4" />} label="Prix moyen encaissé" value={kpi.avgPrice} format={(n) => `${int(n)} F`} sub="par unité vendue" loading={isLoading} />
+        <Kpi i={0} icon={<Boxes className="size-4" />} label="Volume vendu" help="Total vendu sur la période pour les produits affichés (filtres compris), dans l'unité choisie." value={kpi.volume} format={(n) => formatProductVolume(n, ui.unit, 'Total').formatted} sub={`${int(kpi.active)} produits`} loading={isLoading} />
+        <Kpi i={1} icon={<Wallet className="size-4" />} label="Chiffre d'affaires" help="Total encaissé par les établissements pour les produits affichés, en francs CFA." value={kpi.revenue} format={money} sub="FCFA" loading={isLoading} />
+        <Kpi i={2} icon={<Tag className="size-4" />} label="Prix moyen encaissé" help="Prix moyen réellement payé par unité vendue, tous produits affichés confondus." value={kpi.avgPrice} format={(n) => `${int(n)} F`} sub="par unité vendue" loading={isLoading} />
         <Kpi
           i={3}
           icon={<Percent className="size-4" />}
           label="Marge des établissements"
+          help="Marge moyenne des établissements, pondérée par les quantités vendues, sur les produits dont le prix d'achat est connu."
           value={kpi.marginRate ?? 0}
           format={(n) => (kpi.marginRate == null ? '—' : `${n.toFixed(1)} %`)}
           sub={kpi.marginRate == null ? 'aucun prix d’achat connu' : `sur ${Math.round(kpi.marginCoverage * 100)} % du volume`}
           loading={isLoading}
         />
-        <Kpi i={4} icon={<ShieldAlert className="size-4" />} label="Risque de rupture élevé" value={kpi.atRisk} format={int} sub={`${int(kpi.tracked)} produits suivis en stock`} loading={isLoading} tone="rose" />
+        <Kpi i={4} icon={<ShieldAlert className="size-4" />} label="Risque de rupture élevé" help="Nombre de produits dont au moins 35 % des ventes se font dans des établissements en rupture ou presque." value={kpi.atRisk} format={int} sub={`${int(kpi.tracked)} produits suivis en stock`} loading={isLoading} tone="rose" />
         <Kpi
           i={5}
           icon={<TrendingUp className="size-4" />}
           label="En progression"
+          help="Produits qui se vendent plus que sur la période précédente de même durée (et combien reculent)."
           value={filtered.filter((p) => p.volume > 0 && (p.growth ?? 0) > 0).length}
           format={int}
           sub={`${filtered.filter((p) => p.volume > 0 && (p.growth ?? 0) < 0).length} en recul`}
@@ -361,20 +393,20 @@ export default function ProductsPage() {
           <table className="w-full min-w-[1280px] text-xs">
             <thead className="border-b border-border/60 text-[10px] uppercase tracking-wider text-muted-foreground">
               <tr>
-                <th className="px-3 py-2 text-left">#</th>
-                {th('name', 'Produit', 'left')}
-                {th('volume', 'Volume')}
-                {th('revenue', 'CA')}
-                {th('avgPrice', 'Prix moyen')}
-                <th className="w-40 px-3 py-2 text-left">Prix affichés</th>
-                <th className="px-3 py-2 text-right">Achat</th>
-                {th('margin', 'Marge')}
-                {th('rotation', 'Rotation')}
-                {th('cover', 'Couverture')}
-                {th('risk', 'Rupture')}
-                <th className="px-3 py-2 text-right">Réassort</th>
-                {th('growth', 'Évolution')}
-                <th className="px-3 py-2 text-left">Top communes</th>
+                {plain('#', HELP.rank, 'text-left')}
+                {th('name', 'Produit', HELP.name, 'left')}
+                {th('volume', 'Volume', HELP.volume)}
+                {th('revenue', 'CA', HELP.revenue)}
+                {th('avgPrice', 'Prix moyen', HELP.avgPrice)}
+                {plain('Prix affichés', HELP.shelf, 'w-40 text-left')}
+                {plain('Achat', HELP.purchase, 'text-right')}
+                {th('margin', 'Marge', HELP.margin)}
+                {th('rotation', 'Rotation', HELP.rotation)}
+                {th('cover', 'Couverture', HELP.cover)}
+                {th('risk', 'Rupture', HELP.risk)}
+                {plain('Réassort', HELP.restock, 'text-right')}
+                {th('growth', 'Évolution', HELP.growth)}
+                {plain('Top communes', HELP.communes, 'text-left')}
               </tr>
             </thead>
             <tbody className="divide-y divide-border/40">
@@ -584,11 +616,13 @@ function Kpi({
   format,
   sub,
   loading,
+  help,
   tone = 'amber',
 }: {
   i: number;
   icon: React.ReactNode;
   label: string;
+  help?: string;
   value: number;
   format: (n: number) => string;
   sub: string;
@@ -598,7 +632,10 @@ function Kpi({
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: i * 0.04, ease: EASE }} className="rounded-xl border border-border/80 bg-card/60 p-3">
       <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-        <span>{label}</span>
+        <span className="inline-flex items-center">
+          {label}
+          {help && <InfoTip title={label} text={help} />}
+        </span>
         <span className={`rounded-lg p-1.5 ${TONE[tone]}`}>{icon}</span>
       </div>
       <div className="mt-1 text-lg font-extrabold">
