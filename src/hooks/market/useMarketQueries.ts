@@ -41,7 +41,8 @@ export const marketQueryKeys = {
   syncStatus: () => [...marketQueryKeys.all, 'sync-status'] as const,
   coverage: () => [...marketQueryKeys.all, 'coverage'] as const,
   filtersMetadata: () => [...marketQueryKeys.all, 'filters-metadata'] as const,
-  contextualFilters: (status: string, dateRange: string) => [...marketQueryKeys.all, 'contextual-filters', status, dateRange] as const,
+  contextualFilters: (status: string, dateRange: string, startDate?: string, endDate?: string) =>
+    [...marketQueryKeys.all, 'contextual-filters', status, dateRange, startDate ?? '', endDate ?? ''] as const,
 };
 
 /**
@@ -154,9 +155,10 @@ export function useContextualFiltersQuery() {
   const filters = useMarketFilterStore((state) => state.filters);
   const status = filters.status || 'valid';
   const dateRange = filters.dateRange || 'all';
-  const params: Record<string, string> = { status, ...(dateRange !== 'all' ? { dateRange } : {}) };
-  return useLiveQuery('contextual', params, marketQueryKeys.contextualFilters(status, dateRange), () =>
-    fetchContextualFilters({ status, dateRange }),
+  const { startDate, endDate } = filters;
+  const params: Record<string, string> = { ...buildQueryParams({ dateRange, startDate, endDate } as never), status };
+  return useLiveQuery('contextual', params, marketQueryKeys.contextualFilters(status, dateRange, startDate, endDate), () =>
+    fetchContextualFilters({ status, dateRange, startDate, endDate }),
   );
 }
 

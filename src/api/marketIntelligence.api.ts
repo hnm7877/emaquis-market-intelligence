@@ -41,7 +41,16 @@ export const buildQueryParams = (filters?: Partial<FilterState>): Record<string,
   if (country) params.country = country;
 
   if (filters.dateRange && filters.dateRange !== 'all') {
-    params.dateRange = filters.dateRange;
+    if (filters.dateRange === 'custom') {
+      // Dates personnalisées : envoyées seulement si le début est choisi
+      if (filters.startDate) {
+        params.dateRange = 'custom';
+        params.startDate = filters.startDate;
+        if (filters.endDate) params.endDate = filters.endDate;
+      }
+    } else {
+      params.dateRange = filters.dateRange;
+    }
   }
 
   const city = serializeValue(filters.city, 'Toutes les villes');
@@ -181,9 +190,13 @@ export const fetchFiltersMetadata = async (): Promise<DynamicFiltersMetadata> =>
  * 11. Filtres contextuels dynamiques (suggestions basees sur le statut/periode courant)
  */
 export const fetchContextualFilters = async (filters?: Partial<FilterState>): Promise<ContextualFiltersData> => {
-  const params: Record<string, string> = {};
+  const { country: _c, city: _ci, commune: _co, category: _ca, brand: _b, posType: _p, ...dates } = buildQueryParams({
+    dateRange: filters?.dateRange || 'all',
+    startDate: filters?.startDate,
+    endDate: filters?.endDate,
+  } as FilterState);
+  const params: Record<string, string> = { ...dates };
   if (filters?.status) params.status = filters.status;
-  if (filters?.dateRange && filters.dateRange !== 'all') params.dateRange = filters.dateRange;
   const response = await axiosInstance.get('/market-intelligence/contextual-filters', { params });
   return response.data;
 };

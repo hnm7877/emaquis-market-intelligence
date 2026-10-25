@@ -1,4 +1,4 @@
-export type DateRange = 'all' | '7d' | '30d' | '90d' | '12m' | 'custom' | string;
+export type DateRange = 'all' | 'today' | 'yesterday' | '7d' | '30d' | 'mtd' | 'last_month' | '90d' | 'ytd' | '12m' | 'custom' | string;
 export type Country = string;
 export type City = string;
 export type Commune = string;
@@ -13,6 +13,9 @@ export type VolumeUnit = 'cols' | 'litres' | 'hl' | 'casiers' | 'fcfa';
 export interface FilterState {
   country?: MultiFilterValue;
   dateRange: DateRange;
+  /** Période personnalisée (dateRange = 'custom') : AAAA-MM-JJ, fin incluse */
+  startDate?: string;
+  endDate?: string;
   city: MultiFilterValue;
   commune: MultiFilterValue;
   category: MultiFilterValue;

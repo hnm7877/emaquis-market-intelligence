@@ -3,7 +3,6 @@
 import React, { useEffect, useRef, useMemo, useState } from 'react';
 import {
   Activity,
-  Calendar,
   MapPin,
   Tag,
   Store,
@@ -15,6 +14,7 @@ import {
   Filter,
   ChevronDown,
   ChevronUp,
+  X,
 } from 'lucide-react';
 import {
   Select,
@@ -24,7 +24,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { FilterState, DateRange } from '@/types/market';
+import { FilterState } from '@/types/market';
+import { PeriodPicker, periodLabel } from './PeriodPicker';
 import { useMarketFiltersQuery, useContextualFiltersQuery } from '@/hooks/market/useMarketQueries';
 import { useMarketFilterStore } from '@/stores/useMarketFilterStore';
 import { SmartFilterDropdown, SmartFilterOption } from '@/components/ui/smart-filter-dropdown';
@@ -70,7 +71,9 @@ export function FilterBar(props: FilterBarProps = {}) {
   useEffect(() => {
     if (!autoSyncContextual || !contextualData) return;
 
-    const currentStatusKey = `${filters.status || 'valid'}_${filters.dateRange || 'all'}_${contextualData.totalTransactions}`;
+    // Une seule fois par statut / période : les mises à jour en direct ne doivent jamais écraser
+    // une sélection faite par l'utilisateur
+    const currentStatusKey = `${filters.status || 'valid'}_${filters.dateRange || 'all'}_${filters.startDate || ''}_${filters.endDate || ''}`;
     if (hasSyncedStatusRef.current === currentStatusKey) return;
     hasSyncedStatusRef.current = currentStatusKey;
 
@@ -104,7 +107,7 @@ export function FilterBar(props: FilterBarProps = {}) {
     if (Object.keys(updates).length > 0) {
       setMultipleFilters(updates);
     }
-  }, [filters.status, filters.dateRange, contextualData, autoSyncContextual, setMultipleFilters]);
+  }, [filters.status, filters.dateRange, filters.startDate, filters.endDate, contextualData, autoSyncContextual, setMultipleFilters]);
 
   // Options pays
   const countriesOptions: SmartFilterOption[] = useMemo(() => {
@@ -299,6 +302,38 @@ export function FilterBar(props: FilterBarProps = {}) {
 
   const currentVolumeUnit = volumeUnit || 'cols';
 
+  // Pastilles des filtres appliqués (une par valeur choisie)
+  const activeChips = useMemo(() => {
+    const chips: { id: string; kind: string; label: string; remove: () => void }[] = [];
+    if (filters.dateRange && filters.dateRange !== 'all') {
+      chips.push({
+        id: 'period',
+        kind: 'Période',
+        label: periodLabel(filters.dateRange, filters.startDate, filters.endDate),
+        remove: () => setMultipleFilters({ dateRange: 'all', startDate: undefined, endDate: undefined }),
+      });
+    }
+    if (filters.status && filters.status !== 'valid') {
+      chips.push({ id: 'status', kind: 'Statut', label: STATUS_LABELS[filters.status] || filters.status, remove: () => setFilter('status', 'valid') });
+    }
+    const multi: [keyof FilterState, string, string][] = [
+      ['city', 'Ville', 'Toutes les villes'],
+      ['commune', 'Commune', 'Toutes les communes'],
+      ['category', 'Catégorie', 'Toutes catégories'],
+      ['brand', 'Marque', 'Toutes marques'],
+      ['posType', 'Type', 'Tous types'],
+    ];
+    for (const [key, kind, all] of multi) {
+      const v = filters[key];
+      const items = Array.isArray(v) ? v : typeof v === 'string' && v !== all && v !== 'all' ? v.split(',').map((x) => x.trim()).filter(Boolean) : [];
+      for (const item of items) {
+        if (item === all) continue;
+        chips.push({ id: `${String(key)}:${item}`, kind, label: item, remove: () => store.toggleFilterItem(key, item, all) });
+      }
+    }
+    return chips;
+  }, [filters, setFilter, setMultipleFilters, store]);
+
   return (
     <div className="relative z-30 bg-card/75 border border-border/80 rounded-2xl p-2.5 sm:p-3 shadow-md mb-6 backdrop-blur-xl transition-all" suppressHydrationWarning>
       {/* Mobile Top Bar with Summary & Toggle */}
@@ -327,7 +362,7 @@ export function FilterBar(props: FilterBarProps = {}) {
             className="h-7 px-2 text-[11px] text-muted-foreground hover:text-foreground gap-1"
           >
             <RotateCcw className="size-3" />
-            <span>Reset</span>
+            <span>Effacer</span>
           </Button>
         </div>
       </div>
@@ -337,39 +372,15 @@ export function FilterBar(props: FilterBarProps = {}) {
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           {/* Dimensional Filters Row / Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:flex lg:flex-wrap items-center gap-2 flex-1 relative z-20">
-            {/* Période temporelle */}
-            <div className="flex items-center gap-1.5 w-full sm:w-auto">
-              <Calendar className="size-3.5 text-muted-foreground ml-1 shrink-0 hidden sm:block" />
-              <Select
-                value={typeof filters.dateRange === 'string' ? filters.dateRange : 'all'}
-                onValueChange={(val) => {
-                  if (val) setFilter('dateRange', val as DateRange);
-                }}
-              >
-                <SelectTrigger className="h-8 text-xs w-full sm:w-[135px] bg-background/60">
-                  <SelectValue placeholder="Période">
-                    {filters.dateRange === 'all'
-                      ? 'Toutes les dates'
-                      : filters.dateRange === '7d'
-                      ? '7 derniers jours'
-                      : filters.dateRange === '30d'
-                      ? '30 derniers jours'
-                      : filters.dateRange === '90d'
-                      ? '90 derniers jours'
-                      : filters.dateRange === '12m'
-                      ? '12 derniers mois'
-                      : 'Période'}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent className="z-[9999]">
-                  <SelectItem value="all">Toutes les dates (Global)</SelectItem>
-                  <SelectItem value="7d">7 derniers jours</SelectItem>
-                  <SelectItem value="30d">30 derniers jours</SelectItem>
-                  <SelectItem value="90d">90 derniers jours</SelectItem>
-                  <SelectItem value="12m">12 derniers mois</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {/* Période : préréglages ou dates personnalisées */}
+            <PeriodPicker
+              dateRange={typeof filters.dateRange === 'string' ? filters.dateRange : 'all'}
+              startDate={filters.startDate}
+              endDate={filters.endDate}
+              onChange={(next) =>
+                setMultipleFilters({ dateRange: next.dateRange, startDate: next.startDate, endDate: next.endDate })
+              }
+            />
 
             {/* Statut de vente */}
             <div className="flex items-center gap-1.5 w-full sm:w-auto">
@@ -381,7 +392,7 @@ export function FilterBar(props: FilterBarProps = {}) {
                 }}
               >
                 <SelectTrigger className="h-8 text-xs w-full sm:w-[205px] bg-amber-500/10 border-amber-500/30 text-amber-500 font-semibold focus:ring-amber-500">
-                  <SelectValue placeholder="Statut de vente" />
+                  <SelectValue placeholder="Statut de vente">{activeStatusName}</SelectValue>
                 </SelectTrigger>
                 <SelectContent className="max-h-64 z-[9999]">
                   <SelectItem value="valid">Validées &amp; Consommées</SelectItem>
@@ -548,6 +559,29 @@ export function FilterBar(props: FilterBarProps = {}) {
           </div>
         </div>
       </div>
+
+      {/* Filtres actifs : chaque filtre appliqué, retirable d'un clic */}
+      {activeChips.length > 0 && (
+        <div className="mt-2.5 flex flex-wrap items-center gap-1.5 border-t border-border/40 pt-2">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Filtres actifs</span>
+          {activeChips.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={c.remove}
+              title="Retirer ce filtre"
+              className="group inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-600 transition-colors hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-500 dark:text-amber-400"
+            >
+              <span className="text-muted-foreground">{c.kind}</span>
+              <span className="max-w-[160px] truncate">{c.label}</span>
+              <X className="size-3 opacity-60 group-hover:opacity-100" />
+            </button>
+          ))}
+          <button type="button" onClick={resetFilters} className="ml-1 text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
+            Tout effacer
+          </button>
+        </div>
+      )}
 
       {/* Contextual Information Summary Banner */}
       {contextualData && (

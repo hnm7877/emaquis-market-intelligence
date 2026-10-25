@@ -20,7 +20,7 @@ export type LiveResource =
   | 'filters';
 
 /** Même ordre de clés que le serveur (et que les requêtes HTTP) : même clé, même cache */
-const FILTER_KEYS = ['country', 'dateRange', 'city', 'commune', 'category', 'brand', 'posType', 'status'] as const;
+const FILTER_KEYS = ['country', 'dateRange', 'startDate', 'endDate', 'city', 'commune', 'category', 'brand', 'posType', 'status'] as const;
 
 export function liveFilters(params: Record<string, string> = {}): Record<string, string> {
   const out: Record<string, string> = {};

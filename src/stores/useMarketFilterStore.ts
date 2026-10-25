@@ -24,13 +24,14 @@ const defaultFilters: FilterState = {
   brand: 'Toutes marques',
   posType: 'Tous types',
   status: 'valid',
-  autoSyncContextual: true,
+  // Désactivé par défaut : la synchronisation automatique remplaçait les choix de l'utilisateur
+  autoSyncContextual: false,
   volumeUnit: 'cols',
 };
 
 export const useMarketFilterStore = create<MarketFilterStore>((set) => ({
   filters: defaultFilters,
-  autoSyncContextual: true,
+  autoSyncContextual: false,
   volumeUnit: 'cols',
 
   setVolumeUnit: (unit: VolumeUnit) =>

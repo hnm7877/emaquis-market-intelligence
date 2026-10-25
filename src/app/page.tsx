@@ -4,9 +4,38 @@ import React from 'react';
 import { KpiMetric } from '@/types/market';
 import { FilterBar } from '@/components/layout/FilterBar';
 import { KpiCard } from '@/components/common/KpiCard';
-import { SalesEvolutionChart } from '@/components/charts/SalesEvolutionChart';
-import { CategoryDistributionChart } from '@/components/charts/CategoryDistributionChart';
-import { GeographicBarChart } from '@/components/charts/GeographicBarChart';
+import dynamic from 'next/dynamic';
+import { useMarketRealtimeStore } from '@/stores/useMarketRealtimeStore';
+import { periodLabel as filterPeriodLabel } from '@/components/layout/PeriodPicker';
+
+// Graphiques chargés à la demande : la page et les indicateurs s'affichent tout de suite
+const ChartSkeleton = ({ h = 'h-[340px]' }: { h?: string }) => (
+  <div className={`${h} w-full animate-pulse rounded-xl border border-border/60 bg-card/50`} />
+);
+const SalesEvolutionChart = dynamic(() => import('@/components/charts/SalesEvolutionChart').then((m) => m.SalesEvolutionChart), {
+  ssr: false,
+  loading: () => <ChartSkeleton />,
+});
+const CategoryDistributionChart = dynamic(
+  () => import('@/components/charts/CategoryDistributionChart').then((m) => m.CategoryDistributionChart),
+  { ssr: false, loading: () => <ChartSkeleton /> },
+);
+const GeographicBarChart = dynamic(() => import('@/components/charts/GeographicBarChart').then((m) => m.GeographicBarChart), {
+  ssr: false,
+  loading: () => <ChartSkeleton h="h-[420px]" />,
+});
+
+/** Squelette d'indicateur (au lieu d'afficher des zéros pendant le chargement) */
+const KpiSkeleton = () => <div className="h-[132px] animate-pulse rounded-xl border border-border/60 bg-card/50" />;
+
+function SectionTitle({ title, hint }: { title: string; hint?: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</h2>
+      {hint && <span className="text-[11px] text-muted-foreground/80">{hint}</span>}
+    </div>
+  );
+}
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -25,10 +54,10 @@ import { formatVolumeValue } from '@/utils/volumeUnit';
 import { formatGrowth, growthColorClass, growthTrend, isAvailable } from '@/utils/metrics';
 
 export default function MarketOverviewPage() {
-  const { filters, setFilter, resetFilters, volumeUnit } = useMarketFilterStore();
-  const { data: apiData, isLoading, isError } = useMarketOverview();
-
-  // Active le listener WebSocket en arrière-plan
+  const { filters, volumeUnit } = useMarketFilterStore();
+  const { data: apiData, isLoading, isError, dataUpdatedAt } = useMarketOverview();
+  const isLive = useMarketRealtimeStore((s) => s.isConnected);
+  const updatedAt = dataUpdatedAt ? new Date(dataUpdatedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : null;
 
   const kpis = apiData?.kpis;
 
@@ -145,76 +174,83 @@ export default function MarketOverviewPage() {
     },
   ];
 
+  // Activité commerciale d'abord, puis couverture du réseau
+  const byId = new Map(kpiMetrics.map((m) => [m.id, m]));
+  const headlineKpis = ['kpi-revenue', 'kpi-volume', 'kpi-transactions', 'kpi-growth'].map((id) => byId.get(id)!);
+  const networkKpis = ['kpi-pos', 'kpi-products', 'kpi-zones', 'kpi-demand'].map((id) => byId.get(id)!);
+
   const alerts = apiData?.alerts ?? [];
   const topProducts: any[] = (apiData as any)?.topProducts ?? [];
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Top Banner / Welcome */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-border/60">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold tracking-tight text-foreground">
-              Market Overview - {currentCountryName}
+      {/* En-tête : périmètre, état du direct, accès rapides */}
+      <div className="relative overflow-hidden rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-amber-500/10 p-4 sm:p-5">
+        <div className="pointer-events-none absolute -right-16 -top-16 size-48 rounded-full bg-amber-500/15 blur-3xl" />
+        <div className="relative flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-500">Vue d&apos;ensemble du marché</p>
+            <h1 className="mt-0.5 truncate text-xl font-bold tracking-tight text-foreground sm:text-2xl">
+              {currentCountryName.replace(/_/g, ' ')}
             </h1>
-            <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-400 border-emerald-500/30 gap-1.5 py-0.5">
-              <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              {isLoading ? 'Synchronisation API...' : isError ? 'API indisponible' : 'Données live API'}
-            </Badge>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-medium ${
+                  isError
+                    ? 'border-rose-500/30 bg-rose-500/10 text-rose-400'
+                    : isLive
+                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500'
+                      : 'border-border bg-muted text-muted-foreground'
+                }`}
+              >
+                <span className={`size-1.5 rounded-full ${isError ? 'bg-rose-500' : isLive ? 'animate-pulse bg-emerald-500' : 'bg-muted-foreground'}`} />
+                {isError ? 'API indisponible' : isLive ? 'En direct' : 'Hors direct (rafraîchi chaque minute)'}
+              </span>
+              <span className="rounded-full border border-border/70 bg-background/60 px-2 py-0.5 text-muted-foreground">
+                {filterPeriodLabel(typeof filters.dateRange === 'string' ? filters.dateRange : 'all', filters.startDate, filters.endDate)}
+              </span>
+              {updatedAt && <span className="text-muted-foreground">Mis à jour à {updatedAt}</span>}
+              <span className="inline-flex items-center gap-1 text-muted-foreground">
+                <ShieldCheck className="size-3.5 text-emerald-500" /> Données agrégées et anonymisées
+              </span>
+            </div>
           </div>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Données de consommation réelles agrégées et anonymisées du réseau E-Maquis.
-          </p>
-        </div>
 
-        <div className="flex items-center gap-2">
-          <Badge variant="secondary" className="text-xs px-2.5 py-1 gap-1 text-muted-foreground bg-secondary/80">
-            <ShieldCheck className="size-3.5 text-emerald-500" />
-            <span>Données RGPD &amp; Anonymisées</span>
-          </Badge>
-          <Link href="/autonomous-dashboard">
-            <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs font-mono border-orange-500/40 bg-orange-500/10 text-orange-400 hover:bg-orange-500/20">
-              <Sparkles className="size-3.5" />
-              <span>Bourse &amp; 3D Live</span>
-            </Button>
-          </Link>
-          <Link href="/ai-intelligence">
-            <Button size="sm" className="h-8 gap-1.5 text-xs bg-gradient-to-r from-orange-500 to-amber-500 text-white hover:from-orange-600 hover:to-amber-600 shadow-xs">
-              <Sparkles className="size-3.5" />
-              <span>Interroger DeerFlow</span>
-            </Button>
-          </Link>
+          <div className="flex shrink-0 items-center gap-2">
+            <Link href="/autonomous-dashboard">
+              <Button size="sm" variant="outline" className="h-8 gap-1.5 border-orange-500/40 bg-orange-500/10 text-xs text-orange-400 hover:bg-orange-500/20">
+                <Sparkles className="size-3.5" />
+                <span>Bourse &amp; 3D</span>
+              </Button>
+            </Link>
+            <Link href="/ai-intelligence">
+              <Button size="sm" className="h-8 gap-1.5 bg-gradient-to-r from-orange-500 to-amber-500 text-xs text-white shadow-xs hover:from-orange-600 hover:to-amber-600">
+                <Sparkles className="size-3.5" />
+                <span>Interroger DeerFlow</span>
+              </Button>
+            </Link>
+          </div>
         </div>
       </div>
 
-      {/* Filter Bar avec Sélecteur d'Unité et Auto-sync */}
+      {/* Filtres (période, statut, zones, catégories, marques, types) */}
       <FilterBar />
 
-      {/* Message d'info si filtre actif */}
-      {filters.status && filters.status !== 'valid' && (
-        <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center justify-between text-xs text-amber-500">
-          <div className="flex items-center gap-2">
-            <span className="size-2 rounded-full bg-amber-500 animate-ping" />
-            <span>
-              Filtre statut actif : <strong>{filters.status}</strong>. Les indicateurs et la carte thermique s'adaptent dynamiquement.
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setFilter('status', 'valid')}
-            className="text-[11px] underline text-amber-400 hover:text-amber-300 font-medium"
-          >
-            Revenir aux ventes validées
-          </button>
+      {/* Indicateurs : activité commerciale */}
+      <section className="space-y-2.5">
+        <SectionTitle title="Activité commerciale" hint={periodLabel} />
+        <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
+          {isLoading ? [0, 1, 2, 3].map((i) => <KpiSkeleton key={i} />) : headlineKpis.map((m) => <KpiCard key={m.id} metric={m} />)}
         </div>
-      )}
+      </section>
 
-      {/* 8 KPIs Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
-        {kpiMetrics.map((metric) => (
-          <KpiCard key={metric.id} metric={metric} />
-        ))}
-      </div>
+      {/* Indicateurs : couverture du réseau */}
+      <section className="space-y-2.5">
+        <SectionTitle title="Couverture du réseau" />
+        <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
+          {isLoading ? [0, 1, 2, 3].map((i) => <KpiSkeleton key={i} />) : networkKpis.map((m) => <KpiCard key={m.id} metric={m} />)}
+        </div>
+      </section>
 
       {/* Main Charts: Evolution & Distribution */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
