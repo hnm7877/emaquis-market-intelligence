@@ -7,6 +7,7 @@ import { Header } from '@/components/layout/Header';
 import { AiChatDrawer } from '@/components/common/AiChatDrawer';
 import { ExportModal } from '@/components/common/ExportModal';
 import { getAuthToken, isTokenExpired, LOGIN_PATH, clearAuthToken } from '@/lib/auth';
+import { useMarketLiveSocket } from '@/hooks/market/useMarketQueries';
 
 export function ClientAppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -17,6 +18,8 @@ export function ClientAppShell({ children }: { children: React.ReactNode }) {
   const [authChecked, setAuthChecked] = useState(false);
 
   const isLoginPage = pathname === LOGIN_PATH;
+  // Direct : un seul abonnement pour toute l'application (toutes les pages restent à jour)
+  useMarketLiveSocket(!isLoginPage && authChecked);
 
   // Toutes les pages (hors connexion) exigent une session valide
   useEffect(() => {

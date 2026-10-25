@@ -191,12 +191,12 @@ export function useContextualFiltersQuery() {
 /**
  * 12. Hook WebSocket Live Feeds
  */
-export function useMarketLiveSocket() {
+export function useMarketLiveSocket(enabled = true) {
   const { setConnected, addLiveAlert, addLiveTransaction, addPulse } = useMarketRealtimeStore();
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || !enabled) return;
 
     const socket = getMarketSocket();
 
@@ -247,7 +247,7 @@ export function useMarketLiveSocket() {
       socket.off('market:alert', handleAlert);
       socket.off('market:new-sale', handleNewSale);
     };
-  }, [setConnected, addLiveAlert, addLiveTransaction, addPulse, queryClient]);
+  }, [enabled, setConnected, addLiveAlert, addLiveTransaction, addPulse, queryClient]);
 }
 /**
  * 13. Journal d'audit des accès Market Intelligence

@@ -50,8 +50,7 @@ import {
   useBrandsQuery,
   useCategoriesQuery,
   useDataCoverageQuery,
-  useMarketLiveSocket,
-} from '@/hooks/market/useMarketQueries';
+  } from '@/hooks/market/useMarketQueries';
 import { useMarketFilterStore } from '@/stores/useMarketFilterStore';
 import { PAYS } from '@/constants/countries';
 import { resolveProductImage } from '@/utils/productImages';
@@ -62,7 +61,6 @@ type DashboardSectionTab = 'ladder' | 'recharts' | 'duel' | 'countries' | 'geogr
 
 export default function AutonomousDashboardPage() {
   // Activation de l'écoute WebSocket en direct pour tout le tableau de bord
-  useMarketLiveSocket();
 
   const [activeTab, setActiveTab] = useState<DashboardSectionTab>('ladder');
   const [activeTerritory, setActiveTerritory] = useState('Abidjan');

@@ -18,6 +18,7 @@ import { fetchMarketSession } from '@/api/marketIntelligence.api';
 import { closeMarketSocket } from '@/api/socket';
 import { redirectToLogin } from '@/lib/auth';
 import { formatGrowth } from '@/utils/metrics';
+import { LivePulsePill } from './LivePulsePill';
 
 interface HeaderProps {
   onOpenAiChat: () => void;
@@ -75,6 +76,9 @@ export function Header({ onOpenAiChat, onOpenExport, onToggleSidebar }: HeaderPr
             ventes réelles
           </span>
         </div>
+
+        {/* Ventes du réseau en direct */}
+        <LivePulsePill />
 
         {/* DeerFlow AI Assistant Trigger Button */}
         <Button

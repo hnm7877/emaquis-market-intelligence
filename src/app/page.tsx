@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useMarketFilterStore } from '@/stores/useMarketFilterStore';
-import { useMarketOverview, useMarketLiveSocket } from '@/hooks/market/useMarketQueries';
+import { useMarketOverview } from '@/hooks/market/useMarketQueries';
 import { PAYS } from '@/constants/countries';
 import { formatVolumeValue } from '@/utils/volumeUnit';
 import { formatGrowth, growthColorClass, growthTrend, isAvailable } from '@/utils/metrics';
@@ -29,7 +29,6 @@ export default function MarketOverviewPage() {
   const { data: apiData, isLoading, isError } = useMarketOverview();
 
   // Active le listener WebSocket en arrière-plan
-  useMarketLiveSocket();
 
   const kpis = apiData?.kpis;
 
