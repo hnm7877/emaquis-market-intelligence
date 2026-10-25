@@ -124,9 +124,9 @@ export function useCategoriesQuery() {
 }
 
 /** 6. Tendances de consommation */
-export function useTrendsQuery() {
+export function useTrendsQuery(enabled = true) {
   const filters = useMarketFilterStore((state) => state.filters);
-  return useLiveQuery('trends', buildQueryParams(filters), marketQueryKeys.trends(filters), () => fetchTrendsData(filters));
+  return useLiveQuery('trends', buildQueryParams(filters), marketQueryKeys.trends(filters), () => fetchTrendsData(filters), enabled);
 }
 
 /** 7. Stock intelligence */
@@ -152,7 +152,7 @@ export function useMarketFiltersQuery() {
 }
 
 /** 11. Filtres contextuels (selon statut / période) */
-export function useContextualFiltersQuery() {
+export function useContextualFiltersQuery(enabled = true) {
   const filters = useMarketFilterStore((state) => state.filters);
   const status = filters.status || 'valid';
   const dateRange = filters.dateRange || 'all';
@@ -160,6 +160,7 @@ export function useContextualFiltersQuery() {
   const params: Record<string, string> = { ...buildQueryParams({ dateRange, startDate, endDate } as never), status };
   return useLiveQuery('contextual', params, marketQueryKeys.contextualFilters(status, dateRange, startDate, endDate), () =>
     fetchContextualFilters({ status, dateRange, startDate, endDate }),
+    enabled,
   );
 }
 

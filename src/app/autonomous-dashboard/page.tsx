@@ -19,21 +19,23 @@ import { Button } from '@/components/ui/button';
 import { StockTickerHeader } from '@/components/autonomous/StockTickerHeader';
 import { ThreeVgpuCanvas } from '@/components/autonomous/ThreeVgpuCanvas';
 import { LiveTradingLadder } from '@/components/autonomous/LiveTradingLadder';
-import { GeographicHierarchyTree } from '@/components/autonomous/GeographicHierarchyTree';
 import { StockChartPanel } from '@/components/autonomous/StockChartPanel';
 import { AgentHudConsole, AgentDirective } from '@/components/autonomous/AgentHudConsole';
 import { MarketTermsModal } from '@/components/autonomous/MarketTermsModal';
-import { RechartsShowcaseSuite } from '@/components/autonomous/RechartsShowcaseSuite';
-import { BreweryCategoryDuel } from '@/components/autonomous/BreweryCategoryDuel';
-import { MultiCountryNetworkMap } from '@/components/autonomous/MultiCountryNetworkMap';
 import { AutonomousAgentNewsModal } from '@/components/autonomous/AutonomousAgentNewsModal';
 import { BourseKpiStrip } from '@/components/autonomous/BourseKpiStrip';
+import { MarketChartsTab } from '@/components/autonomous/tabs/MarketChartsTab';
+import { BrandDuelTab } from '@/components/autonomous/tabs/BrandDuelTab';
+import { CountriesTab } from '@/components/autonomous/tabs/CountriesTab';
+import { TerritoryPyramidTab } from '@/components/autonomous/tabs/TerritoryPyramidTab';
 import {
   useProductsQuery,
   useGeographyQuery,
   useMarketOverview,
   useBrandsQuery,
   useCategoriesQuery,
+  useTrendsQuery,
+  useContextualFiltersQuery,
 } from '@/hooks/market/useMarketQueries';
 import { useMarketFilterStore } from '@/stores/useMarketFilterStore';
 import { useMarketRealtimeStore } from '@/stores/useMarketRealtimeStore';
@@ -44,7 +46,7 @@ import { DISPLAY_VOLUME_UNITS, formatProductVolume, aggregateCategoryPackages } 
 const NAV_TABS: { id: BourseTab; label: string; icon: typeof Activity }[] = [
   { id: 'ladder', label: 'Bourse & carte', icon: Activity },
   { id: 'recharts', label: 'Graphiques', icon: BarChart3 },
-  { id: 'duel', label: 'Duel des brasseries', icon: Swords },
+  { id: 'duel', label: 'Duel des marques', icon: Swords },
   { id: 'countries', label: 'Multi-pays', icon: Globe2 },
   { id: 'geography', label: 'Pyramide territoriale', icon: Layers },
 ];
@@ -91,6 +93,9 @@ export default function AutonomousDashboardPage() {
   const { data: overviewData, isLoading: isOverviewLoading } = useMarketOverview();
   const { data: brandsData } = useBrandsQuery();
   const { data: categoriesData } = useCategoriesQuery();
+  // Abonnements ouverts seulement quand l'onglet qui les affiche est ouvert
+  const { data: trendsData, isLoading: isTrendsLoading } = useTrendsQuery(tab === 'recharts');
+  const { data: contextualData } = useContextualFiltersQuery(tab === 'countries');
 
   // Catégorie affichée : toujours une catégorie réelle de la base
   useEffect(() => {
@@ -379,52 +384,34 @@ export default function AutonomousDashboardPage() {
         </div>
       )}
 
-      {/* ONGLET 2 : SUITE RECHARTS COMPLÈTE (10 MODÈLES DE LA DOC) */}
+      {/* ONGLET 2 : GRAPHIQUES (données réelles) */}
       {tab === 'recharts' && (
-        <RechartsShowcaseSuite
+        <MarketChartsTab
           unit={volumeUnit}
-          onOpenGlossary={() => setIsGlossaryOpen(true)}
           overviewData={overviewData}
           productsData={productsData}
           brandsData={brandsData}
           categoriesData={categoriesData}
-          geoData={geoData}
+          trendsData={trendsData}
+          trendsLoading={isTrendsLoading}
         />
       )}
 
-      {/* ONGLET 3 : DUEL BRASSERIES & PRODUITS EN SOUFFRANCE */}
-      {tab === 'duel' && (
-        <BreweryCategoryDuel
-          unit={volumeUnit}
-          onOpenGlossary={() => setIsGlossaryOpen(true)}
-          productsData={productsData}
-          brandsData={brandsData}
-          categoriesData={categoriesData}
-        />
-      )}
+      {/* ONGLET 3 : DUEL DE MARQUES & PRODUITS EN RECUL */}
+      {tab === 'duel' && <BrandDuelTab unit={volumeUnit} brandsData={brandsData} productsData={productsData} />}
 
-      {/* ONGLET 4 : RÉSEAU MULTI-PAYS (GLOBALSALE) */}
+      {/* ONGLET 4 : MULTI-PAYS */}
       {tab === 'countries' && (
-        <MultiCountryNetworkMap
-          unit={volumeUnit}
-          onOpenGlossary={() => setIsGlossaryOpen(true)}
-          overviewData={overviewData}
+        <CountriesTab
+          contextualData={contextualData}
           geoData={geoData}
           selectedCountry={selectedCountryCode}
-          onSelectCountry={(c) => setFilter('country', c)}
+          onSelectCountry={(c) => setFilter('country', c as any)}
         />
       )}
 
-      {/* ONGLET 5 : PYRAMIDE HIÉRARCHIQUE TERRITORIALE BD */}
-      {tab === 'geography' && (
-        <GeographicHierarchyTree
-          geoData={geoData}
-          onSelectTerritory={(name) => {
-            setTerritory(name);
-          }}
-        />
-      )}
-
+      {/* ONGLET 5 : PYRAMIDE TERRITORIALE */}
+      {tab === 'geography' && <TerritoryPyramidTab unit={volumeUnit} geoData={geoData} onSelectTerritory={setTerritory} />}
       </motion.div>
       </AnimatePresence>
 
