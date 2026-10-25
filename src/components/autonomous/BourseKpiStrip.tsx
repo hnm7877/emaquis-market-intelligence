@@ -1,27 +1,10 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
-import { animate, motion, useMotionValue, useReducedMotion, useTransform } from 'framer-motion';
+import React from 'react';
+import { motion } from 'framer-motion';
+import { AnimatedNumber } from '@/components/ui/AnimatedNumber';
 import { Building2, Crown, DollarSign, Package, Radio, Rocket, TrendingDown, TrendingUp } from 'lucide-react';
 import { resolveProductImage } from '@/utils/productImages';
-
-/** Nombre qui glisse vers sa nouvelle valeur à chaque donnée poussée par le serveur */
-function AnimatedNumber({ value, format }: { value: number; format: (n: number) => string }) {
-  const reduce = useReducedMotion();
-  const mv = useMotionValue(value);
-  const text = useTransform(mv, (n) => format(n));
-  const first = useRef(true);
-  useEffect(() => {
-    if (first.current || reduce) {
-      first.current = false;
-      mv.set(value);
-      return;
-    }
-    const c = animate(mv, value, { duration: 0.8, ease: [0.23, 1, 0.32, 1] });
-    return () => c.stop();
-  }, [value, mv, reduce]);
-  return <motion.span className="tabular-nums">{text}</motion.span>;
-}
 
 function Delta({ value }: { value?: number | null }) {
   if (value == null || !Number.isFinite(value)) return <span className="text-slate-500">pas de comparaison</span>;

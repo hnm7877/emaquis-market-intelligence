@@ -1,388 +1,556 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
-import { LocationPrecisionBar } from '@/components/geography/LocationPrecisionBar';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { formatGrowth, growthColorClass, isAvailable } from '@/utils/metrics';
-import { GeographicBarChart } from '@/components/charts/GeographicBarChart';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
-  MapPin,
-  Navigation,
-  Globe,
+  ArrowDownUp,
+  BarChart3,
   Beer,
   DollarSign,
-  Store,
+  Download,
   Flame,
-  Search,
+  Globe,
   Layers,
-  BarChart3,
+  Link2,
+  MapPin,
+  Navigation,
+  Search,
+  Store,
+  Table2,
   TrendingUp,
-  Radio,
-  Sparkles,
+  X,
 } from 'lucide-react';
+import { LocationPrecisionBar } from '@/components/geography/LocationPrecisionBar';
+import { GeographicBarChart } from '@/components/charts/GeographicBarChart';
+import { AnimatedNumber } from '@/components/ui/AnimatedNumber';
+import { formatGrowth, growthColorClass, isAvailable } from '@/utils/metrics';
 import { useGeographyQuery } from '@/hooks/market/useMarketQueries';
+import { useMarketRealtimeStore } from '@/stores/useMarketRealtimeStore';
+import { PAYS, normalizeCountry } from '@/constants/countries';
+import type { GeoMetric, MapZone } from '@/components/maps/GeoWorldMap';
+import type { FilterState } from '@/types/market';
 
-// Import dynamique de la carte Leaflet (désactive le SSR pour éviter l'erreur window/document)
-const MarketIntelligenceMap = dynamic(
-  () =>
-    import('@/components/maps/MarketIntelligenceMap').then(
-      (mod) => mod.MarketIntelligenceMap
-    ),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="w-full h-[540px] md:h-[600px] rounded-2xl border border-border/80 bg-card/60 flex items-center justify-center backdrop-blur-md">
-        <div className="flex flex-col items-center gap-3">
-          <div className="size-9 rounded-full border-2 border-orange-500 border-t-transparent animate-spin" />
-          <p className="text-xs text-muted-foreground font-medium animate-pulse">
-            Chargement du moteur cartographique SIG temps réel...
-          </p>
-        </div>
-      </div>
-    ),
-  }
-);
+// Carte chargée seulement côté navigateur (Leaflet a besoin de window)
+const GeoWorldMap = dynamic(() => import('@/components/maps/GeoWorldMap').then((m) => m.GeoWorldMap), {
+  ssr: false,
+  loading: () => <div className="h-[68vh] min-h-[460px] w-full animate-pulse rounded-2xl border border-slate-800 bg-slate-900/60" />,
+});
+
+type Scope = 'all' | 'filters';
+type View = 'map' | 'charts' | 'table';
+type SortKey = 'volume' | 'revenue' | 'posCount' | 'growth' | 'perPos';
+
+const EASE = [0.23, 1, 0.32, 1] as const;
+const ALL_COUNTRIES: Partial<FilterState> = { country: 'all' };
+const METRICS: { id: GeoMetric; label: string }[] = [
+  { id: 'volume', label: 'Volume' },
+  { id: 'revenue', label: 'CA' },
+  { id: 'pos', label: 'Maquis' },
+  { id: 'growth', label: 'Évolution' },
+];
+
+const int = (n: number) => Math.round(n || 0).toLocaleString('fr-FR');
+const money = (n: number) => (Math.abs(n) >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)} M` : int(n));
+const flagOf = (country: string) => PAYS.find((p) => p.code === normalizeCountry(country))?.flag || '🌍';
+
+/** Préférences partagées par lien (aucune donnée sensible : vue, métrique, pays, recherche) */
+function readUrl() {
+  if (typeof window === 'undefined') return {};
+  const p = new URLSearchParams(window.location.search);
+  const metric = p.get('metric') as GeoMetric | null;
+  const view = p.get('view') as View | null;
+  return {
+    scope: p.get('scope') === 'filters' ? ('filters' as Scope) : undefined,
+    metric: metric && METRICS.some((m) => m.id === metric) ? metric : undefined,
+    view: view && ['map', 'charts', 'table'].includes(view) ? view : undefined,
+    country: (p.get('pays') || '').slice(0, 60) || undefined,
+    q: (p.get('q') || '').slice(0, 60) || undefined,
+  };
+}
 
 export default function GeographyPage() {
+  const [scope, setScope] = useState<Scope>('all');
+  const [view, setView] = useState<View>('map');
+  const [metric, setMetric] = useState<GeoMetric>('volume');
   const [search, setSearch] = useState('');
-  const [activeTab, setActiveTab] = useState<'map' | 'charts' | 'table'>('map');
-  const { data: apiGeoData, isLoading, refetch } = useGeographyQuery();
+  const [country, setCountry] = useState<string | null>(null);
+  const [selected, setSelected] = useState<MapZone | null>(null);
+  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'volume', dir: -1 });
+  const [rows, setRows] = useState(50);
+  const [copied, setCopied] = useState(false);
 
-  // Consolidation des données de zones géographiques
-  const rawZones = useMemo(() => apiGeoData?.zones ?? [], [apiGeoData]);
+  // Lien partagé : on relit les réglages une fois, après le premier rendu
+  useEffect(() => {
+    const u = readUrl();
+    /* eslint-disable react-hooks/set-state-in-effect -- lecture unique des réglages du lien */
+    if (u.scope) setScope(u.scope);
+    if (u.metric) setMetric(u.metric);
+    if (u.view) setView(u.view);
+    if (u.country) setCountry(u.country);
+    if (u.q) setSearch(u.q);
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, []);
 
-  // Établissements individuels retournés par le backend
-  const establishments = apiGeoData?.establishments || [];
+  // « Tous les pays » : seul le pays est levé, les autres filtres (période, catégorie…) s'appliquent
+  const { data: geo, isLoading } = useGeographyQuery(true, scope === 'all' ? ALL_COUNTRIES : undefined);
+  const isConnected = useMarketRealtimeStore((s) => s.isConnected);
 
-  // Filtrage selon la saisie utilisateur
-  const filtered = useMemo(() => {
-    if (!search.trim()) return rawZones;
-    const q = search.toLowerCase();
-    return rawZones.filter(
-      (g: any) =>
-        (g.zone || '').toLowerCase().includes(q) ||
-        (g.city || '').toLowerCase().includes(q) ||
-        (g.country || '').toLowerCase().includes(q)
+  const zones: MapZone[] = useMemo(
+    () =>
+      ((geo?.zones || []) as any[]).map((z) => ({
+        id: String(z.id),
+        zone: String(z.zone || 'Commune'),
+        city: String(z.city || ''),
+        country: String(z.country || "Côte d'Ivoire"),
+        volume: Number(z.volume) || 0,
+        revenue: Number(z.revenue) || 0,
+        posCount: Number(z.posCount) || 0,
+        growth: typeof z.growth === 'number' ? z.growth : null,
+        demandIndex: z.demandIndex ?? null,
+        latitude: Number(z.latitude),
+        longitude: Number(z.longitude),
+      })),
+    [geo],
+  );
+  const establishments = useMemo(() => (geo?.establishments || []) as any[], [geo]);
+
+  // Pays présents dans les données
+  const countries = useMemo(() => {
+    const m = new Map<string, { country: string; volume: number; revenue: number; pos: number; zones: number }>();
+    for (const z of zones) {
+      const c = m.get(z.country) || { country: z.country, volume: 0, revenue: 0, pos: 0, zones: 0 };
+      c.volume += z.volume;
+      c.revenue += z.revenue || 0;
+      c.pos += z.posCount;
+      c.zones += 1;
+      m.set(z.country, c);
+    }
+    return [...m.values()].sort((a, b) => b.revenue - a.revenue);
+  }, [zones]);
+
+  const q = search.trim().toLowerCase();
+  const filtered = useMemo(
+    () =>
+      zones.filter(
+        (z) =>
+          (!country || z.country === country) &&
+          (!q || z.zone.toLowerCase().includes(q) || z.city.toLowerCase().includes(q) || z.country.toLowerCase().includes(q)),
+      ),
+    [zones, country, q],
+  );
+
+  const totals = useMemo(() => {
+    const volume = filtered.reduce((s, z) => s + z.volume, 0);
+    const revenue = filtered.reduce((s, z) => s + (z.revenue || 0), 0);
+    const pos = filtered.reduce((s, z) => s + z.posCount, 0);
+    const top = [...filtered].sort((a, b) => b.volume - a.volume)[0] || null;
+    return { volume, revenue, pos, top, perPos: pos ? revenue / pos : 0 };
+  }, [filtered]);
+
+  const sorted = useMemo(() => {
+    const val = (z: MapZone) => (sort.key === 'perPos' ? (z.posCount ? (z.revenue || 0) / z.posCount : 0) : sort.key === 'growth' ? z.growth ?? -Infinity : (z[sort.key] as number) || 0);
+    return [...filtered].sort((a, b) => (val(a) - val(b)) * sort.dir);
+  }, [filtered, sort]);
+
+  const rankOf = useCallback((z: MapZone) => [...filtered].sort((a, b) => b.volume - a.volume).findIndex((x) => x.id === z.id) + 1, [filtered]);
+
+  const shareLink = () => {
+    const p = new URLSearchParams();
+    if (scope !== 'all') p.set('scope', scope);
+    if (metric !== 'volume') p.set('metric', metric);
+    if (view !== 'map') p.set('view', view);
+    if (country) p.set('pays', country);
+    if (q) p.set('q', search.trim());
+    const url = `${window.location.origin}${window.location.pathname}${p.toString() ? `?${p}` : ''}`;
+    window.history.replaceState(null, '', url);
+    navigator.clipboard?.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const exportCsv = () => {
+    // Protection contre l'injection de formules dans un tableur (= + - @ en début de cellule)
+    const cell = (v: unknown) => {
+      let s = String(v ?? '');
+      if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+      return `"${s.replace(/"/g, '""')}"`;
+    };
+    const head = ['Commune', 'Ville', 'Pays', 'Volume', 'CA (FCFA)', 'Maquis', 'CA par maquis', 'Évolution (%)', 'Latitude', 'Longitude'];
+    const lines = sorted.map((z) =>
+      [z.zone, z.city, z.country, Math.round(z.volume), Math.round(z.revenue || 0), z.posCount, z.posCount ? Math.round((z.revenue || 0) / z.posCount) : 0, z.growth ?? '', z.latitude, z.longitude]
+        .map(cell)
+        .join(';'),
     );
-  }, [rawZones, search]);
+    const blob = new Blob([`﻿${[head.map(cell).join(';'), ...lines].join('\n')}`], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `emaquis-geographie-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
 
-  // Métriques globales pour décideurs et brasseries
-  const totalVolume = useMemo(
-    () => rawZones.reduce((sum, z) => sum + (z.volume || 0), 0),
-    [rawZones]
+  const sortBtn = (key: SortKey, label: string) => (
+    <button
+      onClick={() => setSort((s) => ({ key, dir: s.key === key ? (s.dir === 1 ? -1 : 1) : -1 }))}
+      className={`inline-flex items-center gap-1 ${sort.key === key ? 'text-amber-300' : ''}`}
+    >
+      {label}
+      <ArrowDownUp className="size-3 opacity-60" />
+    </button>
   );
-
-  const totalRevenue = useMemo(
-    () => rawZones.reduce((sum, z) => sum + (z.revenue || 0), 0),
-    [rawZones]
-  );
-
-  const totalPosCount = useMemo(() => {
-    const fromZones = rawZones.reduce((sum, z) => sum + (z.posCount || 0), 0);
-    return Math.max(fromZones, establishments.length, apiGeoData?.totalAnalyzedPos || 0);
-  }, [rawZones, establishments, apiGeoData]);
-
-  const topZone = useMemo(() => {
-    if (!rawZones.length) return null;
-    return [...rawZones].sort((a, b) => (b.volume || 0) - (a.volume || 0))[0];
-  }, [rawZones]);
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-12">
-      {/* En-tête Principal & Indicateur Live */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-border/60">
-        <div>
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
-              <MapPin className="size-5 text-orange-500" />
-              Intelligence Géographique & Débit Réseau
-            </h1>
-            <Badge
-              variant="outline"
-              className="text-xs bg-emerald-500/10 text-emerald-400 border-emerald-500/30 gap-1.5 py-0.5"
-            >
-              <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              {isLoading
-                ? 'Résolution GPS...'
-                : `${rawZones.length} Zones géolocalisées · ${establishments.length || totalPosCount} Maquis`}
-            </Badge>
-            <Badge
-              variant="secondary"
-              className="text-[10px] bg-muted/60 text-muted-foreground gap-1 py-0.5"
-            >
-              <Radio className="size-3 text-orange-400 animate-pulse" />
-              Cascade GPS GlobalSale / User
-            </Badge>
+    <div className="mx-auto max-w-[1600px] space-y-4 pb-12">
+      {/* En-tête */}
+      <motion.header
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, ease: EASE }}
+        className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between"
+      >
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-[11px]">
+            <span className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 ${isConnected ? 'bg-amber-500/15 text-amber-300' : 'bg-slate-800 text-slate-400'}`}>
+              <span className={`size-1.5 rounded-full ${isConnected ? 'animate-pulse bg-amber-400' : 'bg-slate-500'}`} />
+              {isConnected ? 'En direct' : 'Reconnexion…'}
+            </span>
+            <span className="text-slate-500">
+              {countries.length} pays · {int(zones.length)} communes · {int(establishments.length)} maquis placés
+            </span>
           </div>
-          <p className="text-xs text-muted-foreground mt-1">
-            Visualisation géospatiale haute précision pour brasseries et distributeurs : intensité des débits, parts de marché locales et couverture terrain.
-          </p>
-          {(apiGeoData?.unlocated?.posCount ?? 0) > 0 && (
-            <p className="text-[11px] text-amber-400 mt-1">
-              {apiGeoData?.unlocated?.posCount} établissement(s) sans GPS ni adresse déclarée (
-              {Math.round(apiGeoData?.unlocated?.volume ?? 0).toLocaleString('fr-FR')} u.) : comptés à part, non
-              placés sur la carte.
+          <h1 className="mt-1 flex items-center gap-2 text-xl font-black tracking-tight text-foreground md:text-2xl">
+            <MapPin className="size-5 text-amber-500 md:size-6" />
+            Géographie du marché
+          </h1>
+          <p className="text-xs text-muted-foreground">Où se vendent les boissons, dans tous les pays du réseau, de la vue continent jusqu&apos;au maquis.</p>
+          {(geo?.unlocated?.posCount ?? 0) > 0 && (
+            <p className="mt-1 text-[11px] text-amber-400">
+              {geo?.unlocated?.posCount} établissement(s) sans GPS ni adresse ({int(geo?.unlocated?.volume ?? 0)} u.) : comptés à part, non placés sur la carte.
             </p>
           )}
-          <LocationPrecisionBar
-            precision={apiGeoData?.locationPrecision}
-            unlocated={apiGeoData?.unlocated?.posCount ?? 0}
+          <LocationPrecisionBar precision={geo?.locationPrecision} unlocated={geo?.unlocated?.posCount ?? 0} />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Seg
+            id="scope"
+            value={scope}
+            onChange={(v) => {
+              setScope(v);
+              setCountry(null);
+            }}
+            options={[
+              { id: 'all', label: 'Tous les pays' },
+              { id: 'filters', label: 'Pays du filtre' },
+            ]}
           />
-        </div>
-
-        {/* Barre de recherche et raccourcis */}
-        <div className="flex items-center gap-2">
-          <div className="relative w-64 md:w-72">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-            <Input
-              placeholder="Zone ou ville (ex: Yopougon, Cocody, Bouaké)..."
+          <Seg id="metric" value={metric} onChange={setMetric} options={METRICS} />
+          <label className="relative">
+            <span className="sr-only">Rechercher une zone</span>
+            <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <input
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="h-8 pl-8 text-xs bg-background/80 border-border/70"
+              onChange={(e) => setSearch(e.target.value.slice(0, 60))}
+              placeholder="Commune, ville ou pays…"
+              className="h-8 w-56 rounded-lg border border-border/70 bg-background/80 pl-8 pr-7 text-xs focus:border-amber-500/60 focus:outline-none"
             />
+            {search && (
+              <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" aria-label="Effacer">
+                <X className="size-3.5" />
+              </button>
+            )}
+          </label>
+          <button onClick={shareLink} className="flex h-8 items-center gap-1.5 rounded-lg border border-border/70 px-2.5 text-xs text-muted-foreground transition-colors hover:text-foreground" title="Copier un lien vers cette vue">
+            <Link2 className="size-3.5" />
+            {copied ? 'Lien copié' : 'Partager'}
+          </button>
+        </div>
+      </motion.header>
+
+      {/* Indicateurs animés */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <Kpi i={0} icon={<Beer className="size-4" />} tone="amber" label="Volume vendu" value={totals.volume} format={int} unit="unités" loading={isLoading} />
+        <Kpi i={1} icon={<DollarSign className="size-4" />} tone="violet" label="Chiffre d'affaires" value={totals.revenue} format={money} unit="FCFA" loading={isLoading} />
+        <Kpi i={2} icon={<Store className="size-4" />} tone="cyan" label="Maquis actifs" value={totals.pos} format={int} unit={`${filtered.length} communes`} loading={isLoading} />
+        <Kpi i={3} icon={<TrendingUp className="size-4" />} tone="emerald" label="CA moyen / maquis" value={totals.perPos} format={money} unit="FCFA" loading={isLoading} />
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.16, ease: EASE }}
+          className="col-span-2 rounded-xl border border-rose-500/30 bg-rose-500/5 p-3 lg:col-span-1"
+        >
+          <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+            <span>Zone championne</span>
+            <Flame className="size-4 text-rose-400" />
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => refetch()}
-            className="h-8 text-xs px-2.5"
-            title="Rafraîchir les données de terrain"
-          >
-            <Sparkles className="size-3.5 text-orange-400" />
-          </Button>
-        </div>
+          <div className="mt-1 truncate text-lg font-bold text-foreground">{totals.top?.zone || '—'}</div>
+          <div className="truncate text-[11px] text-rose-300">
+            {totals.top ? `${flagOf(totals.top.country)} ${totals.top.city} · ${int(totals.top.volume)} u.` : 'en attente des données'}
+          </div>
+        </motion.div>
       </div>
 
-      {/* Cartes KPI Brasseries Synthétiques */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-        <Card className="border border-border/80 bg-card/60 backdrop-blur-md relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-orange-500 to-amber-400" />
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between text-muted-foreground">
-              <span className="text-[11px] font-medium uppercase tracking-wider">Volume Débité</span>
-              <div className="p-1.5 rounded-lg bg-orange-500/10 text-orange-400">
-                <Beer className="size-4" />
-              </div>
-            </div>
-            <div className="text-xl font-extrabold text-foreground mt-2">
-              {Math.round(totalVolume).toLocaleString('fr-FR')}{' '}
-              <span className="text-xs font-normal text-muted-foreground">unités</span>
-            </div>
-            <div className="flex items-center gap-1 text-[11px] text-emerald-400 mt-1 font-medium">
-              <TrendingUp className="size-3" />
-              <span>Consommation active</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border border-border/80 bg-card/60 backdrop-blur-md relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-purple-500 to-indigo-400" />
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between text-muted-foreground">
-              <span className="text-[11px] font-medium uppercase tracking-wider">Chiffre d'Affaires</span>
-              <div className="p-1.5 rounded-lg bg-purple-500/10 text-purple-400">
-                <DollarSign className="size-4" />
-              </div>
-            </div>
-            <div className="text-xl font-extrabold text-foreground mt-2">
-              {(totalRevenue / 1000000).toFixed(1)}{' '}
-              <span className="text-xs font-normal text-muted-foreground">M FCFA</span>
-            </div>
-            <div className="text-[11px] text-muted-foreground mt-1">
-              Réseau débit consolidé
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border border-border/80 bg-card/60 backdrop-blur-md relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-cyan-500 to-blue-400" />
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between text-muted-foreground">
-              <span className="text-[11px] font-medium uppercase tracking-wider">Points de Vente</span>
-              <div className="p-1.5 rounded-lg bg-cyan-500/10 text-cyan-400">
-                <Store className="size-4" />
-              </div>
-            </div>
-            <div className="text-xl font-extrabold text-foreground mt-2">
-              {totalPosCount}{' '}
-              <span className="text-xs font-normal text-muted-foreground">Maquis / POS</span>
-            </div>
-            <div className="text-[11px] text-cyan-400 mt-1">
-              {rawZones.length} communes couvertes
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border border-border/80 bg-card/60 backdrop-blur-md relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-rose-500 to-pink-400" />
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between text-muted-foreground">
-              <span className="text-[11px] font-medium uppercase tracking-wider">Zone Championne</span>
-              <div className="p-1.5 rounded-lg bg-rose-500/10 text-rose-400">
-                <Flame className="size-4" />
-              </div>
-            </div>
-            <div className="text-xl font-extrabold text-foreground mt-2 truncate">
-              {topZone?.zone || 'n/d'}
-            </div>
-            <div className="text-[11px] text-rose-400 mt-1 flex items-center gap-1 font-medium">
-              <span>{Math.round(topZone?.volume || 0).toLocaleString('fr-FR')} u.</span>
-              <span className="text-muted-foreground">· {topZone?.posCount || 0} maquis</span>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Raccourcis de Vues (Carte interactive / Histogramme / Table détaillée) */}
-      <div className="flex items-center justify-between gap-2 border-b border-border/60 pb-3">
-        <div className="flex items-center gap-1.5">
-          <Button
-            size="sm"
-            variant={activeTab === 'map' ? 'default' : 'outline'}
-            onClick={() => setActiveTab('map')}
-            className={`h-8 text-xs gap-1.5 ${activeTab === 'map' ? 'bg-orange-500 hover:bg-orange-600 text-white' : 'bg-background/60'}`}
-          >
-            <Layers className="size-3.5" />
-            Cartographie Dynamique SIG
-          </Button>
-          <Button
-            size="sm"
-            variant={activeTab === 'charts' ? 'default' : 'outline'}
-            onClick={() => setActiveTab('charts')}
-            className={`h-8 text-xs gap-1.5 ${activeTab === 'charts' ? 'bg-orange-500 hover:bg-orange-600 text-white' : 'bg-background/60'}`}
-          >
-            <BarChart3 className="size-3.5" />
-            Analyse Comparative par Commune
-          </Button>
-          <Button
-            size="sm"
-            variant={activeTab === 'table' ? 'default' : 'outline'}
-            onClick={() => setActiveTab('table')}
-            className={`h-8 text-xs gap-1.5 ${activeTab === 'table' ? 'bg-orange-500 hover:bg-orange-600 text-white' : 'bg-background/60'}`}
-          >
-            <Navigation className="size-3.5" />
-            Registre des Coordonnées
-          </Button>
+      {/* Pays du réseau */}
+      {countries.length > 0 && (
+        <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+          <CountryChip active={!country} onClick={() => setCountry(null)} flag="🌍" name="Tous" sub={`${countries.length} pays`} delay={0} />
+          {countries.map((c, i) => {
+            const share = totals.revenue && !country ? ((c.revenue / countries.reduce((s, x) => s + x.revenue, 0)) * 100).toFixed(1) : null;
+            return (
+              <CountryChip
+                key={c.country}
+                active={country === c.country}
+                onClick={() => setCountry(country === c.country ? null : c.country)}
+                flag={flagOf(c.country)}
+                name={c.country}
+                sub={`${int(c.pos)} maquis · ${money(c.revenue)} F${share ? ` · ${share} %` : ''}`}
+                delay={(i + 1) * 0.04}
+              />
+            );
+          })}
         </div>
+      )}
 
-        {search && (
-          <Badge variant="outline" className="text-[11px] border-orange-500/40 text-orange-400">
-            Filtre actif : {search} ({filtered.length} résultats)
-          </Badge>
+      {/* Vues */}
+      <div className="flex items-center justify-between gap-2">
+        <Seg
+          id="view"
+          value={view}
+          onChange={setView}
+          options={[
+            { id: 'map', label: 'Carte' },
+            { id: 'charts', label: 'Comparaison' },
+            { id: 'table', label: 'Tableau' },
+          ]}
+        />
+        {(q || country) && (
+          <span className="text-[11px] text-amber-400">
+            {filtered.length} zone{filtered.length > 1 ? 's' : ''} affichée{filtered.length > 1 ? 's' : ''}
+          </span>
         )}
       </div>
 
-      {/* 1. VUE CARTE LEAFLET / MAPBOX EN TEMPS RÉEL */}
-      {activeTab === 'map' && (
-        <div className="space-y-4 animate-in fade-in duration-200">
-          <MarketIntelligenceMap
-            zones={filtered}
-            establishments={establishments}
-            isLoading={isLoading}
-          />
-        </div>
-      )}
-
-      {/* 2. VUE GRAPHIQUES DE DISTRIBUTION */}
-      {activeTab === 'charts' && (
-        <div className="space-y-4 animate-in fade-in duration-200">
-          <GeographicBarChart data={filtered} />
-        </div>
-      )}
-
-      {/* 3. VUE REGISTRE & TABLEAU DÉTAILLÉ */}
-      {(activeTab === 'table' || activeTab === 'map') && (
-        <Card className="border border-border/80 bg-card/70 backdrop-blur-md">
-          <CardHeader className="pb-3 flex flex-row items-center justify-between">
-            <div>
-              <CardTitle className="text-sm font-semibold tracking-tight">
-                Performance Détaillée par Commune & Établissement ({filtered.length} zones recensées)
-              </CardTitle>
-              <CardDescription className="text-xs">
-                Volume de ventes, chiffre d'affaires, tension de la demande et statut GPS (Direct vs Fallback adresse)
-              </CardDescription>
+      <AnimatePresence mode="wait">
+        <motion.div key={view} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2, ease: EASE }} className="space-y-4">
+          {view === 'map' && (
+            <div className="relative">
+              <GeoWorldMap
+                zones={filtered}
+                establishments={establishments}
+                metric={metric}
+                selectedZoneId={selected?.id}
+                focusCountry={country}
+                onSelectZone={setSelected}
+                onSelectCountry={(c) => setCountry(c)}
+              />
+              <AnimatePresence>
+                {selected && (
+                  <motion.aside
+                    key={selected.id}
+                    initial={{ opacity: 0, x: 16 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 16 }}
+                    transition={{ duration: 0.25, ease: EASE }}
+                    className="absolute bottom-3 right-14 z-[600] w-[min(320px,calc(100%-24px))] rounded-xl border border-slate-700 bg-slate-950/95 p-3 text-white shadow-2xl backdrop-blur"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold">{selected.zone}</div>
+                        <div className="text-[11px] text-slate-400">
+                          {flagOf(selected.country)} {selected.city} · {selected.country} · rang {rankOf(selected)} / {filtered.length}
+                        </div>
+                      </div>
+                      <button onClick={() => setSelected(null)} className="text-slate-500 hover:text-white" aria-label="Fermer">
+                        <X className="size-4" />
+                      </button>
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
+                      <Fact label="Volume" value={`${int(selected.volume)} u.`} hint={totals.volume ? `${((selected.volume / totals.volume) * 100).toFixed(1)} % de la vue` : ''} />
+                      <Fact label="CA" value={`${money(selected.revenue || 0)} F`} />
+                      <Fact label="Maquis" value={int(selected.posCount)} />
+                      <Fact
+                        label="CA / maquis"
+                        value={`${money(selected.posCount ? (selected.revenue || 0) / selected.posCount : 0)} F`}
+                        hint={
+                          totals.perPos && selected.posCount
+                            ? `${(((selected.revenue || 0) / selected.posCount / totals.perPos - 1) * 100).toFixed(0)} % vs moyenne`
+                            : ''
+                        }
+                      />
+                    </div>
+                    <div className={`mt-2 text-[11px] font-semibold ${growthColorClass(selected.growth)}`}>Évolution : {formatGrowth(selected.growth)}</div>
+                  </motion.aside>
+                )}
+              </AnimatePresence>
             </div>
-            {establishments.length > 0 && (
-              <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/30">
-                {establishments.filter((e: any) => e.hasDirectGps).length} points GPS Directs
-              </Badge>
-            )}
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
-                <thead className="bg-muted/50 text-muted-foreground uppercase text-[10px] tracking-wider border-b border-border/60">
-                  <tr>
-                    <th className="py-2.5 px-3">Zone / Commune</th>
-                    <th className="py-2.5 px-3">Ville</th>
-                    <th className="py-2.5 px-3">Pays</th>
-                    <th className="py-2.5 px-3">Coordonnées GPS</th>
-                    <th className="py-2.5 px-3 text-right">Volume Débité</th>
-                    <th className="py-2.5 px-3 text-right">Chiffre d'Affaires</th>
-                    <th className="py-2.5 px-3 text-right">Évolution</th>
-                    <th className="py-2.5 px-3 text-right">Indice Demande</th>
-                    <th className="py-2.5 px-3 text-right">Maquis Actifs</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/40">
-                  {filtered.map((item: any) => {
-                    const rev = item.revenue || 0;
-                    return (
-                      <tr key={item.id} className="hover:bg-muted/30 transition-colors">
-                        <td className="py-2.5 px-3 font-medium text-foreground flex items-center gap-1.5">
-                          <Navigation className="size-3 text-orange-400 shrink-0" />
-                          <span>{item.zone}</span>
+          )}
+
+          {view === 'charts' && <GeographicBarChart data={filtered as any} />}
+
+          {(view === 'table' || view === 'map') && (
+            <section className="rounded-2xl border border-border/80 bg-card/70 p-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 className="flex items-center gap-2 text-sm font-semibold">
+                    <Table2 className="size-4 text-amber-500" />
+                    Communes ({filtered.length})
+                  </h2>
+                  <p className="text-[11px] text-muted-foreground">Cliquez sur une ligne pour la voir sur la carte · cliquez sur un titre pour trier</p>
+                </div>
+                <button onClick={exportCsv} className="flex h-8 items-center gap-1.5 rounded-lg bg-amber-500 px-3 text-xs font-semibold text-slate-950 transition-colors hover:bg-amber-400">
+                  <Download className="size-3.5" />
+                  Exporter (CSV)
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[860px] text-left text-xs">
+                  <thead className="border-b border-border/60 text-[10px] uppercase tracking-wider text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2">#</th>
+                      <th className="px-3 py-2">Commune</th>
+                      <th className="px-3 py-2">Ville</th>
+                      <th className="px-3 py-2">Pays</th>
+                      <th className="px-3 py-2 text-right">{sortBtn('volume', 'Volume')}</th>
+                      <th className="px-3 py-2 text-right">{sortBtn('revenue', 'CA')}</th>
+                      <th className="px-3 py-2 text-right">{sortBtn('posCount', 'Maquis')}</th>
+                      <th className="px-3 py-2 text-right">{sortBtn('perPos', 'CA / maquis')}</th>
+                      <th className="px-3 py-2 text-right">{sortBtn('growth', 'Évolution')}</th>
+                      <th className="px-3 py-2 text-right">Demande</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/40">
+                    {sorted.slice(0, rows).map((z, i) => (
+                      <tr
+                        key={z.id}
+                        onClick={() => {
+                          setSelected(z);
+                          if (view !== 'map') setView('map');
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                        className={`cursor-pointer transition-colors hover:bg-muted/30 ${selected?.id === z.id ? 'bg-amber-500/10' : ''}`}
+                      >
+                        <td className="px-3 py-2 font-mono text-muted-foreground">{i + 1}</td>
+                        <td className="px-3 py-2 font-medium text-foreground">
+                          <span className="flex items-center gap-1.5">
+                            <Navigation className="size-3 shrink-0 text-amber-400" />
+                            {z.zone}
+                          </span>
                         </td>
-                        <td className="py-2.5 px-3 text-muted-foreground">{item.city}</td>
-                        <td className="py-2.5 px-3 text-muted-foreground">
+                        <td className="px-3 py-2 text-muted-foreground">{z.city}</td>
+                        <td className="px-3 py-2 text-muted-foreground">
                           <span className="flex items-center gap-1">
-                            <Globe className="size-3 text-muted-foreground/70" />
-                            <span>{item.country || "Côte d'Ivoire"}</span>
+                            {flagOf(z.country)} {z.country}
                           </span>
                         </td>
-                        <td className="py-2.5 px-3 font-mono text-[11px] text-muted-foreground">
-                          {item.latitude && item.longitude ? (
-                            <span className="text-emerald-400/90 font-semibold">
-                              {Number(item.latitude).toFixed(4)}, {Number(item.longitude).toFixed(4)}
-                            </span>
-                          ) : (
-                            <span className="text-amber-400/80">Fallback adresse</span>
-                          )}
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-semibold text-foreground">
-                          {Math.round(item.volume).toLocaleString('fr-FR')} u.
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-medium text-purple-400">
-                          {(rev / 1000000).toFixed(1)}M FCFA
-                        </td>
-                        <td className="py-2.5 px-3 text-right">
-                          <span
-                            className={`inline-flex items-center gap-0.5 font-medium ${growthColorClass(item.growth)}`}
-                          >
-                            {formatGrowth(item.growth)}
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-3 text-right">
-                          <Badge variant="outline" className="text-[10px] bg-background/50 font-mono py-0">
-                            {isAvailable(item.demandIndex) ? `${item.demandIndex} pts` : 'n/d'}
-                          </Badge>
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-medium text-muted-foreground">
-                          {item.posCount} POS
-                        </td>
+                        <td className="px-3 py-2 text-right font-semibold">{int(z.volume)} u.</td>
+                        <td className="px-3 py-2 text-right text-violet-400">{money(z.revenue || 0)} F</td>
+                        <td className="px-3 py-2 text-right">{int(z.posCount)}</td>
+                        <td className="px-3 py-2 text-right text-amber-300">{money(z.posCount ? (z.revenue || 0) / z.posCount : 0)} F</td>
+                        <td className={`px-3 py-2 text-right font-medium ${growthColorClass(z.growth)}`}>{formatGrowth(z.growth)}</td>
+                        <td className="px-3 py-2 text-right font-mono text-muted-foreground">{isAvailable(z.demandIndex) ? `${z.demandIndex} pts` : 'n/d'}</td>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {sorted.length > rows && (
+                <button onClick={() => setRows((r) => r + 50)} className="mt-3 w-full rounded-lg border border-border/70 py-2 text-xs text-muted-foreground transition-colors hover:text-foreground">
+                  Afficher 50 de plus ({sorted.length - rows} restantes)
+                </button>
+              )}
+              {!sorted.length && <div className="py-10 text-center text-xs text-muted-foreground">{isLoading ? 'Chargement…' : 'Aucune zone pour ces critères.'}</div>}
+            </section>
+          )}
+        </motion.div>
+      </AnimatePresence>
+
+      <p className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+        <Layers className="size-3" />
+        <Globe className="size-3" />
+        Données agrégées par commune ; les maquis sont anonymisés. <BarChart3 className="size-3" /> Mise à jour en direct par WebSocket.
+      </p>
+    </div>
+  );
+}
+
+function Seg<T extends string>({ id, value, onChange, options }: { id: string; value: T; onChange: (v: T) => void; options: { id: T; label: string }[] }) {
+  return (
+    <div className="flex h-8 items-center rounded-lg border border-border/70 bg-muted/40 p-0.5" role="radiogroup">
+      {options.map((o) => {
+        const on = o.id === value;
+        return (
+          <button
+            key={o.id}
+            role="radio"
+            aria-checked={on}
+            onClick={() => onChange(o.id)}
+            className={`relative h-full rounded-md px-2.5 text-xs transition-colors ${on ? 'font-semibold text-slate-950' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            {on && <motion.span layoutId={`geo-${id}`} className="absolute inset-0 rounded-md bg-amber-500" transition={{ type: 'spring', duration: 0.3, bounce: 0.15 }} />}
+            <span className="relative">{o.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+const TONES = {
+  amber: 'text-amber-400 bg-amber-500/10',
+  violet: 'text-violet-400 bg-violet-500/10',
+  cyan: 'text-cyan-400 bg-cyan-500/10',
+  emerald: 'text-emerald-400 bg-emerald-500/10',
+};
+
+function Kpi({ i, icon, tone, label, value, format, unit, loading }: { i: number; icon: React.ReactNode; tone: keyof typeof TONES; label: string; value: number; format: (n: number) => string; unit: string; loading: boolean }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, delay: i * 0.04, ease: EASE }}
+      className="rounded-xl border border-border/80 bg-card/60 p-3"
+    >
+      <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+        <span>{label}</span>
+        <span className={`rounded-lg p-1.5 ${TONES[tone]}`}>{icon}</span>
+      </div>
+      <div className="mt-1 text-xl font-extrabold text-foreground">
+        {loading && !value ? <span className="inline-block h-6 w-24 animate-pulse rounded bg-muted" /> : <AnimatedNumber value={value} format={format} fromZero />}
+      </div>
+      <div className="text-[11px] text-muted-foreground">{unit}</div>
+    </motion.div>
+  );
+}
+
+function CountryChip({ active, onClick, flag, name, sub, delay }: { active: boolean; onClick: () => void; flag: string; name: string; sub: string; delay: number }) {
+  return (
+    <motion.button
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25, delay, ease: EASE }}
+      whileTap={{ scale: 0.97 }}
+      onClick={onClick}
+      aria-pressed={active}
+      className={`flex shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-left transition-colors ${
+        active ? 'border-amber-500/60 bg-amber-500/10' : 'border-border/70 bg-card/60 hover:border-amber-500/30'
+      }`}
+    >
+      <span className="text-xl leading-none">{flag}</span>
+      <span>
+        <span className="block text-xs font-semibold text-foreground">{name}</span>
+        <span className="block whitespace-nowrap text-[10px] text-muted-foreground">{sub}</span>
+      </span>
+    </motion.button>
+  );
+}
+
+function Fact({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <div className="rounded-lg border border-slate-800 bg-slate-900/60 px-2 py-1.5">
+      <div className="text-[10px] text-slate-500">{label}</div>
+      <div className="font-mono font-semibold">{value}</div>
+      {hint && <div className="text-[10px] text-slate-400">{hint}</div>}
     </div>
   );
 }

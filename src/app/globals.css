@@ -148,3 +148,33 @@
 }
 .no-scrollbar { scrollbar-width: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* Carte Géographie : bulles qui apparaissent en douceur */
+.mi-geo-bubble { background: none; border: 0; }
+.mi-geo-dot {
+  border-radius: 9999px; background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--c) 80%, white), var(--c));
+  box-shadow: 0 0 0 2px rgba(2, 6, 23, 0.85), 0 0 22px color-mix(in srgb, var(--c) 55%, transparent);
+  opacity: 0.88; transform: scale(0); animation: mi-pop 0.5s cubic-bezier(0.23, 1, 0.32, 1) var(--d, 0ms) forwards;
+  transition: box-shadow 0.2s ease, opacity 0.2s ease; cursor: pointer;
+}
+.mi-geo-dot:hover { opacity: 1; box-shadow: 0 0 0 2px #fff, 0 0 26px var(--c); }
+.mi-geo-dot.is-selected { opacity: 1; box-shadow: 0 0 0 3px #fff, 0 0 30px var(--c); }
+.mi-geo-label {
+  position: absolute; left: 50%; top: 100%; transform: translate(-50%, 4px); white-space: nowrap; pointer-events: none;
+  display: flex; flex-direction: column; align-items: center; gap: 1px; opacity: 0;
+  animation: mi-fade 0.4s ease-out calc(var(--d, 0ms) + 150ms) forwards;
+}
+.mi-geo-label b { font: 700 11px/1.2 system-ui, sans-serif; color: #f8fafc; background: rgba(2, 6, 23, 0.85); padding: 1px 7px; border-radius: 9999px; border: 1px solid rgba(255,255,255,0.15); }
+.mi-geo-label span { font: 600 10px/1.2 ui-monospace, monospace; color: #fcd34d; text-shadow: 0 1px 3px #000; }
+.mi-geo-pin { width: 10px; height: 10px; border-radius: 9999px; background: #0b1220; border: 2px solid #f59e0b; transform: scale(0); animation: mi-pop 0.35s ease-out var(--d, 0ms) forwards; }
+.mi-geo-pin.is-gps { border-color: #10b981; }
+.mi-geo-tip.leaflet-tooltip { background: rgba(2, 6, 23, 0.96); border: 1px solid rgba(255,255,255,0.14); border-radius: 10px; color: #fff; box-shadow: 0 10px 25px rgba(0,0,0,0.5); padding: 8px 10px; }
+.mi-geo-tip.leaflet-tooltip::before { display: none; }
+.mi-tip { font: 11px/1.45 system-ui, sans-serif; color: #cbd5e1; min-width: 170px; }
+.mi-tip b { display: block; color: #fff; font-size: 12px; margin-bottom: 2px; }
+.mi-tip em { display: block; margin-top: 3px; color: #fbbf24; font-style: normal; font-size: 10px; }
+@keyframes mi-pop { to { transform: scale(1); } }
+@keyframes mi-fade { to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .mi-geo-dot, .mi-geo-pin, .mi-geo-label { animation-duration: 0.01ms; animation-delay: 0ms; }
+}

@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import {
   fetchMarketOverview,
   fetchGeographyData,
@@ -20,6 +20,7 @@ import {
 } from '@/api/marketIntelligence.api';
 import { firstLiveValue, isLiveConnected, waitForLive, liveFilters, liveKey, subscribeLive, type LiveResource } from '@/api/liveData';
 import { validateLive } from '@/api/liveSchemas';
+import type { FilterState } from '@/types/market';
 import { useMarketFilterStore } from '@/stores/useMarketFilterStore';
 import { useMarketRealtimeStore } from '@/stores/useMarketRealtimeStore';
 import { getMarketSocket } from '@/api/socket';
@@ -100,8 +101,10 @@ export function useMarketOverview() {
 }
 
 /** 2. Données géographiques (anonymisées) */
-export function useGeographyQuery(enabled = true) {
-  const filters = useMarketFilterStore((state) => state.filters);
+export function useGeographyQuery(enabled = true, overrides?: Partial<FilterState>) {
+  const stored = useMarketFilterStore((state) => state.filters);
+  // Surcharge locale d'une page (ex. : carte « tous les pays ») sans toucher au filtre global
+  const filters = useMemo(() => (overrides ? { ...stored, ...overrides } : stored), [stored, overrides]);
   return useLiveQuery('geography', buildQueryParams(filters), marketQueryKeys.geography(filters), () => fetchGeographyData(filters), enabled);
 }
 

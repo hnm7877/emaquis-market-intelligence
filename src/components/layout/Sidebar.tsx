@@ -50,7 +50,6 @@ const mainNavItems: NavItem[] = [
 ];
 
 const intelligenceNavItems: NavItem[] = [
-  { label: 'Tableau Autonome 3D', href: '/autonomous-dashboard', icon: Sparkles, badge: 'VGPU' },
   { label: 'Agent IA DeerFlow', href: '/ai-intelligence', icon: Bot, badge: 'IA' },
   { label: 'Couverture Réseau', href: '/data-coverage', icon: Database },
   { label: 'Portail Partenaire', href: '/partner', icon: Building2 },
