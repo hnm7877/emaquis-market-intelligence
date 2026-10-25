@@ -16,6 +16,7 @@ import {
   fetchContextualFilters,
   fetchAuditLogs,
   fetchSyncStatus,
+  fetchProductDetail,
   buildQueryParams,
 } from '@/api/marketIntelligence.api';
 import { firstLiveValue, isLiveConnected, waitForLive, liveFilters, liveKey, subscribeLive, type LiveResource } from '@/api/liveData';
@@ -118,6 +119,19 @@ export function useProductsQuery(enabled = true) {
 export function useBrandsQuery(enabled = true) {
   const filters = useMarketFilterStore((state) => state.filters);
   return useLiveQuery('brands', buildQueryParams(filters), marketQueryKeys.brands(filters), () => fetchBrandsData(filters), enabled);
+}
+
+/** Détail d'un produit : abonnement ouvert seulement quand sa fiche est affichée */
+export function useProductDetailQuery(productId: string | null) {
+  const filters = useMarketFilterStore((state) => state.filters);
+  const id = productId || '';
+  return useLiveQuery(
+    'productDetail',
+    { ...buildQueryParams(filters), product: id },
+    [...marketQueryKeys.all, 'product-detail', id, filters],
+    () => fetchProductDetail(id, filters),
+    !!productId,
+  );
 }
 
 /** 5. Catégories */

@@ -333,3 +333,66 @@ export const CategoriesResponseSchema = z.object({
 
 export type ICategoryItem = z.infer<typeof CategoryItemSchema>;
 export type ICategoriesResponse = z.infer<typeof CategoriesResponseSchema>;
+
+/** Détail d'un produit (fiche) — établissements anonymisés */
+export const ProductDetailSchema = z.object({
+  product: z.object({ id: z.string(), name: z.string().optional(), brand: z.string().optional(), size: z.string().optional() }).nullable(),
+  comparisonLabel: z.string().optional(),
+  analysisSpanDays: z.number().optional(),
+  sellers: z.number().default(0),
+  communes: z
+    .array(
+      z.object({
+        commune: z.string(),
+        city: z.string(),
+        country: z.string(),
+        establishments: z.number(),
+        volume: z.number(),
+        avgSalePrice: z.number().nullable(),
+        advisedPrice: z.number().nullable(),
+        shelfMin: z.number().nullable(),
+        shelfMax: z.number().nullable(),
+        priceCount: z.number(),
+      }),
+    )
+    .default([]),
+  delivery: z
+    .array(
+      z.object({
+        id: z.string(),
+        commune: z.string(),
+        city: z.string(),
+        quantity: z.number().nullable(),
+        daysCover: z.number().nullable(),
+        weeklySales: z.number(),
+        suggested: z.number(),
+      }),
+    )
+    .default([]),
+  history: z
+    .array(
+      z.object({
+        month: z.string(),
+        volume: z.number(),
+        avgSalePrice: z.number().nullable(),
+        unitCost: z.number().nullable(),
+        lockerPrice: z.number().nullable(),
+        cartonPrice: z.number().nullable(),
+      }),
+    )
+    .default([]),
+  purchaseChanges: z
+    .array(z.object({ type: z.string(), previousAvg: z.number(), recentAvg: z.number(), changePercent: z.number(), recentLots: z.number() }))
+    .default([]),
+  elasticity: z.object({ coefficient: z.number(), r2: z.number(), points: z.number(), reading: z.string() }).nullable().default(null),
+  scatter: z.array(z.object({ price: z.number(), weeklyVolume: z.number(), commune: z.string() })).default([]),
+  simulator: z
+    .object({
+      avgSalePrice: z.number().nullable(),
+      unitCost: z.number().nullable(),
+      containers: z.array(z.object({ type: z.string(), avgPrice: z.number(), bottlesPerContainer: z.number(), lots: z.number(), establishments: z.number() })),
+      weeklyVolume: z.number(),
+    })
+    .optional(),
+});
+export type ProductDetail = z.infer<typeof ProductDetailSchema>;

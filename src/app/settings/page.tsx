@@ -56,7 +56,7 @@ export default function SettingsPage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
             <Database className="size-4 text-blue-500" />
-            Synchronisation stock &amp; promotions
+            Synchronisation stock, prix d&apos;achat &amp; promotions
           </CardTitle>
           <Button
             size="sm"
@@ -87,6 +87,7 @@ export default function SettingsPage() {
                 ['Mouvements de stock', sync.stockMovements.toLocaleString('fr-FR')],
                 ['Périodes de promotion', sync.promotionPeriods.toLocaleString('fr-FR')],
                 ['Promotions actives', sync.activePromotions.toLocaleString('fr-FR')],
+                ['Achats casier / carton', (sync.purchaseLots ?? 0).toLocaleString('fr-FR')],
               ].map(([label, value]) => (
                 <div key={label} className="p-2.5 rounded-lg border border-border/50 bg-background/50">
                   <span className="text-[10px] text-muted-foreground block">{label}</span>
@@ -97,13 +98,14 @@ export default function SettingsPage() {
             {backfill && (backfill.running || backfill.finishedAt) && (
               <p className="text-xs text-muted-foreground">
                 Import initial : {backfill.tenantsDone}/{backfill.tenantsTotal} établissements,{' '}
-                {backfill.productsSynced.toLocaleString('fr-FR')} produits, {backfill.errors} erreur(s)
+                {backfill.productsSynced.toLocaleString('fr-FR')} produits, {(backfill.lotsSynced ?? 0).toLocaleString('fr-FR')} achats, {backfill.errors} erreur(s)
                 {backfill.finishedAt && !backfill.running ? ` — terminé le ${fmtDate(backfill.finishedAt)}` : ''}
               </p>
             )}
             <p className="text-[11px] text-muted-foreground">
-              Chaque modification de produit (vente, réassort, prix, promotion) est synchronisée automatiquement.
-              L&apos;import initial récupère l&apos;état actuel des établissements existants ; il est à lancer une fois.
+              Chaque modification de produit (vente, réassort, prix, promotion) et chaque livraison avec prix casier / carton
+              est synchronisée automatiquement. L&apos;import initial récupère l&apos;état actuel et les achats déjà enregistrés
+              de tous les établissements ; il est à lancer une fois (puis à relancer seulement après une mise à jour qui ajoute des données).
             </p>
           </>
         ) : (

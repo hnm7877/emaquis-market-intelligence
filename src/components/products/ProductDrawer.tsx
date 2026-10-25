@@ -7,6 +7,7 @@ import type { ProductItem } from '@/lib/validations/market.schemas';
 import { resolveProductImage } from '@/utils/productImages';
 import { DisplayVolumeUnit, formatProductVolume } from '@/utils/productVolumeConverter';
 import { PriceLadder } from './PriceLadder';
+import { ProductDetailTabs } from './ProductDetailTabs';
 
 const EASE = [0.23, 1, 0.32, 1] as const;
 const F = (n: number | null | undefined) => (n == null ? '—' : `${Math.round(n).toLocaleString('fr-FR')} F`);
@@ -181,6 +182,8 @@ function Body({ p, unit, onClose }: { p: ProductItem; unit: DisplayVolumeUnit; o
           <RefreshCw className="size-3" /> Réassort observé : {p.reorderFrequencyDays != null ? `tous les ${p.reorderFrequencyDays} jours` : 'pas assez d’historique'}
         </p>
       </section>
+
+      <ProductDetailTabs productId={p.id} productName={p.name} />
 
       {p.topCommunes.length > 0 && (
         <section className="rounded-xl border border-border p-3">

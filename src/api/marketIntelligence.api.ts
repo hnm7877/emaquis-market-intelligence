@@ -1,5 +1,6 @@
 import { axiosInstance } from './axiosInstance';
 import {
+  ProductDetailSchema,
   MarketOverviewResponseSchema,
   GeographyResponseSchema,
   ProductsResponseSchema,
@@ -245,6 +246,7 @@ export interface MarketSyncStatus {
   stockMovements: number;
   promotionPeriods: number;
   activePromotions: number;
+  purchaseLots?: number;
   backfill: {
     running: boolean;
     startedAt: string | null;
@@ -252,9 +254,18 @@ export interface MarketSyncStatus {
     tenantsTotal: number;
     tenantsDone: number;
     productsSynced: number;
+    lotsSynced?: number;
     errors: number;
   };
 }
+
+/** Détail d'un produit (fiche) : prix par commune, livraisons, historique, sensibilité */
+export const fetchProductDetail = async (productId: string, filters?: Partial<FilterState>) => {
+  const params = { ...buildQueryParams(filters), product: productId };
+  const response = await axiosInstance.get('/market-intelligence/products/detail', { params });
+  const parsed = ProductDetailSchema.safeParse(response.data);
+  return parsed.success ? parsed.data : response.data;
+};
 
 export const fetchSyncStatus = async (): Promise<MarketSyncStatus> => {
   const response = await axiosInstance.get('/market-intelligence/sync/status');
