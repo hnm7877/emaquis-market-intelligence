@@ -77,7 +77,8 @@ export default function AutonomousDashboardPage() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Moteur d'actualisation 100% autonome de toute la page sans intervention humaine
-  const [autoSyncCountdown, setAutoSyncCountdown] = useState<number>(8);
+  // Actualisation de secours toutes les 60 s (le direct met déjà les chiffres à jour)
+  const [autoSyncCountdown, setAutoSyncCountdown] = useState<number>(60);
   const [lastSyncTime, setLastSyncTime] = useState<string>('À l\'instant');
   const [autoUpdatesCount, setAutoUpdatesCount] = useState<number>(1);
 
@@ -123,7 +124,7 @@ export default function AutonomousDashboardPage() {
               `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`
             );
           }
-          return 25; // 25s par cycle pour éviter la congestion
+          return 60; // 60 s par cycle : rythme du cache serveur (le direct fait le reste)
         }
         return prev - 1;
       });

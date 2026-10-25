@@ -1,7 +1,9 @@
 import axios from 'axios';
 import { getAuthToken, redirectToLogin } from '@/lib/auth';
 
-const baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
+// Toujours le domaine du site : /api-proxy est relayé vers l'API par le serveur Next
+// (next.config.ts) — l'adresse de l'API n'apparaît ni dans le code ni dans les requêtes.
+const baseURL = '/api-proxy';
 
 export const axiosInstance = axios.create({
   baseURL,
@@ -36,7 +38,9 @@ axiosInstance.interceptors.response.use(
   },
   (error) => {
     const status = error.response?.status;
-    console.error('[API ERROR]', status, error.response?.data || error.message);
+    if (process.env.NODE_ENV !== 'production') {
+      console.error('[API ERROR]', status, error.response?.data || error.message);
+    }
     // Session absente, expirée ou compte non autorisé : retour à la connexion
     // (les routes de connexion OTP ne déclenchent pas de redirection)
     const url: string = error.config?.url || '';

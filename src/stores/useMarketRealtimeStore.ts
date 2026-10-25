@@ -10,7 +10,28 @@ export interface LiveSaleTransaction {
   timestamp: string;
 }
 
+/** Résumé reçu toutes les 3 s (zones agrégées, jamais d'établissement) */
+export interface MarketPulse {
+  at: string;
+  windowMs: number;
+  sales: number;
+  amount: number;
+  items: number;
+  zones: { city: string; commune: string; sales: number; amount: number; items: number }[];
+}
+
+/** Cumul depuis l'ouverture du tableau de bord */
+export interface LiveTotals {
+  since: string | null;
+  sales: number;
+  amount: number;
+  items: number;
+}
+
 interface MarketRealtimeStore {
+  lastPulse: MarketPulse | null;
+  liveTotals: LiveTotals;
+  addPulse: (pulse: MarketPulse) => void;
   isConnected: boolean;
   liveAlerts: MarketAlert[];
   recentTransactions: LiveSaleTransaction[];
@@ -21,6 +42,18 @@ interface MarketRealtimeStore {
 
 export const useMarketRealtimeStore = create<MarketRealtimeStore>((set) => ({
   isConnected: false,
+  lastPulse: null,
+  liveTotals: { since: null, sales: 0, amount: 0, items: 0 },
+  addPulse: (pulse) =>
+    set((state) => ({
+      lastPulse: pulse,
+      liveTotals: {
+        since: state.liveTotals.since ?? pulse.at,
+        sales: state.liveTotals.sales + (pulse.sales || 0),
+        amount: state.liveTotals.amount + (pulse.amount || 0),
+        items: state.liveTotals.items + (pulse.items || 0),
+      },
+    })),
   liveAlerts: [],
   recentTransactions: [],
   setConnected: (status) => set({ isConnected: status }),

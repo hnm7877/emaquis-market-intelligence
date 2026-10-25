@@ -20,6 +20,12 @@ import {
 import { useMarketFilterStore } from '@/stores/useMarketFilterStore';
 import { useMarketRealtimeStore } from '@/stores/useMarketRealtimeStore';
 import { getMarketSocket } from '@/api/socket';
+import { useMarketRealtimeStore as realtimeStore, type MarketPulse } from '@/stores/useMarketRealtimeStore';
+
+/** Rechargement des chiffres au plus une fois par minute (rythme du cache serveur) */
+const LIVE_REFRESH_MS = 60 * 1000;
+/** Direct coupé : rechargement de secours toutes les 60 s ; direct actif : aucune minuterie */
+const fallbackInterval = () => (realtimeStore.getState().isConnected ? false : 60 * 1000);
 
 export const marketQueryKeys = {
   all: ['market'] as const,
@@ -48,7 +54,8 @@ export function useMarketOverview() {
     queryKey: marketQueryKeys.overview(filters),
     queryFn: () => fetchMarketOverview(filters),
     staleTime: 10 * 1000,
-    refetchInterval: 15 * 1000,
+    // Le direct (market:pulse) déclenche les rafraîchissements ; minuterie seulement en secours
+    refetchInterval: fallbackInterval,
     refetchOnWindowFocus: true,
   });
 }
@@ -176,7 +183,7 @@ export function useContextualFiltersQuery() {
     queryKey: marketQueryKeys.contextualFilters(status, dateRange),
     queryFn: () => fetchContextualFilters({ status, dateRange }),
     staleTime: 10 * 1000,
-    refetchInterval: 20 * 1000,
+    refetchInterval: fallbackInterval,
     refetchOnWindowFocus: true,
   });
 }
@@ -185,7 +192,7 @@ export function useContextualFiltersQuery() {
  * 12. Hook WebSocket Live Feeds
  */
 export function useMarketLiveSocket() {
-  const { setConnected, addLiveAlert, addLiveTransaction } = useMarketRealtimeStore();
+  const { setConnected, addLiveAlert, addLiveTransaction, addPulse } = useMarketRealtimeStore();
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -196,17 +203,29 @@ export function useMarketLiveSocket() {
     const handleConnect = () => setConnected(true);
     const handleDisconnect = () => setConnected(false);
     const handleAlert = (data: any) => addLiveAlert(data);
-    const handleNewSale = (data: any) => {
-      console.log('⚡ [MARKET LIVE] Vente reçue en direct:', data);
-      addLiveTransaction(data);
-      // Invalider immédiatement les caches React Query pour recalculer les statistiques
-      queryClient.invalidateQueries({ queryKey: marketQueryKeys.all });
+    // Vente en direct : fil d'actualité seulement (aucun rechargement par vente)
+    const handleNewSale = (data: any) => addLiveTransaction(data);
+
+    // Résumé toutes les 3 s : compteurs en direct, puis rechargement des chiffres au plus une
+    // fois par minute (rythme du cache serveur), pour ne jamais submerger l'API
+    let lastRefresh = Date.now();
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    const handlePulse = (pulse: MarketPulse) => {
+      addPulse(pulse);
+      if (refreshTimer) return;
+      const wait = Math.max(0, LIVE_REFRESH_MS - (Date.now() - lastRefresh));
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null;
+        lastRefresh = Date.now();
+        queryClient.invalidateQueries({ queryKey: marketQueryKeys.all });
+      }, wait);
     };
 
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
     socket.on('market:alert', handleAlert);
     socket.on('market:new-sale', handleNewSale);
+    socket.on('market:pulse', handlePulse);
     // Position/adresse d'un établissement mise à jour (barman sur place, réglages, inscription) :
     // recharge les vues géographiques, regroupé pour éviter les rafales.
     let geoTimer: ReturnType<typeof setTimeout> | null = null;
@@ -220,13 +239,15 @@ export function useMarketLiveSocket() {
 
     return () => {
       if (geoTimer) clearTimeout(geoTimer);
+      if (refreshTimer) clearTimeout(refreshTimer);
+      socket.off('market:pulse', handlePulse);
       socket.off('market:geo-updated', handleGeoUpdated);
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
       socket.off('market:alert', handleAlert);
       socket.off('market:new-sale', handleNewSale);
     };
-  }, [setConnected, addLiveAlert, addLiveTransaction, queryClient]);
+  }, [setConnected, addLiveAlert, addLiveTransaction, addPulse, queryClient]);
 }
 /**
  * 13. Journal d'audit des accès Market Intelligence

@@ -3,17 +3,14 @@
  * Le token (JWT admin E-Maquis) est obtenu via la connexion OTP et envoyé à chaque requête.
  */
 const TOKEN_KEY = 'mi_access_token';
-// Anciennes clés lues en repli (compatibilité)
+// Anciennes clés : plus lues (un jeton d'une autre application du même domaine ne doit jamais
+// servir ici), seulement effacées à la déconnexion.
 const LEGACY_KEYS = ['access_token', 'token'];
 
 export function getAuthToken(): string | null {
   if (typeof window === 'undefined') return null;
   try {
-    return (
-      localStorage.getItem(TOKEN_KEY) ||
-      LEGACY_KEYS.map((k) => localStorage.getItem(k)).find(Boolean) ||
-      null
-    );
+    return localStorage.getItem(TOKEN_KEY) || null;
   } catch {
     return null;
   }

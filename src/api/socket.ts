@@ -5,10 +5,13 @@ let socket: Socket | null = null;
 
 export const getMarketSocket = (): Socket => {
   if (!socket && typeof window !== 'undefined') {
-    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:3001/market-intelligence';
-    
-    socket = io(wsUrl, {
+    // Domaine du site + /rt (relayé vers l'API par le serveur Next) : adresse de l'API jamais exposée
+    socket = io(`${window.location.origin}/market-intelligence`, {
+      path: '/rt',
+      addTrailingSlash: false,
       transports: ['websocket', 'polling'],
+      tryAllTransports: true,
+      closeOnBeforeunload: true,
       autoConnect: true,
       reconnectionAttempts: 10,
       reconnectionDelay: 2000,
