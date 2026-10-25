@@ -19,6 +19,7 @@ import {
   buildQueryParams,
 } from '@/api/marketIntelligence.api';
 import { firstLiveValue, isLiveConnected, waitForLive, liveFilters, liveKey, subscribeLive, type LiveResource } from '@/api/liveData';
+import { validateLive } from '@/api/liveSchemas';
 import { useMarketFilterStore } from '@/stores/useMarketFilterStore';
 import { useMarketRealtimeStore } from '@/stores/useMarketRealtimeStore';
 import { getMarketSocket } from '@/api/socket';
@@ -68,7 +69,7 @@ function useLiveQuery<T>(
     if (!enabled) return;
     const key = JSON.parse(cacheKey);
     return subscribeLive(resource, JSON.parse(subKey.slice(resource.length + 1)), (data) =>
-      queryClient.setQueryData(key, data),
+      queryClient.setQueryData(key, validateLive<T>(resource, data)),
     );
   }, [enabled, resource, subKey, cacheKey, queryClient]);
 
@@ -79,7 +80,7 @@ function useLiveQuery<T>(
       // Premier chargement : on laisse au direct le temps de se connecter avant de passer en HTTP
       if (isLiveConnected() || (await waitForLive())) {
         const pushed = await firstLiveValue<T>(resource, filters);
-        if (pushed !== null) return pushed;
+        if (pushed !== null) return validateLive<T>(resource, pushed);
       }
       return fetcher();
     },

@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import * as THREE from 'three';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Sparkles,
@@ -29,6 +28,11 @@ import { resolveZoneCoordinates } from '@/constants/coordinates';
 import { DisplayVolumeUnit, formatProductVolume } from '@/utils/productVolumeConverter';
 import { anonymizeEstablishmentName } from '@/utils/anonymize';
 import 'leaflet/dist/leaflet.css';
+import { escapeHtml } from '@/lib/security/escapeHtml';
+import { useBourseUiStore } from '@/stores/useBourseUiStore';
+import { useMarketRealtimeStore } from '@/stores/useMarketRealtimeStore';
+import { ZoneMesh3D, type MeshZone } from './ZoneMesh3D';
+import { ZoneInsightPanel } from './ZoneInsightPanel';
 
 export interface RealHub {
   name: string;
@@ -89,24 +93,23 @@ export const ThreeVgpuCanvas: React.FC<ThreeVgpuCanvasProps> = ({
   geoData,
   unit = 'cols',
 }) => {
-  const [viewMode, setViewMode] = useState<ViewMode>('map');
-  const [metricMode, setMetricMode] = useState<MetricMode>('volume');
-  const [showPins, setShowPins] = useState(true);
+  // Préférences mémorisées (store Zustand partagé avec la page)
+  const viewMode = useBourseUiStore((s) => s.mapView);
+  const setViewMode = useBourseUiStore((s) => s.setMapView);
+  const metricMode = useBourseUiStore((s) => s.mapMetric);
+  const setMetricMode = useBourseUiStore((s) => s.setMapMetric);
+  const showPins = useBourseUiStore((s) => s.showPins);
+  const togglePins = useBourseUiStore((s) => s.togglePins);
+  const lastPulse = useMarketRealtimeStore((s) => s.lastPulse);
+  const [liveByZone, setLiveByZone] = useState<Record<string, { sales: number; amount: number }>>({});
 
   // Références Leaflet
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const layersGroupRef = useRef<any>(null);
+  const pulseGroupRef = useRef<any>(null);
   const hasInitializedCameraRef = useRef(false);
-
-  // Références Three.js
-  const threeContainerRef = useRef<HTMLDivElement>(null);
-  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-  const sceneRef = useRef<THREE.Scene | null>(null);
-  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const animFrameId = useRef<number | null>(null);
   const [isRotating, setIsRotating] = useState(true);
-  const [fps, setFps] = useState(60);
 
   // Extraction et consolidation des zones réelles
   const resolvedZones: ZoneData[] = useMemo(() => {
@@ -250,15 +253,15 @@ export const ThreeVgpuCanvas: React.FC<ThreeVgpuCanvasProps> = ({
           `
           <div style="background: rgba(15, 23, 42, 0.96); backdrop-filter: blur(12px); padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.18); color: #fff; font-family: system-ui, sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.6); min-width: 190px;">
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
-              <span style="font-weight: 700; font-size: 13px; color: #f8fafc;">📍 ${z.zone}</span>
+              <span style="font-weight: 700; font-size: 13px; color: #f8fafc;">📍 ${escapeHtml(z.zone)}</span>
               <span style="font-size: 10px; background: rgba(245,158,11,0.2); color: #f59e0b; padding: 1px 6px; border-radius: 4px; font-weight: 700;">${shareOfTotal}%</span>
             </div>
-            <div style="font-size: 11px; color: #94a3b8; margin-bottom: 6px;">${z.city} · ${z.country}</div>
+            <div style="font-size: 11px; color: #94a3b8; margin-bottom: 6px;">${escapeHtml(z.city)} · ${escapeHtml(z.country)}</div>
             <div style="font-size: 11px; color: #38bdf8; font-weight: 600;">📦 Volume : ${formatProductVolume(z.volume, unit, z.zone).formatted}</div>
             <div style="font-size: 11px; color: #34d399; font-weight: 600;">💰 CA : ${(z.revenue / 1000000).toFixed(2)}M FCFA</div>
             <div style="font-size: 11px; color: #fbbf24; font-weight: 600;">🏪 Maquis actifs : ${z.posCount} POS anonymisés</div>
             <div style="margin-top: 6px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.1); font-size: 10px; color: #38bdf8; font-weight: 600;">
-              👉 Cliquez pour zoomer sur ${z.zone}
+              👉 Cliquez pour zoomer sur ${escapeHtml(z.zone)}
             </div>
           </div>
           `,
@@ -278,7 +281,7 @@ export const ThreeVgpuCanvas: React.FC<ThreeVgpuCanvasProps> = ({
           html: `
             <div style="transform: translate(-50%, -50%); display: flex; align-items: center; pointer-events: none;">
               <span style="background: rgba(15, 23, 42, 0.9); color: ${isSelected ? '#38bdf8' : '#f8fafc'}; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 9999px; border: 1px solid ${isSelected ? '#38bdf8' : 'rgba(255,255,255,0.22)'}; white-space: nowrap; box-shadow: 0 4px 10px rgba(0,0,0,0.6);">
-                ${z.zone}
+                ${escapeHtml(z.zone)}
               </span>
             </div>
           `,
@@ -313,8 +316,8 @@ export const ThreeVgpuCanvas: React.FC<ThreeVgpuCanvasProps> = ({
           estMarker.bindTooltip(
             `
             <div style="background: rgba(15, 23, 42, 0.95); padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); color: #fff; font-size: 11px;">
-              <div style="font-weight: 700; color: #38bdf8;">🏪 ${anonName}</div>
-              <div style="color: #94a3b8; font-size: 10px;">${est.zone || ''} · ${est.city || ''}</div>
+              <div style="font-weight: 700; color: #38bdf8;">🏪 ${escapeHtml(anonName)}</div>
+              <div style="color: #94a3b8; font-size: 10px;">${escapeHtml(est.zone)} · ${escapeHtml(est.city)}</div>
               <div style="color: #10b981; font-weight: 600; margin-top: 2px;">${(Number(est.volume) || 0).toLocaleString('fr-FR')} cols</div>
             </div>
             `,
@@ -335,6 +338,8 @@ export const ThreeVgpuCanvas: React.FC<ThreeVgpuCanvasProps> = ({
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
         layersGroupRef.current = null;
+        pulseGroupRef.current = null;
+        hasInitializedCameraRef.current = false;
       }
       return;
     }
@@ -372,6 +377,7 @@ export const ThreeVgpuCanvas: React.FC<ThreeVgpuCanvasProps> = ({
 
       const group = L.layerGroup().addTo(map);
       layersGroupRef.current = group;
+      pulseGroupRef.current = L.layerGroup().addTo(map);
       mapInstanceRef.current = map;
 
       // Rendu initial des calques
@@ -403,15 +409,77 @@ export const ThreeVgpuCanvas: React.FC<ThreeVgpuCanvasProps> = ({
       import('leaflet').then((L) => {
         if (mapInstanceRef.current && layersGroupRef.current) {
           renderLeafletLayers(L, mapInstanceRef.current, layersGroupRef.current);
+          // Premier affichage avec de vraies données : cadrage sur toutes les communes
+          if (!hasInitializedCameraRef.current && geoData?.zones?.length) {
+            const pts = resolvedZones.filter((z) => z.latitude && z.longitude).map((z) => [z.latitude, z.longitude] as [number, number]);
+            if (pts.length > 1) mapInstanceRef.current.fitBounds(pts, { padding: [30, 30], maxZoom: 13 });
+            hasInitializedCameraRef.current = true;
+          }
         }
       });
     }
   }, [viewMode, renderLeafletLayers]);
 
+  // Ventes en direct (résumé WebSocket toutes les 3 s) : onde sur la commune + cumul par commune
+  useEffect(() => {
+    if (!lastPulse?.zones?.length) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- cumul des résumés reçus en direct
+    setLiveByZone((prev) => {
+      const next = { ...prev };
+      for (const pz of lastPulse.zones) {
+        const k = String(pz.commune || pz.city || '').toLowerCase();
+        if (!k) continue;
+        const cur = next[k] || { sales: 0, amount: 0 };
+        next[k] = { sales: cur.sales + (pz.sales || 0), amount: cur.amount + (pz.amount || 0) };
+      }
+      return next;
+    });
+    const map = mapInstanceRef.current;
+    const group = pulseGroupRef.current;
+    if (viewMode !== 'map' || !map || !group) return;
+    import('leaflet').then((L) => {
+      for (const pz of lastPulse.zones.slice(0, 20)) {
+        const z = resolvedZones.find(
+          (r) => r.zone.toLowerCase() === String(pz.commune || '').toLowerCase() || (!pz.commune && r.city.toLowerCase() === String(pz.city || '').toLowerCase()),
+        );
+        if (!z?.latitude || !z?.longitude) continue;
+        const marker = L.marker([z.latitude, z.longitude], {
+          interactive: false,
+          icon: L.divIcon({ className: 'mi-live-ping', html: '<span></span><span></span>', iconSize: [0, 0] }),
+        }).addTo(group);
+        setTimeout(() => group.removeLayer(marker), 2600);
+      }
+    });
+  }, [lastPulse, viewMode, resolvedZones]);
+
+  // Colonnes de la vue 3D selon la métrique choisie
+  const meshZones: MeshZone[] = useMemo(
+    () =>
+      resolvedZones
+        .filter((z) => z.latitude && z.longitude)
+        .slice(0, 60)
+        .map((z) => ({
+          zone: z.zone,
+          city: z.city,
+          latitude: z.latitude,
+          longitude: z.longitude,
+          value: metricMode === 'revenue' ? z.revenue : metricMode === 'pos' ? z.posCount : z.volume,
+          label:
+            metricMode === 'revenue'
+              ? `${(z.revenue / 1000000).toFixed(1)}M FCFA`
+              : metricMode === 'pos'
+              ? `${z.posCount} maquis`
+              : formatProductVolume(z.volume, unit, z.zone).formatted,
+        })),
+    [resolvedZones, metricMode, unit],
+  );
+
   // Centrage propre sur Abidjan
   const handleRecenter = () => {
     if (mapInstanceRef.current) {
-      mapInstanceRef.current.setView([5.348, -4.015], 12, { animate: true });
+      const pts = resolvedZones.filter((z) => z.latitude && z.longitude).map((z) => [z.latitude, z.longitude] as [number, number]);
+      if (pts.length > 1) mapInstanceRef.current.fitBounds(pts, { padding: [30, 30], maxZoom: 13, animate: true });
+      else mapInstanceRef.current.setView([5.348, -4.015], 12, { animate: true });
     }
   };
 
@@ -536,7 +604,7 @@ export const ThreeVgpuCanvas: React.FC<ThreeVgpuCanvasProps> = ({
               <div className="h-3 w-px bg-slate-800 mx-1" />
 
               <button
-                onClick={() => setShowPins(!showPins)}
+                onClick={togglePins}
                 className={`text-[10px] font-mono px-1.5 py-0.5 rounded transition-all flex items-center gap-1 ${
                   showPins ? 'text-emerald-400' : 'text-slate-500'
                 }`}
@@ -549,7 +617,7 @@ export const ThreeVgpuCanvas: React.FC<ThreeVgpuCanvasProps> = ({
               <button
                 onClick={handleRecenter}
                 className="text-[10px] font-mono p-1 rounded text-slate-400 hover:text-white"
-                title="Recentrer sur Abidjan"
+                title="Voir toutes les communes"
               >
                 <Maximize2 className="size-3" />
               </button>
@@ -696,27 +764,42 @@ export const ThreeVgpuCanvas: React.FC<ThreeVgpuCanvasProps> = ({
           </div>
         )}
 
-        {/* MODE D : VUE 3D THREE.JS (CANVAS OPTIONNEL) */}
+        {/* MODE D : VUE 3D THREE.JS (colonnes par commune) */}
         {viewMode === 'mesh3d' && (
           <div className="relative w-full h-[320px]">
-            <div ref={threeContainerRef} className="absolute inset-0 cursor-grab active:cursor-grabbing" />
-            <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-2">
-              <Button
-                size="sm"
-                variant="ghost"
+            <ZoneMesh3D
+              zones={meshZones}
+              activeZone={activeNode}
+              autoRotate={isRotating}
+              color={metricMode === 'revenue' ? '#8b5cf6' : metricMode === 'pos' ? '#06b6d4' : '#f59e0b'}
+              onSelect={(name) => onNodeSelect?.(name)}
+            />
+            <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1 bg-slate-950/90 p-1 rounded-lg border border-slate-800">
+              {(['volume', 'revenue', 'pos'] as MetricMode[]).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setMetricMode(m)}
+                  className={`text-[10px] font-mono px-2 py-0.5 rounded transition-colors ${metricMode === m ? 'bg-amber-500/20 text-amber-300 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
+                >
+                  {m === 'volume' ? 'Volume' : m === 'revenue' ? 'CA' : 'Maquis'}
+                </button>
+              ))}
+              <div className="h-3 w-px bg-slate-800 mx-0.5" />
+              <button
                 onClick={() => setIsRotating(!isRotating)}
-                className="h-6 px-2 text-[10px] text-slate-400 hover:text-white bg-slate-900/80 border border-slate-800"
+                className="text-[10px] font-mono px-1.5 py-0.5 rounded text-slate-400 hover:text-white flex items-center gap-1"
+                title={isRotating ? 'Arrêter la rotation' : 'Rotation automatique'}
               >
-                <RotateCcw className={`size-3 mr-1 ${isRotating ? 'animate-spin' : ''}`} style={{ animationDuration: '6s' }} />
-                {isRotating ? 'Auto-Orbit' : 'Pause'}
-              </Button>
-              <Badge variant="outline" className="text-[9px] bg-slate-900/80 text-cyan-300 border-cyan-500/30 font-mono">
-                {fps} FPS
-              </Badge>
+                <RotateCcw className={`size-3 ${isRotating ? 'animate-spin' : ''}`} style={{ animationDuration: '6s' }} />
+                {isRotating ? 'Rotation' : 'Fixe'}
+              </button>
             </div>
           </div>
         )}
       </div>
+
+      {/* Fiche de la commune choisie + opportunités pour les grossistes */}
+      <ZoneInsightPanel zones={resolvedZones} activeZone={activeNode} unit={unit} liveByZone={liveByZone} onSelect={handleSelectHub} />
 
       {/* 3. HUBS DE SÉLECTION RAPIDE DES COMMUNES EN BAS */}
       <div className="relative z-20 flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80 bg-slate-950/60 backdrop-blur-md rounded-xl px-3 py-2">
