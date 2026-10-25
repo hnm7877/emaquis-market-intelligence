@@ -1,4 +1,5 @@
 'use client';
+import { isLiveConnected } from '@/api/liveData';
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -109,7 +110,8 @@ export default function AutonomousDashboardPage() {
       setAutoSyncCountdown((prev) => {
         if (prev <= 1) {
           const isBusy = isProductsFetching || isGeoFetching || isOverviewFetching || isBrandsFetching || isCategoriesFetching || isCoverageFetching;
-          if (!isBusy) {
+          // Direct actif : les chiffres sont poussés par le serveur (WebSocket), rien à redemander
+          if (!isBusy && !isLiveConnected()) {
             refetchProducts();
             refetchGeo();
             refetchOverview();

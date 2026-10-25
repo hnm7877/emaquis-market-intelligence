@@ -33,7 +33,7 @@ const serializeValue = (val: any, defaultLabel = ''): string | undefined => {
   return undefined;
 };
 
-const buildQueryParams = (filters?: Partial<FilterState>): Record<string, string> => {
+export const buildQueryParams = (filters?: Partial<FilterState>): Record<string, string> => {
   const params: Record<string, string> = {};
   if (!filters) return params;
 
