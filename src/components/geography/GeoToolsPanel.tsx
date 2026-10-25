@@ -69,8 +69,8 @@ export function GeoToolsPanel(p: Props) {
 function Explore() {
   return (
     <p className="text-xs text-muted-foreground">
-      Vue continent : une bulle par pays. Zoomez pour voir les communes, puis les maquis (anonymisés). Clic droit ou Ctrl + glisser pour faire pivoter, bouton
-      « 3D » pour incliner la carte.
+      Cliquez sur un pays pour plonger dedans : la carte cadre toutes ses communes et ses maquis, puis choisissez une ville et une commune dans le panneau
+      (ou cliquez sur une bulle). Clic droit ou Ctrl + glisser pour faire pivoter, bouton « 3D » pour incliner la carte.
     </p>
   );
 }

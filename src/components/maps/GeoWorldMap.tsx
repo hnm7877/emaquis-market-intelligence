@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import maplibregl, { type GeoJSONSource, type Map as MlMap, type StyleSpecification } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { Box, Layers, Maximize2, Minimize2, Scan } from 'lucide-react';
+import { Box, ChevronLeft, ChevronRight, Globe2, Layers, Maximize2, Minimize2, Scan, Store } from 'lucide-react';
 import { anonymizeEstablishmentName } from '@/utils/anonymize';
 import { useMarketRealtimeStore } from '@/stores/useMarketRealtimeStore';
 import { PAYS, normalizeCountry } from '@/constants/countries';
@@ -36,8 +36,16 @@ export interface MapEstablishment {
   latitude: number;
   longitude: number;
   hasDirectGps?: boolean;
+  country?: string;
   volume: number;
   revenue: number;
+}
+
+/** Niveau d'immersion : pays → ville → commune (les maquis du niveau sont affichés) */
+export interface Drill {
+  country: string;
+  city?: string;
+  commune?: string;
 }
 
 export interface MapWhiteZone {
@@ -219,14 +227,41 @@ export function GeoWorldMap(props: Props) {
     countriesRef.current = countries;
   }, [countries]);
 
-  const flyToCountry = useCallback((country: string) => {
-    const map = mapRef.current;
-    const pts = cb.current.zones.filter((z) => z.country === country && Number.isFinite(z.latitude));
-    if (!map || !pts.length) return;
-    const b = new maplibregl.LngLatBounds();
-    pts.forEach((z) => b.extend([z.longitude, z.latitude]));
-    map.fitBounds(b, { padding: 60, maxZoom: 11.5, duration: 1000 });
+  // ---------- Immersion : pays → ville → commune, cadrage sur toutes ses communes et maquis ----------
+  const [drill, setDrill] = useState<Drill | null>(null);
+  const inDrill = useCallback((d: Drill, z: { country?: string; city?: string; zone?: string }, zoneCountry?: string) => {
+    const country = z.country || zoneCountry;
+    if (country && country !== d.country) return false;
+    if (d.city && String(z.city || '').toLowerCase() !== d.city.toLowerCase()) return false;
+    if (d.commune && String(z.zone || '').toLowerCase() !== d.commune.toLowerCase()) return false;
+    return true;
   }, []);
+  // Pays d'un maquis : le sien, sinon celui de sa commune
+  const zoneCountry = useMemo(() => new Map(zones.map((z) => [`${z.zone}|${z.city}`, z.country])), [zones]);
+  const estCountry = useCallback((e: MapEstablishment) => e.country || zoneCountry.get(`${e.zone}|${e.city}`), [zoneCountry]);
+
+  const immerse = useCallback(
+    (d: Drill | null) => {
+      setDrill(d);
+      const map = mapRef.current;
+      if (!map) return;
+      if (!d) return;
+      const zs = cb.current.zones.filter((z) => Number.isFinite(z.latitude) && inDrill(d, z));
+      const es = cb.current.establishments.filter((e) => Number.isFinite(e.latitude) && inDrill(d, e, estCountry(e)));
+      const b = new maplibregl.LngLatBounds();
+      zs.forEach((z) => b.extend([z.longitude, z.latitude]));
+      es.forEach((e) => b.extend([e.longitude, e.latitude]));
+      if (b.isEmpty()) return;
+      const maxZoom = d.commune ? 15.5 : d.city ? 14 : 13;
+      map.fitBounds(b, { padding: { top: 70, bottom: 50, left: 290, right: 60 }, maxZoom, duration: 1400, essential: true, pitch: d.commune ? 40 : 0 });
+    },
+    [inDrill, estCountry],
+  );
+  const flyToCountry = useCallback((country: string) => immerse({ country }), [immerse]);
+  const immerseRef = useRef(immerse);
+  useEffect(() => {
+    immerseRef.current = immerse;
+  }, [immerse]);
 
   const handlersBound = useRef(false);
 
@@ -279,10 +314,11 @@ export function GeoWorldMap(props: Props) {
       type: 'FeatureCollection',
       features: establishments
         .slice(0, 500)
-        .filter((e) => Number.isFinite(e.latitude) && Number.isFinite(e.longitude))
-        .map((e, i) => pt(e.longitude, e.latitude, { i, gps: e.hasDirectGps ? 1 : 0 })),
+        .map((e, i) => ({ e, i }))
+        .filter(({ e }) => Number.isFinite(e.latitude) && Number.isFinite(e.longitude) && (!drill || inDrill(drill, e, estCountry(e))))
+        .map(({ e, i }) => pt(e.longitude, e.latitude, { i, gps: e.hasDirectGps ? 1 : 0 })),
     }),
-    [establishments],
+    [establishments, drill, inDrill, estCountry],
   );
 
   const whiteData = useMemo<GeoJSON.FeatureCollection>(() => {
@@ -402,7 +438,7 @@ export function GeoWorldMap(props: Props) {
       type: 'circle',
       source: 'mi-est',
       minzoom: 11.5,
-      paint: { 'circle-radius': 4, 'circle-color': '#0b1220', 'circle-stroke-width': 2, 'circle-stroke-color': ['case', ['==', ['get', 'gps'], 1], '#10b981', '#f59e0b'] },
+      paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 7, 3, 12, 5, 16, 8], 'circle-color': '#0b1220', 'circle-stroke-width': 2, 'circle-stroke-color': ['case', ['==', ['get', 'gps'], 1], '#10b981', '#f59e0b'] },
     });
     add({ id: 'mi-route-line', type: 'line', source: 'mi-route', filter: ['==', '$type', 'LineString'], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#fde68a', 'line-width': 3, 'line-dasharray': [1, 1.6] } });
     add({ id: 'mi-route-stop', type: 'circle', source: 'mi-route', filter: ['==', '$type', 'Point'], paint: { 'circle-radius': 10, 'circle-color': '#fde68a', 'circle-stroke-color': '#020617', 'circle-stroke-width': 2 } });
@@ -483,19 +519,36 @@ export function GeoWorldMap(props: Props) {
       const country = e.features?.[0]?.properties?.country as string | undefined;
       if (!country) return;
       cb.current.onSelectCountry?.(country);
-      flyToCountry(country);
+      immerseRef.current({ country });
     });
     map.on('click', 'mi-zones-circle', (e) => {
       const z = zoneById(e.features?.[0]?.properties?.id);
       if (!z) return;
       cb.current.onSelectZone?.(z);
-      if (cb.current.tool !== 'route' && map.getZoom() < 11) map.flyTo({ center: [z.longitude, z.latitude], zoom: 12, duration: 900 });
+      // Immersion dans la commune : cadrage sur tous ses maquis
+      if (cb.current.tool === 'explore' || cb.current.tool === 'heat' || cb.current.tool === 'timeline') immerseRef.current({ country: z.country, city: z.city, commune: z.zone });
+    });
+    // Clic sur un maquis : fiche épinglée
+    map.on('click', 'mi-est-circle', (e) => {
+      const i = Number(e.features?.[0]?.properties?.i);
+      const est = cb.current.establishments[i];
+      if (!est) return;
+      new maplibregl.Popup({ offset: 10, className: 'mi-geo-popup', maxWidth: '260px' })
+        .setLngLat([est.longitude, est.latitude])
+        .setDOMContent(
+          tipNode(anonymizeEstablishmentName(est.name, est.id, i), [
+            `${est.zone} · ${est.city}`,
+            `Volume : ${compact(est.volume)} unités`,
+            `CA : ${compact(est.revenue)} F`,
+            est.hasDirectGps ? 'Position GPS (légèrement décalée pour l\u2019anonymat)' : 'Position par adresse déclarée',
+          ]),
+        )
+        .addTo(map);
     });
     map.on('click', (e) => {
-      const hit = map.queryRenderedFeatures(e.point, { layers: ['mi-zones-circle', 'mi-countries-circle'].filter((l) => map.getLayer(l)) });
+      const hit = map.queryRenderedFeatures(e.point, { layers: ['mi-zones-circle', 'mi-countries-circle', 'mi-est-circle'].filter((l) => map.getLayer(l)) });
       if (!hit.length) cb.current.onMapClick?.([e.lngLat.lng, e.lngLat.lat]);
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- couches créées une fois par fond de carte
   }, [styleReady]);
 
   // ---------- Mise à jour des données (sans recréer les couches) ----------
@@ -551,15 +604,53 @@ export function GeoWorldMap(props: Props) {
     map.fitBounds(b, { padding: 70, maxZoom: 6, duration: 0 });
   }, [layersVersion, located]);
 
+  // Pays choisi depuis la page (pastilles) : immersion dans ce pays ; « Tous » : retour au monde
   useEffect(() => {
-    if (focusCountry && layersVersion) flyToCountry(focusCountry);
+    if (!layersVersion) return;
+    /* eslint-disable react-hooks/set-state-in-effect -- le filtre pays de la page pilote l'immersion */
+    if (focusCountry) flyToCountry(focusCountry);
+    else setDrill(null);
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [focusCountry, layersVersion, flyToCountry]);
+
+  // En immersion, les maquis apparaissent dès le niveau ville
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map && layersVersion && map.getLayer('mi-est-circle')) map.setLayerZoomRange('mi-est-circle', drill ? 6.5 : 11.5, 24);
+  }, [drill, layersVersion]);
+
+  // Détail du niveau d'immersion (villes du pays, communes de la ville, maquis de la commune)
+  const drillInfo = useMemo(() => {
+    if (!drill) return null;
+    const zs = located.filter((z) => inDrill(drill, z));
+    const es = establishments.filter((e) => inDrill(drill, e, estCountry(e)));
+    const group = (key: (z: MapZone) => string) => {
+      const m = new Map<string, { name: string; volume: number; pos: number }>();
+      zs.forEach((z) => {
+        const k = key(z);
+        const c = m.get(k) || { name: k, volume: 0, pos: 0 };
+        c.volume += z.volume;
+        c.pos += z.posCount;
+        m.set(k, c);
+      });
+      return [...m.values()].sort((a, b) => b.volume - a.volume);
+    };
+    return {
+      items: drill.commune ? [] : drill.city ? group((z) => z.zone) : group((z) => z.city),
+      volume: zs.reduce((s, z) => s + z.volume, 0),
+      revenue: zs.reduce((s, z) => s + (z.revenue || 0), 0),
+      pos: zs.reduce((s, z) => s + z.posCount, 0),
+      placed: es.length,
+      communes: zs.length,
+    };
+  }, [drill, located, establishments, inDrill, estCountry]);
 
   useEffect(() => {
     const map = mapRef.current;
     const z = located.find((x) => x.id === selectedZoneId);
-    if (map && z && tool !== 'route' && map.getZoom() < 9) map.flyTo({ center: [z.longitude, z.latitude], zoom: 11.5, duration: 900 });
-  }, [selectedZoneId, located, tool]);
+    // En immersion, le cadrage est déjà fait sur les maquis de la commune
+    if (map && z && tool !== 'route' && !drill?.commune && map.getZoom() < 9) map.flyTo({ center: [z.longitude, z.latitude], zoom: 11.5, duration: 900 });
+  }, [selectedZoneId, located, tool, drill]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -676,6 +767,88 @@ export function GeoWorldMap(props: Props) {
               {l}
             </span>
           ))}
+        </div>
+      )}
+
+      {/* Panneau d'immersion */}
+      {drill && drillInfo && (
+        <div className="absolute left-3 top-14 z-10 w-[260px] max-w-[calc(100%-24px)] rounded-xl border border-slate-700/80 bg-slate-950/92 p-3 text-white shadow-2xl backdrop-blur sm:top-3">
+          <nav className="flex flex-wrap items-center gap-1 text-[11px]" aria-label="Niveau d'immersion">
+            <button onClick={() => { setDrill(null); cb.current.onSelectCountry?.(''); fitAll(); }} className="flex items-center gap-1 text-slate-400 hover:text-white">
+              <Globe2 className="size-3" /> Monde
+            </button>
+            <ChevronRight className="size-3 text-slate-600" />
+            <button onClick={() => immerse({ country: drill.country })} className={drill.city ? 'text-slate-400 hover:text-white' : 'font-semibold text-amber-300'}>
+              {flagOf(drill.country)} {drill.country}
+            </button>
+            {drill.city && (
+              <>
+                <ChevronRight className="size-3 text-slate-600" />
+                <button onClick={() => immerse({ country: drill.country, city: drill.city })} className={drill.commune ? 'text-slate-400 hover:text-white' : 'font-semibold text-amber-300'}>
+                  {drill.city}
+                </button>
+              </>
+            )}
+            {drill.commune && (
+              <>
+                <ChevronRight className="size-3 text-slate-600" />
+                <span className="font-semibold text-amber-300">{drill.commune}</span>
+              </>
+            )}
+          </nav>
+          <div className="mt-2 grid grid-cols-3 gap-1.5 text-[10px]">
+            <div className="rounded-md bg-slate-900 px-1.5 py-1">
+              <div className="text-slate-500">Volume</div>
+              <div className="font-mono text-[11px] font-semibold">{compact(drillInfo.volume)}</div>
+            </div>
+            <div className="rounded-md bg-slate-900 px-1.5 py-1">
+              <div className="text-slate-500">CA</div>
+              <div className="font-mono text-[11px] font-semibold">{compact(drillInfo.revenue)} F</div>
+            </div>
+            <div className="rounded-md bg-slate-900 px-1.5 py-1">
+              <div className="text-slate-500">Maquis</div>
+              <div className="font-mono text-[11px] font-semibold">{compact(drillInfo.pos)}</div>
+            </div>
+          </div>
+          <div className="mt-1.5 flex items-center gap-1 text-[10px] text-slate-400">
+            <Store className="size-3 text-emerald-400" />
+            {drillInfo.placed} maquis placés sur la carte · {drillInfo.communes} commune{drillInfo.communes > 1 ? 's' : ''}
+          </div>
+          {drillInfo.items.length > 0 && (
+            <>
+              <div className="mt-2 text-[10px] uppercase tracking-wide text-slate-500">{drill.city ? 'Communes' : 'Villes'}</div>
+              <ul className="mt-1 max-h-44 space-y-0.5 overflow-y-auto pr-1">
+                {drillInfo.items.map((it) => (
+                  <li key={it.name}>
+                    <button
+                      onClick={() => {
+                        if (drill.city) {
+                          const z = located.find((x) => x.zone === it.name && x.city === drill.city && x.country === drill.country);
+                          if (z) cb.current.onSelectZone?.(z);
+                          immerse({ ...drill, commune: it.name });
+                        } else immerse({ country: drill.country, city: it.name });
+                      }}
+                      className="group flex w-full items-center justify-between gap-2 rounded px-1.5 py-1 text-[11px] hover:bg-slate-800"
+                    >
+                      <span className="truncate">{it.name}</span>
+                      <span className="flex shrink-0 items-center gap-1 font-mono text-slate-400">
+                        {compact(it.volume)} · {it.pos} maq.
+                        <ChevronRight className="size-3 text-slate-600 group-hover:text-amber-400" />
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {drill.city && (
+            <button
+              onClick={() => immerse(drill.commune ? { country: drill.country, city: drill.city } : { country: drill.country })}
+              className="mt-2 flex items-center gap-1 text-[11px] text-slate-400 hover:text-white"
+            >
+              <ChevronLeft className="size-3" /> Niveau précédent
+            </button>
+          )}
         </div>
       )}
 
