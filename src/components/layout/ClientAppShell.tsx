@@ -47,15 +47,19 @@ export function ClientAppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen w-full bg-background">
       {/* Sidebar with mobile toggle & backdrop */}
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <div className="contents print:hidden">
+        <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      </div>
 
       <div className="flex-1 flex flex-col min-w-0">
+        <div className="print:hidden">
         <Header
           onOpenAiChat={() => setAiChatOpen(true)}
           onOpenExport={() => setExportOpen(true)}
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
         />
-        <main className="flex-1 p-3 sm:p-5 md:p-6 overflow-y-auto">
+        </div>
+        <main className="flex-1 p-3 sm:p-5 md:p-6 overflow-y-auto print:overflow-visible print:p-0">
           {children}
         </main>
       </div>

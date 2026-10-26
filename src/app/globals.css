@@ -198,3 +198,10 @@ select option:checked {
   background-color: #f59e0b;
   color: #0b1220;
 }
+
+/* Impression / PDF : couleurs conservées, pas de coupure au milieu d'un bloc */
+@media print {
+  @page { size: A4 landscape; margin: 10mm; }
+  html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  section, .recharts-wrapper { break-inside: avoid; }
+}

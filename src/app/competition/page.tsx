@@ -3,7 +3,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Crosshair, Lightbulb, MapPin, Package, Plus, Scale, Search, Swords, Tag, Trophy, Users, X } from 'lucide-react';
+import { BellRing, Crosshair, FileDown, Lightbulb, MapPin, Package, Plus, Scale, Search, Swords, Tag, Trophy, Users, X } from 'lucide-react';
+import { BrandDuelView } from '@/components/competition/BrandDuelView';
 import { useCompetitionQuery, useProductsQuery } from '@/hooks/market/useMarketQueries';
 import { useMarketFilterStore } from '@/stores/useMarketFilterStore';
 import { useMarketRealtimeStore } from '@/stores/useMarketRealtimeStore';
@@ -98,6 +99,53 @@ export default function CompetitionPage() {
     return pts;
   }, [prods, ids]);
   const leaderId = ids.length ? [...ids].sort((a, b) => (score[b] || 0) - (score[a] || 0))[0] : null;
+  const [mode, setMode] = useState<'products' | 'brands'>('products');
+
+  // Alerte de bascule : une commune change de produit leader pendant que la page est ouverte.
+  // Le dernier état est gardé dans ce navigateur pour signaler aussi les bascules entre deux visites.
+  const [flips, setFlips] = useState<{ commune: string; from: string; to: string; at: string }[]>([]);
+  const [toast, setToast] = useState<string | null>(null);
+  const flipKey = ids.length >= 2 ? `mi-bascules-${[...ids].sort().join('-')}` : null;
+  useEffect(() => {
+    if (!flipKey) return;
+    try {
+      const saved = JSON.parse(localStorage.getItem(flipKey) || 'null');
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- historique des bascules de ce duel
+      setFlips(Array.isArray(saved?.flips) ? saved.flips.slice(0, 20) : []);
+    } catch {
+      setFlips([]);
+    }
+  }, [flipKey]);
+  useEffect(() => {
+    if (!flipKey || !c?.battles?.length) return;
+    let saved: { leaders?: Record<string, string>; flips?: typeof flips } = {};
+    try {
+      saved = JSON.parse(localStorage.getItem(flipKey) || '{}') || {};
+    } catch {
+      saved = {};
+    }
+    const prev = saved.leaders || {};
+    const fresh: typeof flips = [];
+    c.battles.forEach((b) => {
+      if (prev[b.commune] && prev[b.commune] !== b.leader && ids.includes(prev[b.commune]))
+        fresh.push({ commune: b.commune, from: prev[b.commune], to: b.leader, at: new Date().toISOString() });
+    });
+    const leaders = { ...prev, ...Object.fromEntries(c.battles.map((b) => [b.commune, b.leader])) };
+    const all = [...fresh, ...(saved.flips || [])].slice(0, 20);
+    try {
+      localStorage.setItem(flipKey, JSON.stringify({ leaders, flips: all }));
+    } catch {
+      /* stockage indisponible : alertes de la session seulement */
+    }
+    if (fresh.length) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- nouvelles bascules reçues en direct
+      setFlips(all);
+      setToast(`${fresh[0].commune} : ${nameOf(fresh[0].to)} passe devant ${nameOf(fresh[0].from)}${fresh.length > 1 ? ` (+${fresh.length - 1})` : ''}`);
+      const t = setTimeout(() => setToast(null), 6000);
+      return () => clearTimeout(t);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- nameOf dépend des mêmes données
+  }, [c, flipKey]);
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-4 pb-12">
@@ -113,13 +161,60 @@ export default function CompetitionPage() {
           <Swords className="size-5 text-amber-500 md:size-6" />
           Concurrence
         </h1>
-        <p className="text-xs text-muted-foreground">
-          Face-à-face de 2 à 4 produits sur les ventes réelles : qui gagne, où, à quel prix, et quels maquis conquérir.
-        </p>
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <p className="text-xs text-muted-foreground">
+            Face-à-face de 2 à 4 produits ou marques sur les ventes réelles : qui gagne, où, à quel prix, et quels maquis conquérir.
+          </p>
+          <div className="flex items-center gap-2 print:hidden">
+            <div className="flex h-8 items-center rounded-lg border border-border/70 bg-muted/40 p-0.5" role="radiogroup" aria-label="Comparer">
+              {(['products', 'brands'] as const).map((m) => (
+                <button
+                  key={m}
+                  role="radio"
+                  aria-checked={mode === m}
+                  onClick={() => setMode(m)}
+                  className={`relative h-full rounded-md px-3 text-xs transition-colors ${mode === m ? 'font-semibold text-slate-950' : 'text-muted-foreground hover:text-foreground'}`}
+                >
+                  {mode === m && <motion.span layoutId="comp-mode" className="absolute inset-0 rounded-md bg-amber-500" transition={{ type: 'spring', duration: 0.3, bounce: 0.15 }} />}
+                  <span className="relative">{m === 'products' ? 'Produits' : 'Marques'}</span>
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => window.print()}
+              className="flex h-8 items-center gap-1.5 rounded-lg bg-amber-500 px-3 text-xs font-semibold text-slate-950 hover:bg-amber-400"
+              title="Enregistrer le duel en PDF (choisir « Enregistrer au format PDF » dans la fenêtre d’impression)"
+            >
+              <FileDown className="size-3.5" /> PDF
+            </button>
+          </div>
+        </div>
       </motion.header>
 
-      <FilterBar filters={filters} onFilterChange={setFilter} onReset={resetFilters} />
+      <div className="print:hidden">
+        <FilterBar filters={filters} onFilterChange={setFilter} onReset={resetFilters} />
+      </div>
 
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            role="status"
+            initial={{ opacity: 0, y: -12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2, ease: EASE }}
+            className="fixed right-5 top-20 z-50 flex items-center gap-2 rounded-xl border border-amber-500/50 bg-slate-950 px-4 py-2.5 text-xs text-white shadow-2xl"
+          >
+            <BellRing className="size-4 text-amber-400" />
+            {toast}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {mode === 'brands' ? (
+        <BrandDuelView />
+      ) : (
+      <>
       {/* Choix des produits */}
       <section className="space-y-2 rounded-xl border border-border/70 bg-card/60 p-3">
         <div className="flex flex-wrap items-center gap-2">
@@ -393,9 +488,28 @@ export default function CompetitionPage() {
               </div>
             </Panel>
 
+            {/* Bascules de leadership */}
+            <Panel icon={<BellRing className="size-4 text-amber-500" />} title="Bascules de leadership" help="Communes où le produit en tête a changé depuis votre dernière consultation de ce duel ou pendant que la page est ouverte (mémorisé dans ce navigateur).">
+              {flips.length ? (
+                <ul className="space-y-1 text-[12px]">
+                  {flips.map((f) => (
+                    <li key={`${f.commune}-${f.at}`} className="flex flex-wrap items-center gap-1.5">
+                      <span className="font-medium">{f.commune}</span>:
+                      <span style={{ color: colorOf(f.to) }}>{nameOf(f.to)}</span> passe devant <span style={{ color: colorOf(f.from) }}>{nameOf(f.from)}</span>
+                      <span className="text-[10px] text-muted-foreground">{new Date(f.at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-[11px] text-muted-foreground">Aucune bascule pour l’instant. Le leader de chaque commune est surveillé en direct.</p>
+              )}
+            </Panel>
+
             <Insights c={c!} prods={prods} nameOf={nameOf} />
           </motion.div>
         </AnimatePresence>
+      )}
+      </>
       )}
     </div>
   );
