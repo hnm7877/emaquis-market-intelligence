@@ -553,3 +553,71 @@ export const TrendsSchema = z.object({
   methodology: z.string().optional(),
 });
 export type Trends = z.infer<typeof TrendsSchema>;
+
+// ==========================================
+// STOCK INTELLIGENCE (collections globales synchronisées)
+// ==========================================
+const productRef = {
+  productId: z.string().nullable().optional(),
+  product: z.string(),
+  brand: z.string().default('Non spécifié'),
+};
+export const StockIntelligenceSchema = z.object({
+  analysisSpanDays: z.number().default(0),
+  comparisonLabel: z.string().default(''),
+  kpis: z
+    .object({
+      trackedPositions: z.number().default(0),
+      establishmentsTracked: z.number().default(0),
+      stockoutPositions: z.number().default(0),
+      lowStockPositions: z.number().default(0),
+      availabilityRate: nnum,
+      stockUnits: z.number().default(0),
+      stockValue: z.number().default(0),
+      stockValueCoverage: z.number().default(0),
+      networkDaysOfStock: nnum,
+      lostUnitsPerDay: z.number().default(0),
+      lostRevenuePerDay: z.number().default(0),
+      stockoutEvents: z.number().default(0),
+      previousStockoutEvents: z.number().default(0),
+      stockoutEventsGrowth: nnum,
+      restocks: z.number().default(0),
+      restockUnits: z.number().default(0),
+      avgRecoveryHours: nnum,
+      recoveredStockouts: z.number().default(0),
+    })
+    .optional(),
+  timeline: z.array(z.object({ date: z.string(), stockouts: z.number(), restocks: z.number(), restockUnits: z.number() })).default([]),
+  brandAvailability: z
+    .array(z.object({ brand: z.string(), positions: z.number(), stockoutPos: z.number(), lowStockPos: z.number(), stockValue: z.number(), availabilityRate: z.number() }))
+    .default([]),
+  zoneTension: z
+    .array(z.object({ zone: z.string(), positions: z.number(), establishments: z.number(), stockoutPos: z.number(), stockoutRate: z.number() }))
+    .default([]),
+  lostSales: z.array(z.object({ ...productRef, affectedPos: z.number(), lostUnitsPerDay: z.number(), lostRevenuePerDay: z.number() })).default([]),
+  overstock: z
+    .array(z.object({ ...productRef, quantity: z.number(), positions: z.number(), daysOfStock: z.number(), stockValue: z.number() }))
+    .default([]),
+  criticalStockouts: z
+    .array(
+      z.object({
+        ...productRef,
+        category: z.string().default(''),
+        totalPos: z.number(),
+        affectedPos: z.number(),
+        stockoutRate: z.number(),
+        zones: z.array(z.string()).default([]),
+        urgency: z.enum(['HIGH', 'MEDIUM']).catch('MEDIUM'),
+      }),
+    )
+    .default([]),
+  lowStockAlerts: z.array(z.object({ ...productRef, totalPos: z.number(), lowStockPos: z.number() })).default([]),
+  stockoutEventsInPeriod: z.number().default(0),
+  rotationRankings: z
+    .array(z.object({ category: z.string(), rotationRate: z.number(), activePos: z.number(), volume: z.number(), daysOfStock: z.number().nullable() }))
+    .default([]),
+  demandSignals: z.array(z.any()).default([]),
+  stockCoverage: z.object({ trackedProductPositions: z.number().default(0), lastSyncAt: z.string().nullable().optional() }).optional(),
+  dataAvailability: z.object({ stockLevels: z.boolean().default(false), message: z.string().optional() }).optional(),
+});
+export type StockIntelligence = z.infer<typeof StockIntelligenceSchema>;

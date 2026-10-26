@@ -24,6 +24,7 @@ import {
 import { firstLiveValue, isLiveConnected, waitForLive, liveFilters, liveKey, subscribeLive, type LiveResource } from '@/api/liveData';
 import { validateLive } from '@/api/liveSchemas';
 import type { FilterState } from '@/types/market';
+import type { StockIntelligence } from '@/lib/validations/market.schemas';
 import { useMarketFilterStore } from '@/stores/useMarketFilterStore';
 import { useMarketRealtimeStore } from '@/stores/useMarketRealtimeStore';
 import { getMarketSocket } from '@/api/socket';
@@ -167,7 +168,7 @@ export function useTrendsQuery(enabled = true) {
 /** 7. Stock intelligence */
 export function useStockIntelligenceQuery() {
   const filters = useMarketFilterStore((state) => state.filters);
-  return useLiveQuery('stock', buildQueryParams(filters), marketQueryKeys.stock(filters), () => fetchStockIntelligenceData(filters));
+  return useLiveQuery<StockIntelligence>('stock', buildQueryParams(filters), marketQueryKeys.stock(filters), () => fetchStockIntelligenceData(filters) as Promise<StockIntelligence>);
 }
 
 /** 8. Impact des promotions */

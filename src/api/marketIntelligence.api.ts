@@ -3,6 +3,7 @@ import {
   BrandsResponseSchema,
   CompetitionSchema,
   TrendsSchema,
+  StockIntelligenceSchema,
   CategoriesResponseSchema,
   ProductDetailSchema,
   MarketOverviewResponseSchema,
@@ -161,7 +162,8 @@ export const fetchTrendsData = async (filters?: Partial<FilterState>) => {
 export const fetchStockIntelligenceData = async (filters?: Partial<FilterState>) => {
   const params = buildQueryParams(filters);
   const response = await axiosInstance.get('/market-intelligence/stock-intelligence', { params });
-  return response.data;
+  const parsed = StockIntelligenceSchema.safeParse(response.data);
+  return parsed.success ? parsed.data : response.data;
 };
 
 /**

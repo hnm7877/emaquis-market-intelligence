@@ -9,6 +9,7 @@ import {
   ProductDetailSchema,
   ProductsResponseSchema,
   TrendsSchema,
+  StockIntelligenceSchema,
 } from '@/lib/validations/market.schemas';
 import type { LiveResource } from './liveData';
 
@@ -26,6 +27,7 @@ const SCHEMAS: Partial<Record<LiveResource, ZodType>> = {
   categories: CategoriesResponseSchema,
   competition: CompetitionSchema,
   trends: TrendsSchema,
+  stock: StockIntelligenceSchema,
 };
 
 export function validateLive<T>(resource: LiveResource, data: unknown): T {
