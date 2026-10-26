@@ -494,3 +494,62 @@ export const CompetitionSchema = z.object({
   targets: z.array(z.object({ product: z.string(), total: z.number(), communes: z.array(z.object({ commune: z.string(), count: z.number() })) })).default([]),
 });
 export type Competition = z.infer<typeof CompetitionSchema>;
+
+// ==========================================
+// Tendances & horaires
+// ==========================================
+const nnum = z.number().nullable().optional();
+export const TrendsSchema = z.object({
+  totalVolume: z.number().default(0),
+  totalTransactions: z.number().default(0),
+  totalRevenue: z.number().default(0),
+  avgBasket: nnum,
+  daysObserved: z.number().default(0),
+  peakHours: z.array(z.string()).default([]),
+  peakHoursShare: z.number().default(0),
+  weekendOverWeekdayRatio: nnum,
+  goldenSlot: z.object({ day: z.string(), hour: z.string(), avgVolume: z.number() }).nullable().optional(),
+  momentum: z
+    .object({ last7Volume: z.number(), prev7Volume: z.number(), growthPercent: nnum })
+    .nullable()
+    .optional(),
+  dayparts: z
+    .array(
+      z.object({
+        label: z.string(),
+        volume: z.number(),
+        share: z.number(),
+        topProducts: z.array(z.object({ name: z.string(), volume: z.number(), share: z.number() })).default([]),
+      }),
+    )
+    .default([]),
+  daily: z.array(z.object({ date: z.string(), volume: z.number(), transactions: z.number(), revenue: z.number() })).default([]),
+  byHour: z
+    .array(z.object({ hour: z.string(), volume: z.number(), transactions: z.number(), share: z.number(), avgBasket: nnum }))
+    .default([]),
+  hourlyMatrix: z.array(z.record(z.string(), z.union([z.string(), z.number()]))).default([]),
+  hourlyProfile: z.array(z.object({ hour: z.string(), weekdayVolume: z.number(), weekendVolume: z.number() })).default([]),
+  byDayOfWeek: z
+    .array(
+      z.object({
+        day: z.string(),
+        daysObserved: z.number(),
+        avgDailyVolume: z.number(),
+        avgDailyRevenue: z.number().default(0),
+        avgBasket: nnum,
+      }),
+    )
+    .default([]),
+  monthEndEffect: z
+    .object({
+      monthEndAvgDailyVolume: z.number(),
+      otherDaysAvgDailyVolume: z.number(),
+      upliftPercent: nnum,
+      monthEndDays: z.number(),
+      otherDays: z.number(),
+    })
+    .optional(),
+  monthly: z.array(z.object({ month: z.string(), volume: z.number(), transactions: z.number(), revenue: z.number().default(0) })).default([]),
+  methodology: z.string().optional(),
+});
+export type Trends = z.infer<typeof TrendsSchema>;

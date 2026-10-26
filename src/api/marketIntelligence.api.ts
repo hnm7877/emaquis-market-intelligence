@@ -2,6 +2,7 @@ import { axiosInstance } from './axiosInstance';
 import {
   BrandsResponseSchema,
   CompetitionSchema,
+  TrendsSchema,
   CategoriesResponseSchema,
   ProductDetailSchema,
   MarketOverviewResponseSchema,
@@ -150,7 +151,8 @@ export const fetchCategoriesData = async (filters?: Partial<FilterState>) => {
 export const fetchTrendsData = async (filters?: Partial<FilterState>) => {
   const params = buildQueryParams(filters);
   const response = await axiosInstance.get('/market-intelligence/trends', { params });
-  return response.data;
+  const parsed = TrendsSchema.safeParse(response.data);
+  return parsed.success ? parsed.data : response.data;
 };
 
 /**
