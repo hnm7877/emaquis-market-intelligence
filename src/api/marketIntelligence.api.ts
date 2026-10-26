@@ -359,8 +359,8 @@ export const startSyncBackfill = async (): Promise<MarketSyncStatus['backfill']>
 /** Distributeur : ses alertes de rupture par e-mail (validées par Zod) */
 export const fetchMyAlerts = async (): Promise<MyAlerts> => MyAlertsSchema.parse((await axiosInstance.get('/market-intelligence/me/alerts')).data);
 
-export const updateMyAlerts = async (input: { alertsEnabled?: boolean; alertThreshold?: number; promoAlertsEnabled?: boolean }) =>
-  (await axiosInstance.patch('/market-intelligence/me/alerts', input)).data as Pick<MyAlerts, 'alertsEnabled' | 'alertThreshold' | 'promoAlertsEnabled'>;
+export const updateMyAlerts = async (input: { alertsEnabled?: boolean; alertThreshold?: number; promoAlertsEnabled?: boolean; weeklyReportEnabled?: boolean }) =>
+  (await axiosInstance.patch('/market-intelligence/me/alerts', input)).data as Pick<MyAlerts, 'alertsEnabled' | 'alertThreshold' | 'promoAlertsEnabled' | 'weeklyReportEnabled'>;
 
 /** Trace un export de rapport dans le journal d'audit (non bloquant) */
 export const logReportExport = async (input: { format: 'pdf' | 'xlsx'; sections: string[]; filters: Record<string, string> }) => {

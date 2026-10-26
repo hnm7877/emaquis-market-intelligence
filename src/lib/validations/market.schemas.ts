@@ -658,6 +658,7 @@ export const MyAlertsSchema = z.object({
   alertsEnabled: z.boolean(),
   alertThreshold: z.number().min(50).max(99),
   promoAlertsEnabled: z.boolean().default(true),
+  weeklyReportEnabled: z.boolean().default(true),
   competitorPromos: z
     .array(z.object({ brand: z.string(), product: z.string(), zone: z.string(), establishments: z.number(), discountPercent: nnum, startAt: z.string().nullable().optional() }))
     .default([]),

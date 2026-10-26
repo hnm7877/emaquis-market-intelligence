@@ -115,6 +115,21 @@ function MyAlerts() {
           </div>
         )}
       </div>
+      <div className="border-t border-border/60 pt-4 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold">Rapport de la semaine par e-mail</p>
+          <p className="text-[11px] text-muted-foreground">Chaque lundi matin : vos marques (rang, part, évolution), leur disponibilité et les promotions concurrentes.</p>
+        </div>
+        <button
+          role="switch"
+          aria-checked={data.weeklyReportEnabled}
+          disabled={save.isPending}
+          onClick={() => save.mutate({ weeklyReportEnabled: !data.weeklyReportEnabled })}
+          className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${data.weeklyReportEnabled ? 'bg-emerald-500' : 'bg-muted'}`}
+        >
+          <span className={`absolute left-0 top-0.5 size-5 rounded-full bg-white shadow transition-transform ${data.weeklyReportEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+        </button>
+      </div>
       <div className="border-t border-border/60 pt-4 space-y-2">
         <div className="flex items-center justify-between gap-3">
           <p className="text-xs font-semibold">Promotions des concurrents dans vos communes</p>
