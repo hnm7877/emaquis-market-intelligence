@@ -102,9 +102,9 @@ function useLiveQuery<T>(
 }
 
 /** 1. Vue d'ensemble (KPIs) — poussée toutes les 5 s au plus quand des ventes arrivent */
-export function useMarketOverview() {
+export function useMarketOverview(enabled = true) {
   const filters = useMarketFilterStore((state) => state.filters);
-  return useLiveQuery('overview', buildQueryParams(filters), marketQueryKeys.overview(filters), () => fetchMarketOverview(filters));
+  return useLiveQuery('overview', buildQueryParams(filters), marketQueryKeys.overview(filters), () => fetchMarketOverview(filters), enabled);
 }
 
 /** 2. Données géographiques (anonymisées) */
@@ -166,15 +166,15 @@ export function useTrendsQuery(enabled = true) {
 }
 
 /** 7. Stock intelligence */
-export function useStockIntelligenceQuery() {
+export function useStockIntelligenceQuery(enabled = true) {
   const filters = useMarketFilterStore((state) => state.filters);
-  return useLiveQuery<StockIntelligence>('stock', buildQueryParams(filters), marketQueryKeys.stock(filters), () => fetchStockIntelligenceData(filters) as Promise<StockIntelligence>);
+  return useLiveQuery<StockIntelligence>('stock', buildQueryParams(filters), marketQueryKeys.stock(filters), () => fetchStockIntelligenceData(filters) as Promise<StockIntelligence>, enabled);
 }
 
 /** 8. Impact des promotions */
-export function usePromotionsQuery() {
+export function usePromotionsQuery(enabled = true) {
   const filters = useMarketFilterStore((state) => state.filters);
-  return useLiveQuery<Promotions>('promotions', buildQueryParams(filters), marketQueryKeys.promotions(filters), () => fetchPromotionsData(filters) as Promise<Promotions>);
+  return useLiveQuery<Promotions>('promotions', buildQueryParams(filters), marketQueryKeys.promotions(filters), () => fetchPromotionsData(filters) as Promise<Promotions>, enabled);
 }
 
 /** 9. Couverture réseau */

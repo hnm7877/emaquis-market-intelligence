@@ -325,3 +325,12 @@ export const fetchMyAlerts = async (): Promise<MyAlerts> => MyAlertsSchema.parse
 
 export const updateMyAlerts = async (input: { alertsEnabled?: boolean; alertThreshold?: number; promoAlertsEnabled?: boolean }) =>
   (await axiosInstance.patch('/market-intelligence/me/alerts', input)).data as Pick<MyAlerts, 'alertsEnabled' | 'alertThreshold' | 'promoAlertsEnabled'>;
+
+/** Trace un export de rapport dans le journal d'audit (non bloquant) */
+export const logReportExport = async (input: { format: 'pdf' | 'xlsx'; sections: string[]; filters: Record<string, string> }) => {
+  try {
+    await axiosInstance.post('/market-intelligence/reports/export', input);
+  } catch {
+    /* journal indisponible : l'export reste possible */
+  }
+};

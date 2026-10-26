@@ -1,135 +1,52 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Download, FileText, FileSpreadsheet, Check, ShieldCheck } from 'lucide-react';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { useDataCoverageQuery } from '@/hooks/market/useMarketQueries';
+import React from 'react';
+import { useRouter } from 'next/navigation';
+import { FileSpreadsheet, FileText, ShieldCheck } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { useReportStore, type ReportTemplate } from '@/stores/useReportStore';
 
 interface ExportModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
+const SHORTCUTS: { template: ReportTemplate; label: string; hint: string; icon: React.ElementType }[] = [
+  { template: 'market', label: 'Synthèse marché', hint: 'Ventes, marques, produits, communes, horaires', icon: FileText },
+  { template: 'brand', label: 'Rapport marque', hint: 'Vos marques : ventes, stock, promotions', icon: FileText },
+  { template: 'stock', label: 'Stock & ruptures', hint: 'Disponibilité et ruptures', icon: FileSpreadsheet },
+  { template: 'promo', label: 'Bilan promotions', hint: 'Effet des remises', icon: FileSpreadsheet },
+];
+
+/** Raccourci d'export : ouvre le générateur de rapports sur le modèle choisi (PDF ou Excel) */
 export function ExportModal({ open, onOpenChange }: ExportModalProps) {
-  const { data: coverage } = useDataCoverageQuery();
-  const totalSales = coverage?.networkOverview?.totalAnalyzedTransactions;
-  const [selectedFormat, setSelectedFormat] = useState<'pdf' | 'excel' | 'csv'>('pdf');
-  const [isExporting, setIsExporting] = useState(false);
-  const [isDone, setIsDone] = useState(false);
-
-  const handleExport = () => {
-    setIsExporting(true);
-    setTimeout(() => {
-      setIsExporting(false);
-      setIsDone(true);
-      setTimeout(() => {
-        setIsDone(false);
-        onOpenChange(false);
-      }, 1200);
-    }, 1500);
+  const router = useRouter();
+  const go = (t: ReportTemplate) => {
+    useReportStore.getState().applyTemplate(t);
+    onOpenChange(false);
+    router.push('/reports');
   };
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md bg-card/95 backdrop-blur-2xl border-border">
         <DialogHeader>
-          <DialogTitle className="text-base font-bold">Exporter un Rapport de Marché</DialogTitle>
+          <DialogTitle className="text-base font-bold">Exporter un rapport</DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
-            Générez un rapport exécutif certifié basé sur l'échantillon consolidé d'E-Maquis.
+            Choisissez un modèle : le rapport s&apos;ouvre avec les filtres actuels, prêt à être exporté en PDF ou en Excel.
           </DialogDescription>
         </DialogHeader>
-
-        <div className="space-y-4 py-2">
-          {/* Format selection */}
-          <div className="grid grid-cols-3 gap-2.5">
-            <button
-              onClick={() => setSelectedFormat('pdf')}
-              className={`p-3 rounded-xl border text-left flex flex-col gap-2 transition-all ${
-                selectedFormat === 'pdf'
-                  ? 'border-primary bg-primary/10 shadow-xs'
-                  : 'border-border/70 hover:bg-accent/40'
-              }`}
-            >
-              <FileText className="size-5 text-red-500" />
-              <div>
-                <span className="text-xs font-semibold block text-foreground">Rapport PDF</span>
-                <span className="text-[10px] text-muted-foreground">Graphiques & Exécutif</span>
-              </div>
+        <div className="grid grid-cols-1 gap-2 py-2">
+          {SHORTCUTS.map(({ template, label, hint, icon: Icon }) => (
+            <button key={template} onClick={() => go(template)} className="p-3 rounded-xl border border-border/70 hover:bg-accent/40 text-left flex items-center gap-3 transition-colors">
+              <Icon className="size-5 text-orange-500 shrink-0" />
+              <span>
+                <span className="text-xs font-semibold block text-foreground">{label}</span>
+                <span className="text-[10px] text-muted-foreground">{hint}</span>
+              </span>
             </button>
-
-            <button
-              onClick={() => setSelectedFormat('excel')}
-              className={`p-3 rounded-xl border text-left flex flex-col gap-2 transition-all ${
-                selectedFormat === 'excel'
-                  ? 'border-primary bg-primary/10 shadow-xs'
-                  : 'border-border/70 hover:bg-accent/40'
-              }`}
-            >
-              <FileSpreadsheet className="size-5 text-emerald-500" />
-              <div>
-                <span className="text-xs font-semibold block text-foreground">Excel (.xlsx)</span>
-                <span className="text-[10px] text-muted-foreground">Tableaux & Métriques</span>
-              </div>
-            </button>
-
-            <button
-              onClick={() => setSelectedFormat('csv')}
-              className={`p-3 rounded-xl border text-left flex flex-col gap-2 transition-all ${
-                selectedFormat === 'csv'
-                  ? 'border-primary bg-primary/10 shadow-xs'
-                  : 'border-border/70 hover:bg-accent/40'
-              }`}
-            >
-              <Download className="size-5 text-blue-500" />
-              <div>
-                <span className="text-xs font-semibold block text-foreground">Data CSV</span>
-                <span className="text-[10px] text-muted-foreground">Données brutes agrégées</span>
-              </div>
-            </button>
-          </div>
-
-          {/* Legal / Transparency Disclaimer */}
-          <div className="p-3 rounded-lg bg-accent/40 border border-border/60 text-[11px] text-muted-foreground flex gap-2">
-            <ShieldCheck className="size-4 text-emerald-500 flex-shrink-0 mt-0.5" />
-            <p className="leading-relaxed">
-              <strong>Notice méthodologique :</strong> Les données exportées représentent les ventes observées dans le réseau E-Maquis{typeof totalSales === 'number' ? ` (${totalSales.toLocaleString('fr-FR')} transactions dans la base globale)` : ''}. Les données individuelles des consommateurs et établissements restent strictement anonymisées.
-            </p>
-          </div>
+          ))}
         </div>
-
-        <DialogFooter className="flex sm:justify-between items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)} className="text-xs">
-            Annuler
-          </Button>
-          <Button
-            size="sm"
-            onClick={handleExport}
-            disabled={isExporting || isDone}
-            className="text-xs gap-2 bg-primary text-primary-foreground font-semibold"
-          >
-            {isDone ? (
-              <>
-                <Check className="size-3.5 text-white" />
-                <span>Téléchargement lancé</span>
-              </>
-            ) : isExporting ? (
-              <span>Génération en cours...</span>
-            ) : (
-              <>
-                <Download className="size-3.5" />
-                <span>Générer et Télécharger</span>
-              </>
-            )}
-          </Button>
-        </DialogFooter>
+        <p className="text-[10px] text-muted-foreground flex items-center gap-1.5"><ShieldCheck className="size-3.5 text-emerald-500" /> Chaque export est enregistré dans le journal d&apos;audit.</p>
       </DialogContent>
     </Dialog>
   );
