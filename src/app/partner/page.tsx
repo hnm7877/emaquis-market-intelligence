@@ -6,9 +6,9 @@ import { Card, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Building2, Loader2, Plus, ShieldCheck, X } from 'lucide-react';
+import { BellRing, Building2, Loader2, Plus, ShieldCheck, X } from 'lucide-react';
 import { useMarketFiltersQuery, useMarketSessionQuery, marketQueryKeys } from '@/hooks/market/useMarketQueries';
-import { createPartner, fetchPartners, updatePartner, type MarketPartner } from '@/api/marketIntelligence.api';
+import { createPartner, fetchMyAlerts, fetchPartners, updateMyAlerts, updatePartner, type MarketPartner } from '@/api/marketIntelligence.api';
 
 const fmtDate = (d?: string | null) => (d ? new Date(d).toLocaleString('fr-FR') : 'Jamais');
 const partnersKey = [...marketQueryKeys.all, 'partners'] as const;
@@ -49,7 +49,74 @@ function MyAccount() {
           Pour modifier vos marques ou votre abonnement, contactez l&apos;équipe E-Maquis.
         </p>
       </Card>
+      <MyAlerts />
     </div>
+  );
+}
+
+const alertsKey = [...marketQueryKeys.all, 'my-alerts'] as const;
+
+/** Alertes de rupture par e-mail : activation, seuil, et ce qui serait envoyé aujourd'hui */
+function MyAlerts() {
+  const queryClient = useQueryClient();
+  const { data, isLoading, isError } = useQuery({ queryKey: alertsKey, queryFn: fetchMyAlerts, staleTime: 60_000 });
+  const [draft, setDraft] = useState<number | null>(null);
+  const save = useMutation({
+    mutationFn: updateMyAlerts,
+    onSuccess: () => {
+      setDraft(null);
+      void queryClient.invalidateQueries({ queryKey: alertsKey });
+    },
+  });
+  if (isLoading) return <Card className="p-6 flex justify-center"><Loader2 className="size-5 animate-spin text-muted-foreground" /></Card>;
+  if (isError || !data) return <Card className="p-6 text-sm text-red-400">Alertes indisponibles pour le moment.</Card>;
+  const threshold = draft ?? data.alertThreshold;
+
+  return (
+    <Card className="p-6 border border-border/80 bg-card/70 space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <CardTitle className="text-sm font-semibold flex items-center gap-2"><BellRing className="size-4 text-amber-500" /> Alertes de rupture par e-mail</CardTitle>
+        <button
+          role="switch"
+          aria-checked={data.alertsEnabled}
+          disabled={save.isPending}
+          onClick={() => save.mutate({ alertsEnabled: !data.alertsEnabled })}
+          className={`relative h-6 w-11 rounded-full transition-colors ${data.alertsEnabled ? 'bg-emerald-500' : 'bg-muted'}`}
+        >
+          <span className={`absolute left-0 top-0.5 size-5 rounded-full bg-white shadow transition-transform ${data.alertsEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+        </button>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Chaque jour à 7 h 30 et 16 h 30, vous recevez les communes où la disponibilité de vos marques passe sous votre seuil (une même alerte au plus une fois par jour).
+      </p>
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between text-xs">
+          <span>Seuil de disponibilité</span>
+          <strong className="tabular-nums">{threshold} %</strong>
+        </div>
+        <input type="range" min={50} max={99} value={threshold} disabled={!data.alertsEnabled}
+          onChange={(e) => setDraft(Number(e.target.value))}
+          onPointerUp={() => draft != null && draft !== data.alertThreshold && save.mutate({ alertThreshold: draft })}
+          onKeyUp={() => draft != null && draft !== data.alertThreshold && save.mutate({ alertThreshold: draft })}
+          className="w-full accent-orange-500" />
+      </div>
+      <div>
+        <p className="text-xs font-semibold mb-2">En ce moment sous {data.alertThreshold} % ({data.breaches.length})</p>
+        {data.breaches.length === 0 ? (
+          <p className="text-xs text-emerald-400">Vos marques sont bien disponibles partout. Rien à signaler.</p>
+        ) : (
+          <div className="divide-y divide-border/50 text-xs">
+            {data.breaches.map((b) => (
+              <div key={`${b.brand}|${b.zone}`} className="py-1.5 flex items-center justify-between gap-3">
+                <span><strong>{b.brand}</strong> · {b.zone}</span>
+                <span className="tabular-nums"><strong className="text-rose-400">{b.availabilityRate} %</strong> <span className="text-muted-foreground">({b.stockoutPos}/{b.positions})</span></span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      {save.isError && <p className="text-xs text-red-400">{apiMessage(save.error, 'Enregistrement impossible.')}</p>}
+    </Card>
   );
 }
 

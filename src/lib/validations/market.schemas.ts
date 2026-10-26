@@ -598,6 +598,28 @@ export const StockIntelligenceSchema = z.object({
   overstock: z
     .array(z.object({ ...productRef, quantity: z.number(), positions: z.number(), daysOfStock: z.number(), stockValue: z.number() }))
     .default([]),
+  stockoutMap: z
+    .array(z.object({ zone: z.string(), city: z.string().default(''), lat: z.number(), lng: z.number(), positions: z.number(), establishments: z.number(), stockoutPos: z.number(), lowStockPos: z.number().default(0), stockoutRate: z.number() }))
+    .default([]),
+  forecast: z
+    .object({
+      horizonDays: z.number().default(3),
+      positionsAtRisk: z.number().default(0),
+      items: z
+        .array(z.object({ ...productRef, positionsAtRisk: z.number(), minDaysLeft: z.number(), avgDaysLeft: z.number(), revenueAtRiskPerDay: z.number(), unitsPerDay: z.number(), zones: z.array(z.string()).default([]) }))
+        .default([]),
+    })
+    .optional(),
+  categoryCompetition: z
+    .array(
+      z.object({
+        category: z.string(),
+        positions: z.number(),
+        categoryAvailability: z.number(),
+        brands: z.array(z.object({ brand: z.string(), positions: z.number(), stockoutPos: z.number(), availabilityRate: z.number() })),
+      }),
+    )
+    .default([]),
   criticalStockouts: z
     .array(
       z.object({
@@ -621,3 +643,11 @@ export const StockIntelligenceSchema = z.object({
   dataAvailability: z.object({ stockLevels: z.boolean().default(false), message: z.string().optional() }).optional(),
 });
 export type StockIntelligence = z.infer<typeof StockIntelligenceSchema>;
+
+export const MyAlertsSchema = z.object({
+  alertsEnabled: z.boolean(),
+  alertThreshold: z.number().min(50).max(99),
+  brands: z.array(z.string()).default([]),
+  breaches: z.array(z.object({ brand: z.string(), zone: z.string(), positions: z.number(), stockoutPos: z.number(), availabilityRate: z.number() })).default([]),
+});
+export type MyAlerts = z.infer<typeof MyAlertsSchema>;

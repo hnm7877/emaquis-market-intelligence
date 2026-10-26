@@ -4,6 +4,8 @@ import {
   CompetitionSchema,
   TrendsSchema,
   StockIntelligenceSchema,
+  MyAlertsSchema,
+  type MyAlerts,
   CategoriesResponseSchema,
   ProductDetailSchema,
   MarketOverviewResponseSchema,
@@ -315,3 +317,9 @@ export const startSyncBackfill = async (): Promise<MarketSyncStatus['backfill']>
   const response = await axiosInstance.post('/market-intelligence/sync/backfill', {});
   return response.data;
 };
+
+/** Distributeur : ses alertes de rupture par e-mail (validées par Zod) */
+export const fetchMyAlerts = async (): Promise<MyAlerts> => MyAlertsSchema.parse((await axiosInstance.get('/market-intelligence/me/alerts')).data);
+
+export const updateMyAlerts = async (input: { alertsEnabled?: boolean; alertThreshold?: number }) =>
+  (await axiosInstance.patch('/market-intelligence/me/alerts', input)).data as Pick<MyAlerts, 'alertsEnabled' | 'alertThreshold'>;

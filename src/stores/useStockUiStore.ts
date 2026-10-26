@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-export type StockFocus = 'ruptures' | 'lost' | 'low' | 'overstock';
+export type StockFocus = 'forecast' | 'ruptures' | 'lost' | 'low' | 'overstock';
 export type StockTimelineMetric = 'events' | 'units';
 
 interface StockUiState {
@@ -11,10 +11,12 @@ interface StockUiState {
   metric: StockTimelineMetric;
   /** Marque sélectionnée dans le classement (filtre local, aucune requête) */
   brand: string | null;
-  set: (patch: Partial<Pick<StockUiState, 'focus' | 'metric' | 'brand'>>) => void;
+  /** Catégorie du face-à-face concurrents */
+  category: string | null;
+  set: (patch: Partial<Pick<StockUiState, 'focus' | 'metric' | 'brand' | 'category'>>) => void;
 }
 
-const FOCUS: StockFocus[] = ['ruptures', 'lost', 'low', 'overstock'];
+const FOCUS: StockFocus[] = ['forecast', 'ruptures', 'lost', 'low', 'overstock'];
 const METRICS: StockTimelineMetric[] = ['events', 'units'];
 
 /** Affichage de la page Stock Intelligence (mémorisé dans le navigateur, valeurs contrôlées) */
@@ -24,11 +26,13 @@ export const useStockUiStore = create<StockUiState>()(
       focus: 'ruptures',
       metric: 'events',
       brand: null,
+      category: null,
       set: (patch) =>
         set((s) => ({
           focus: patch.focus && FOCUS.includes(patch.focus) ? patch.focus : s.focus,
           metric: patch.metric && METRICS.includes(patch.metric) ? patch.metric : s.metric,
           brand: patch.brand !== undefined ? (patch.brand ? patch.brand.slice(0, 80) : null) : s.brand,
+          category: patch.category !== undefined ? (patch.category ? patch.category.slice(0, 80) : null) : s.category,
         })),
     }),
     {

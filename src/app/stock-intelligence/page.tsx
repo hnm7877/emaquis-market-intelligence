@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo } from 'react';
+import dynamic from 'next/dynamic';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import {
@@ -13,6 +14,9 @@ import {
   PackageX,
   ShieldCheck,
   Snowflake,
+  Hourglass,
+  Swords,
+  Map as MapIcon,
   TrendingDown,
   TrendingUp,
   Truck,
@@ -44,10 +48,20 @@ const HELP = {
   recovery: 'Temps moyen entre un passage à zéro et le réassort suivant, mesuré sur la période.',
   timeline: 'Chaque jour : ruptures constatées (passage à zéro) et réassorts (hausse de stock) dans le réseau.',
   brands: 'Disponibilité par marque (fabricant) : part des positions de la marque qui ont du stock. Cliquez une marque pour filtrer les listes ci-dessous.',
+  map: 'Une bulle par commune, placée au centre de ses établissements. Taille = produits suivis, couleur = part en rupture (vert < 5 %, rouge ≥ 20 %).',
+  forecast: "Produits encore en stock qui seront épuisés d'ici 3 jours au rythme de vente observé dans chaque point de vente.",
+  competition: 'Disponibilité de chaque marque face aux autres marques de la même catégorie. Le trait vertical = moyenne de la catégorie.',
   zones: 'Communes où la part de produits en rupture est la plus élevée (au moins 5 positions suivies).',
 };
 
+// Carte chargée seulement côté navigateur et à la demande (MapLibre est lourd)
+const StockoutMap = dynamic(() => import('@/components/stock/StockoutMap'), {
+  ssr: false,
+  loading: () => <div className="h-full w-full animate-pulse rounded-lg bg-muted/30" />,
+});
+
 const FOCUS_TABS: { key: StockFocus; label: string; icon: React.ElementType }[] = [
+  { key: 'forecast', label: 'À venir (3 j)', icon: Hourglass },
   { key: 'ruptures', label: 'Ruptures en cours', icon: PackageX },
   { key: 'lost', label: 'Ventes manquées', icon: Coins },
   { key: 'low', label: 'Sous le seuil', icon: AlertTriangle },
@@ -231,10 +245,94 @@ function ZoneTension({ data }: { data: StockIntelligence }) {
   );
 }
 
+function StockoutMapCard({ data }: { data: StockIntelligence }) {
+  if (!data.stockoutMap.length) return null;
+  const worst = [...data.stockoutMap].sort((a, b) => b.stockoutRate - a.stockoutRate)[0];
+  return (
+    <Card className="border border-border/80 bg-card/70 backdrop-blur-md p-4 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <MapIcon className="size-4 text-rose-400" /> Carte des ruptures <InfoTip text={HELP.map} title="Carte" />
+        </div>
+        <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+          {[['#10b981', '< 5 %'], ['#f59e0b', '10 %'], ['#f43f5e', '≥ 20 %']].map(([c, l]) => (
+            <span key={l} className="flex items-center gap-1"><span className="size-2.5 rounded-full" style={{ background: c }} />{l}</span>
+          ))}
+        </div>
+      </div>
+      <div className="h-80 rounded-lg overflow-hidden border border-border/60">
+        <StockoutMap zones={data.stockoutMap} />
+      </div>
+      {worst && (
+        <p className="text-xs text-muted-foreground">
+          Commune la plus touchée : <strong className="text-foreground">{worst.zone}</strong> ({worst.city}) — {worst.stockoutRate} % des produits suivis en rupture.
+        </p>
+      )}
+    </Card>
+  );
+}
+
+function CategoryCompetition({ data, ownBrands }: { data: StockIntelligence; ownBrands: Set<string> }) {
+  const { category, set } = useStockUiStore();
+  const cats = data.categoryCompetition;
+  if (!cats.length) return null;
+  // Catégorie par défaut : celle où le distributeur a une marque, sinon la plus grande
+  const current =
+    cats.find((c) => c.category === category) ??
+    cats.find((c) => c.brands.some((b) => ownBrands.has(b.brand.toLowerCase()))) ??
+    cats[0];
+  const leader = [...current.brands].sort((a, b) => b.availabilityRate - a.availabilityRate)[0];
+  return (
+    <Card className="border border-border/80 bg-card/70 backdrop-blur-md p-4 space-y-3">
+      <div className="flex items-center gap-2 text-sm font-semibold">
+        <Swords className="size-4 text-amber-400" /> Face-à-face disponibilité par catégorie <InfoTip text={HELP.competition} title="Concurrence" />
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {cats.map((c) => (
+          <button key={c.category} onClick={() => set({ category: c.category })}
+            className={`relative px-2.5 py-1 rounded-full text-[11px] border ${c.category === current.category ? 'text-foreground border-primary/60' : 'text-muted-foreground border-border hover:text-foreground'}`}>
+            {c.category === current.category && <motion.span layoutId="stock-cat" className="absolute inset-0 rounded-full bg-primary/15" transition={{ duration: 0.25, ease: EASE }} />}
+            <span className="relative">{c.category}</span>
+          </button>
+        ))}
+      </div>
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div key={current.category} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.2, ease: EASE }} className="space-y-2.5">
+          {current.brands.map((b) => {
+            const own = ownBrands.has(b.brand.toLowerCase());
+            const gap = Math.round((b.availabilityRate - current.categoryAvailability) * 10) / 10;
+            return (
+              <div key={b.brand} className={`text-xs rounded-lg px-2 py-1.5 ${own ? 'ring-1 ring-amber-500/50 bg-amber-500/5' : ''}`}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-medium">
+                    {b.brand}
+                    {b.brand === leader.brand && <span className="ml-1.5 text-[10px] text-emerald-400">meilleure dispo</span>}
+                    {own && <span className="ml-1.5 text-[10px] text-amber-500">votre marque</span>}
+                  </span>
+                  <span className="tabular-nums text-muted-foreground">
+                    <strong className="text-foreground">{b.availabilityRate.toFixed(1)} %</strong>{' '}
+                    <span className={gap >= 0 ? 'text-emerald-400' : 'text-rose-400'}>({gap >= 0 ? '+' : ''}{gap} pt)</span>
+                  </span>
+                </div>
+                <div className="relative">
+                  <Bar pct={b.availabilityRate} className={b.availabilityRate >= current.categoryAvailability ? 'bg-emerald-500' : 'bg-rose-500'} />
+                  <span className="absolute -top-0.5 h-2.5 w-0.5 bg-foreground/70" style={{ left: `${current.categoryAvailability}%` }} />
+                </div>
+              </div>
+            );
+          })}
+          <p className="text-[11px] text-muted-foreground">Moyenne {current.category} : {current.categoryAvailability.toFixed(1)} % sur {int(current.positions)} positions.</p>
+        </motion.div>
+      </AnimatePresence>
+    </Card>
+  );
+}
+
 function FocusLists({ data }: { data: StockIntelligence }) {
   const { focus, brand, set } = useStockUiStore();
   const byBrand = <T extends { brand: string }>(rows: T[]) => (brand ? rows.filter((r) => r.brand === brand) : rows);
   const counts: Record<StockFocus, number> = {
+    forecast: byBrand(data.forecast?.items ?? []).length,
     ruptures: byBrand(data.criticalStockouts).length,
     lost: byBrand(data.lostSales).length,
     low: byBrand(data.lowStockAlerts).length,
@@ -243,6 +341,15 @@ function FocusLists({ data }: { data: StockIntelligence }) {
 
   const rows = (): React.ReactNode[] => {
     switch (focus) {
+      case 'forecast':
+        return byBrand(data.forecast?.items ?? []).map((s) => (
+          <Row key={s.productId ?? s.product} title={s.product} sub={`${s.brand} · ${s.zones.join(', ') || 'Non localisé'}`}>
+            <span className="text-right">
+              <strong className="text-amber-400 tabular-nums block">{s.positionsAtRisk} POS · dès {s.minDaysLeft < 1 ? "aujourd'hui" : `${Math.ceil(s.minDaysLeft)} j`}</strong>
+              <span className="text-[10px] text-muted-foreground">{compact(s.revenueAtRiskPerDay)} F / jour menacés</span>
+            </span>
+          </Row>
+        ));
       case 'ruptures':
         return byBrand(data.criticalStockouts).map((s) => (
           <Row key={s.productId ?? s.product} title={s.product} sub={`${s.brand} · ${s.zones.length ? s.zones.join(', ') : 'Non localisé'}`}>
@@ -393,7 +500,25 @@ export default function StockIntelligencePage() {
             </Kpi>
           </div>
 
+          {(data.forecast?.positionsAtRisk ?? 0) > 0 && (
+            <Reveal delay={0.08}>
+              <button onClick={() => useStockUiStore.getState().set({ focus: 'forecast' })}
+                className="w-full text-left p-3 rounded-xl border border-amber-500/40 bg-amber-500/10 flex items-center gap-3 text-xs hover:bg-amber-500/15 transition-colors">
+                <motion.span animate={{ rotate: [0, 180, 180, 360] }} transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}>
+                  <Hourglass className="size-5 text-amber-500" />
+                </motion.span>
+                <span>
+                  <strong className="text-foreground">{int(data.forecast!.positionsAtRisk)} ruptures attendues d&apos;ici {data.forecast!.horizonDays} jours</strong>
+                  <span className="text-muted-foreground"> au rythme de vente actuel — voir la liste « À venir ».</span>
+                  <InfoTip text={HELP.forecast} title="Prévision" />
+                </span>
+              </button>
+            </Reveal>
+          )}
+
           <Reveal delay={0.1}><Timeline data={data} /></Reveal>
+
+          <Reveal delay={0.12}><StockoutMapCard data={data} /></Reveal>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Reveal delay={0.15}><BrandAvailability data={data} ownBrands={ownBrands} /></Reveal>
@@ -401,6 +526,8 @@ export default function StockIntelligencePage() {
           </div>
 
           <Reveal delay={0.2}><FocusLists data={data} /></Reveal>
+
+          <Reveal delay={0.22}><CategoryCompetition data={data} ownBrands={ownBrands} /></Reveal>
         </>
       )}
 
