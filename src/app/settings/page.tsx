@@ -4,16 +4,13 @@ import React, { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Settings, History, RefreshCw, Database, Loader2 } from 'lucide-react';
-import { useAuditLogsQuery, useSyncStatusQuery, useMarketSessionQuery, marketQueryKeys } from '@/hooks/market/useMarketQueries';
+import { Settings, RefreshCw, Database, Loader2 } from 'lucide-react';
+import { useSyncStatusQuery, useMarketSessionQuery, marketQueryKeys } from '@/hooks/market/useMarketQueries';
+import { AuditPanel } from '@/components/settings/AuditPanel';
 import { startSyncBackfill } from '@/api/marketIntelligence.api';
 
 const fmtDate = (d?: string | null) => (d ? new Date(d).toLocaleString('fr-FR') : '—');
 
-const STATUS_STYLES: Record<string, string> = {
-  AUTHORIZED: 'text-emerald-400',
-  RATE_LIMITED: 'text-amber-400',
-};
 
 /** Page réservée aux administrateurs E-Maquis (le serveur refuse aussi ces données aux distributeurs). */
 export default function SettingsPage() {
@@ -31,7 +28,6 @@ export default function SettingsPage() {
 
 function AdminSettings() {
   const queryClient = useQueryClient();
-  const { data: logs, isLoading: logsLoading, isError: logsError } = useAuditLogsQuery();
   const { data: sync, isLoading: syncLoading } = useSyncStatusQuery();
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
@@ -128,40 +124,7 @@ function AdminSettings() {
         {startError && <p className="text-xs text-rose-400">{startError}</p>}
       </Card>
 
-      {/* Journal d'audit */}
-      <Card className="p-6 border border-border/80 bg-card/70 space-y-4">
-        <CardTitle className="text-sm font-semibold flex items-center gap-2">
-          <History className="size-4 text-emerald-500" />
-          Derniers accès aux données de marché
-        </CardTitle>
-        <div className="space-y-2 text-xs">
-          {logsLoading && <p className="text-muted-foreground">Chargement du journal…</p>}
-          {logsError && <p className="text-rose-400">Journal indisponible.</p>}
-          {!logsLoading && !logsError && (logs?.length ?? 0) === 0 && (
-            <p className="text-muted-foreground">Aucun accès journalisé pour le moment.</p>
-          )}
-          {logs?.map((log) => {
-            const filters = Object.entries(log.filters || {})
-              .map(([k, v]) => `${k}=${v}`)
-              .join(' · ');
-            return (
-              <div
-                key={log._id}
-                className="p-2.5 rounded-lg border border-border/50 bg-background/50 flex flex-col sm:flex-row sm:justify-between gap-1"
-              >
-                <span>
-                  {fmtDate(log.created_at)} — <strong>{log.subject}</strong> · {log.action} ·{' '}
-                  <span className="font-mono">{log.endpoint}</span>
-                  {filters && <span className="text-muted-foreground"> ({filters})</span>}
-                </span>
-                <span className={`font-mono ${STATUS_STYLES[log.status] ?? 'text-muted-foreground'}`}>
-                  {log.status}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      </Card>
+      <AuditPanel />
     </div>
   );
 }

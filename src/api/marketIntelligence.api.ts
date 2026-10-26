@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { axiosInstance } from './axiosInstance';
 import {
   BrandsResponseSchema,
@@ -268,10 +269,45 @@ export interface MarketAuditLogEntry {
   created_at: string;
 }
 
-export const fetchAuditLogs = async (limit = 50): Promise<MarketAuditLogEntry[]> => {
-  const response = await axiosInstance.get('/market-intelligence/audit-logs', { params: { limit } });
-  return response.data;
+export interface AuditLogQuery {
+  limit?: number;
+  kind?: string;
+  action?: string;
+  subject?: string;
+  before?: string;
+}
+
+const AuditLogSchema = z.object({
+  _id: z.string(),
+  subject: z.string(),
+  kind: z.string(),
+  action: z.string(),
+  endpoint: z.string(),
+  filters: z.record(z.string(), z.unknown()).default({}),
+  status: z.string().default('AUTHORIZED'),
+  created_at: z.string(),
+});
+
+export const fetchAuditLogs = async (q: number | AuditLogQuery = 50): Promise<MarketAuditLogEntry[]> => {
+  const params = typeof q === 'number' ? { limit: q } : Object.fromEntries(Object.entries(q).filter(([, v]) => v !== undefined && v !== ''));
+  const response = await axiosInstance.get('/market-intelligence/audit-logs', { params });
+  const parsed = z.array(AuditLogSchema).safeParse(response.data);
+  return (parsed.success ? parsed.data : response.data) as MarketAuditLogEntry[];
 };
+
+export const AuditStatsSchema = z.object({
+  days: z.number(),
+  total: z.number(),
+  denied: z.number().default(0),
+  byDay: z.array(z.object({ date: z.string(), count: z.number() })).default([]),
+  byAction: z.array(z.object({ action: z.string(), count: z.number() })).default([]),
+  byKind: z.array(z.object({ kind: z.string(), count: z.number() })).default([]),
+  topSubjects: z.array(z.object({ subject: z.string(), kind: z.string(), count: z.number(), lastAt: z.string().nullable().optional() })).default([]),
+});
+export type AuditStats = z.infer<typeof AuditStatsSchema>;
+
+export const fetchAuditStats = async (days = 7): Promise<AuditStats> =>
+  AuditStatsSchema.parse((await axiosInstance.get('/market-intelligence/audit-stats', { params: { days } })).data);
 
 export interface MarketSyncStatus {
   enabled: boolean;
