@@ -39,6 +39,9 @@ export interface MapEstablishment {
   country?: string;
   volume: number;
   revenue: number;
+  /** Comptes distributeurs : tranches à la place des valeurs exactes */
+  revenueRange?: string;
+  volumeRange?: string;
 }
 
 /** Niveau d'immersion : pays → ville → commune (les maquis du niveau sont affichés) */
@@ -512,7 +515,7 @@ export function GeoWorldMap(props: Props) {
     hover('mi-est-circle', (p) => {
       const e = cb.current.establishments[Number(p.i)];
       if (!e) return null;
-      return tipNode(anonymizeEstablishmentName(e.name, e.id, Number(p.i)), [`${e.zone} · ${e.city}`, `${compact(e.volume)} unités · ${compact(e.revenue)} F`, e.hasDirectGps ? 'Position GPS' : 'Position par adresse']);
+      return tipNode(anonymizeEstablishmentName(e.name, e.id, Number(p.i)), [`${e.zone} · ${e.city}`, e.revenueRange ? `${e.volumeRange ?? ''} unités · ${e.revenueRange}` : `${compact(e.volume)} unités · ${compact(e.revenue)} F`, e.hasDirectGps ? 'Position GPS' : 'Position par adresse']);
     });
 
     map.on('click', 'mi-countries-circle', (e) => {
@@ -538,8 +541,8 @@ export function GeoWorldMap(props: Props) {
         .setDOMContent(
           tipNode(anonymizeEstablishmentName(est.name, est.id, i), [
             `${est.zone} · ${est.city}`,
-            `Volume : ${compact(est.volume)} unités`,
-            `CA : ${compact(est.revenue)} F`,
+            est.volumeRange ? `Volume : ${est.volumeRange} unités` : `Volume : ${compact(est.volume)} unités`,
+            est.revenueRange ? `CA : ${est.revenueRange}` : `CA : ${compact(est.revenue)} F`,
             est.hasDirectGps ? 'Position GPS (légèrement décalée pour l\u2019anonymat)' : 'Position par adresse déclarée',
           ]),
         )

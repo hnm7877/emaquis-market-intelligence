@@ -5,7 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Settings, History, RefreshCw, Database, Loader2 } from 'lucide-react';
-import { useAuditLogsQuery, useSyncStatusQuery, marketQueryKeys } from '@/hooks/market/useMarketQueries';
+import { useAuditLogsQuery, useSyncStatusQuery, useMarketSessionQuery, marketQueryKeys } from '@/hooks/market/useMarketQueries';
 import { startSyncBackfill } from '@/api/marketIntelligence.api';
 
 const fmtDate = (d?: string | null) => (d ? new Date(d).toLocaleString('fr-FR') : '—');
@@ -15,7 +15,21 @@ const STATUS_STYLES: Record<string, string> = {
   RATE_LIMITED: 'text-amber-400',
 };
 
+/** Page réservée aux administrateurs E-Maquis (le serveur refuse aussi ces données aux distributeurs). */
 export default function SettingsPage() {
+  const { isAdmin, isLoading } = useMarketSessionQuery();
+  if (isLoading) return <div className="flex justify-center py-20"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div>;
+  if (!isAdmin) {
+    return (
+      <Card className="p-6 max-w-xl mx-auto text-sm text-muted-foreground">
+        Cette page est réservée à l&apos;équipe E-Maquis.
+      </Card>
+    );
+  }
+  return <AdminSettings />;
+}
+
+function AdminSettings() {
   const queryClient = useQueryClient();
   const { data: logs, isLoading: logsLoading, isError: logsError } = useAuditLogsQuery();
   const { data: sync, isLoading: syncLoading } = useSyncStatusQuery();

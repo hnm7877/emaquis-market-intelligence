@@ -24,7 +24,7 @@ import {
   X,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { useDataCoverageQuery } from '@/hooks/market/useMarketQueries';
+import { useDataCoverageQuery, useMarketSessionQuery } from '@/hooks/market/useMarketQueries';
 import { Button } from '@/components/ui/button';
 
 interface NavItem {
@@ -52,7 +52,7 @@ const mainNavItems: NavItem[] = [
 const intelligenceNavItems: NavItem[] = [
   { label: 'Agent IA DeerFlow', href: '/ai-intelligence', icon: Bot, badge: 'IA' },
   { label: 'Couverture Réseau', href: '/data-coverage', icon: Database },
-  { label: 'Portail Partenaire', href: '/partner', icon: Building2 },
+  { label: 'Distributeurs', href: '/partner', icon: Building2 },
   { label: 'Paramètres & Audit', href: '/settings', icon: Settings },
 ];
 
@@ -65,6 +65,14 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const { data: coverage } = useDataCoverageQuery();
   const totalSales = coverage?.networkOverview?.totalAnalyzedTransactions;
   const pathname = usePathname();
+  const { data: session, isPartner } = useMarketSessionQuery();
+  // Distributeur : tous les menus de consultation, « Mon compte » à la place de la gestion,
+  // aucune page d'administration (synchronisation, audit)
+  const intelligenceItems = isPartner
+    ? intelligenceNavItems
+        .filter((i) => i.href !== '/settings')
+        .map((i) => (i.href === '/partner' ? { ...i, label: 'Mon compte' } : i))
+    : intelligenceNavItems;
 
   const sidebarContent = (
     <div className="flex flex-col h-full bg-card/95 backdrop-blur-xl border-r border-border select-none">
@@ -152,7 +160,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
             <Sparkles className="size-3 text-amber-500 animate-pulse" />
           </div>
           <nav className="space-y-1">
-            {intelligenceNavItems.map((item) => {
+            {intelligenceItems.map((item) => {
               const Icon = item.icon;
               const isActive = pathname === item.href;
               return (
@@ -194,7 +202,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold text-foreground flex items-center gap-1.5">
               <ShieldCheck className="size-3.5 text-emerald-500" />
-              Accès Partenaire Pro
+              {isPartner ? session?.company || 'Abonnement distributeur' : 'Administration E-Maquis'}
             </span>
             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold border border-emerald-500/20">
               Actif
@@ -209,7 +217,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
             onClick={onClose}
             className="mt-1 text-[11px] font-semibold text-primary hover:underline flex items-center justify-between"
           >
-            <span>Gérer l'abonnement</span>
+            <span>{isPartner ? 'Mon compte' : 'Gérer les distributeurs'}</span>
             <ChevronRight className="size-3" />
           </Link>
         </div>

@@ -18,6 +18,7 @@ import {
   fetchSyncStatus,
   fetchProductDetail,
   fetchCompetition,
+  fetchMarketSession,
   buildQueryParams,
 } from '@/api/marketIntelligence.api';
 import { firstLiveValue, isLiveConnected, waitForLive, liveFilters, liveKey, subscribeLive, type LiveResource } from '@/api/liveData';
@@ -253,4 +254,17 @@ export function useSyncStatusQuery() {
     // Rafraîchissement pendant un import initial en cours
     refetchInterval: (query) => (query.state.data?.backfill?.running ? 5000 : false),
   });
+}
+
+/**
+ * 15. Identité de la session : administrateur E-Maquis ou distributeur abonné (lecture seule)
+ */
+export function useMarketSessionQuery() {
+  const query = useQuery({
+    queryKey: [...marketQueryKeys.all, 'session'],
+    queryFn: fetchMarketSession,
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
+  return { ...query, isPartner: query.data?.kind === 'partner', isAdmin: !!query.data && query.data.kind !== 'partner' };
 }

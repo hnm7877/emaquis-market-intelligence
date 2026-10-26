@@ -212,13 +212,38 @@ export const fetchContextualFilters = async (filters?: Partial<FilterState>): Pr
  * 12. Connexion administrateur par code OTP (endpoints existants de l'API E-Maquis)
  */
 export const requestAdminOtp = async (email: string): Promise<void> => {
-  await axiosInstance.post('/user/admin/request-otp', { email });
+  // Même écran pour les administrateurs E-Maquis et les distributeurs abonnés : le code est
+  // demandé aux deux services, celui qui connaît l'adresse l'envoie.
+  const results = await Promise.allSettled([
+    axiosInstance.post('/market-intelligence/auth/request-otp', { email }),
+    axiosInstance.post('/user/admin/request-otp', { email }),
+  ]);
+  if (results.every((r) => r.status === 'rejected')) throw (results[1] as PromiseRejectedResult).reason;
 };
+
+/** Compte distributeur (géré par les administrateurs E-Maquis) */
+export interface MarketPartner {
+  id: string;
+  email: string;
+  company: string;
+  brands: string[];
+  active: boolean;
+  createdAt?: string;
+  lastLoginAt?: string | null;
+}
+
+export const fetchPartners = async (): Promise<MarketPartner[]> => (await axiosInstance.get('/market-intelligence/partners')).data;
+
+export const createPartner = async (input: { email: string; company: string; brands: string[] }): Promise<MarketPartner> =>
+  (await axiosInstance.post('/market-intelligence/partners', input)).data;
+
+export const updatePartner = async (id: string, input: Partial<Pick<MarketPartner, 'company' | 'brands' | 'active'>>): Promise<MarketPartner> =>
+  (await axiosInstance.patch(`/market-intelligence/partners/${encodeURIComponent(id)}`, input)).data;
 
 // Vérification du code : faite par le serveur du site (/api/session), qui pose le cookie de session
 
 /** Identité de la session courante (vérifie que le token donne accès à Market Intelligence) */
-export const fetchMarketSession = async (): Promise<{ kind: string; subject: string }> => {
+export const fetchMarketSession = async (): Promise<{ kind: string; subject: string; company?: string; brands?: string[]; email?: string }> => {
   const response = await axiosInstance.get('/market-intelligence/me');
   return response.data;
 };

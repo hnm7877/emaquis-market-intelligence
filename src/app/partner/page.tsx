@@ -1,51 +1,190 @@
 ﻿'use client';
 
-import React from 'react';
-import { Card } from '@/components/ui/card';
+import React, { useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Card, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Building2 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Building2, Loader2, Plus, ShieldCheck, X } from 'lucide-react';
+import { useMarketFiltersQuery, useMarketSessionQuery, marketQueryKeys } from '@/hooks/market/useMarketQueries';
+import { createPartner, fetchPartners, updatePartner, type MarketPartner } from '@/api/marketIntelligence.api';
 
-export default function PartnerPortalPage() {
+const fmtDate = (d?: string | null) => (d ? new Date(d).toLocaleString('fr-FR') : 'Jamais');
+const partnersKey = [...marketQueryKeys.all, 'partners'] as const;
+
+function apiMessage(e: unknown, fallback: string) {
+  const m = (e as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
+  return typeof m === 'string' ? m : Array.isArray(m) ? String(m[0]) : fallback;
+}
+
+export default function PartnerPage() {
+  const { isPartner, isLoading } = useMarketSessionQuery();
+  if (isLoading) return <div className="flex justify-center py-20"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div>;
+  return isPartner ? <MyAccount /> : <DistributorsAdmin />;
+}
+
+/** Distributeur : son abonnement, en lecture seule */
+function MyAccount() {
+  const { data: session } = useMarketSessionQuery();
+  return (
+    <div className="space-y-6 max-w-3xl mx-auto">
+      <Header title="Mon compte" subtitle="Votre abonnement Market Intelligence E-Maquis." />
+      <Card className="p-6 border border-border/80 bg-card/70 space-y-4">
+        <div className="flex items-center justify-between">
+          <span className="text-lg font-bold">{session?.company || '—'}</span>
+          <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 font-semibold border border-emerald-500/20 flex items-center gap-1">
+            <ShieldCheck className="size-3.5" /> Abonnement actif
+          </span>
+        </div>
+        <p className="text-xs text-muted-foreground">{session?.subject}</p>
+        <div>
+          <p className="text-xs font-semibold mb-2">Vos marques</p>
+          <div className="flex flex-wrap gap-2">
+            {(session?.brands || []).length ? session!.brands!.map((b) => <Badge key={b} variant="outline">{b}</Badge>) : <span className="text-xs text-muted-foreground">Aucune marque associée</span>}
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Toutes les zones et tous les tableaux de bord vous sont ouverts. Sur la carte, les chiffres de chaque établissement sont donnés par tranche.
+          Pour modifier vos marques ou votre abonnement, contactez l&apos;équipe E-Maquis.
+        </p>
+      </Card>
+    </div>
+  );
+}
+
+/** Administrateur E-Maquis : création et gestion des comptes distributeurs */
+function DistributorsAdmin() {
+  const queryClient = useQueryClient();
+  const { data: partners, isLoading, isError } = useQuery({ queryKey: partnersKey, queryFn: fetchPartners });
+  const { data: filters } = useMarketFiltersQuery();
+  const knownBrands = useMemo(() => [...(filters?.brands || [])].sort((a, b) => a.localeCompare(b, 'fr')), [filters]);
+  const [editing, setEditing] = useState<MarketPartner | 'new' | null>(null);
+
+  const toggle = useMutation({
+    mutationFn: (p: MarketPartner) => updatePartner(p.id, { active: !p.active }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: partnersKey }),
+  });
+
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-border/60">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <Building2 className="size-5 text-orange-500" />
-            Portail Partenaire B2B
-          </h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Gestion de vos abonnements Market Intelligence et clés d'API.
-          </p>
+      <div className="flex items-center justify-between gap-4">
+        <Header title="Distributeurs" subtitle="Comptes abonnés : connexion par code reçu par e-mail, consultation seule." />
+        <Button size="sm" onClick={() => setEditing('new')} className="gap-1.5"><Plus className="size-4" /> Nouveau</Button>
+      </div>
+
+      {editing && (
+        <PartnerForm
+          partner={editing === 'new' ? null : editing}
+          knownBrands={knownBrands}
+          onDone={() => {
+            setEditing(null);
+            void queryClient.invalidateQueries({ queryKey: partnersKey });
+          }}
+          onCancel={() => setEditing(null)}
+        />
+      )}
+
+      <Card className="p-0 border border-border/80 bg-card/70 overflow-x-auto">
+        {isLoading ? (
+          <div className="flex justify-center py-10"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div>
+        ) : isError ? (
+          <p className="p-6 text-sm text-red-400">Impossible de charger les distributeurs.</p>
+        ) : !partners?.length ? (
+          <p className="p-6 text-sm text-muted-foreground">Aucun distributeur pour l&apos;instant.</p>
+        ) : (
+          <table className="w-full text-xs">
+            <thead className="text-muted-foreground border-b border-border/60">
+              <tr><th className="text-left p-3">Entreprise</th><th className="text-left p-3">Marques</th><th className="text-left p-3">Dernière connexion</th><th className="text-left p-3">Statut</th><th className="p-3" /></tr>
+            </thead>
+            <tbody>
+              {partners.map((p) => (
+                <tr key={p.id} className="border-b border-border/40 last:border-0">
+                  <td className="p-3"><div className="font-semibold">{p.company}</div><div className="text-muted-foreground">{p.email}</div></td>
+                  <td className="p-3"><div className="flex flex-wrap gap-1">{p.brands.map((b) => <Badge key={b} variant="outline" className="text-[10px]">{b}</Badge>)}</div></td>
+                  <td className="p-3 whitespace-nowrap">{fmtDate(p.lastLoginAt)}</td>
+                  <td className="p-3">{p.active ? <span className="text-emerald-400">Actif</span> : <span className="text-amber-400">Suspendu</span>}</td>
+                  <td className="p-3 whitespace-nowrap text-right space-x-2">
+                    <Button size="sm" variant="outline" onClick={() => setEditing(p)}>Modifier</Button>
+                    <Button size="sm" variant="outline" disabled={toggle.isPending} onClick={() => toggle.mutate(p)}>{p.active ? 'Suspendre' : 'Réactiver'}</Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function PartnerForm({ partner, knownBrands, onDone, onCancel }: { partner: MarketPartner | null; knownBrands: string[]; onDone: () => void; onCancel: () => void }) {
+  const [email, setEmail] = useState(partner?.email || '');
+  const [company, setCompany] = useState(partner?.company || '');
+  const [brands, setBrands] = useState<string[]>(partner?.brands || []);
+  const [custom, setCustom] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const save = useMutation({
+    mutationFn: () => (partner ? updatePartner(partner.id, { company, brands }) : createPartner({ email: email.trim(), company, brands })),
+    onSuccess: onDone,
+    onError: (e) => setError(apiMessage(e, 'Enregistrement impossible.')),
+  });
+
+  const toggleBrand = (b: string) => setBrands((cur) => (cur.includes(b) ? cur.filter((x) => x !== b) : [...cur, b]));
+  const addCustom = () => {
+    const b = custom.trim();
+    if (b && !brands.includes(b)) setBrands([...brands, b]);
+    setCustom('');
+  };
+
+  return (
+    <Card className="p-6 border border-primary/40 bg-card/70 space-y-4">
+      <div className="flex items-center justify-between">
+        <CardTitle className="text-sm font-semibold">{partner ? `Modifier ${partner.company}` : 'Nouveau distributeur'}</CardTitle>
+        <button onClick={onCancel} aria-label="Fermer"><X className="size-4 text-muted-foreground" /></button>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <label className="text-xs space-y-1">
+          <span>E-mail de connexion</span>
+          <Input type="email" value={email} disabled={!!partner} onChange={(e) => setEmail(e.target.value)} placeholder="contact@distributeur.ci" />
+        </label>
+        <label className="text-xs space-y-1">
+          <span>Entreprise</span>
+          <Input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Nom du distributeur" />
+        </label>
+      </div>
+      <div className="space-y-2">
+        <p className="text-xs">Marques suivies (fabricants : Solibra, Brassivoire, Coca-Cola…)</p>
+        <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto">
+          {[...new Set([...knownBrands, ...brands])].map((b) => (
+            <button key={b} type="button" onClick={() => toggleBrand(b)}
+              className={`text-[11px] px-2 py-1 rounded-full border ${brands.includes(b) ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground'}`}>
+              {b}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-2 max-w-sm">
+          <Input value={custom} onChange={(e) => setCustom(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addCustom())} placeholder="Autre marque" />
+          <Button size="sm" variant="outline" onClick={addCustom}>Ajouter</Button>
         </div>
       </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="p-5 border border-border/80 bg-card/70 space-y-3">
-          <Badge variant="outline" className="text-xs">MARKET BASIC</Badge>
-          <span className="text-xl font-bold text-foreground block">Gratuit / Découverte</span>
-          <p className="text-xs text-muted-foreground">Vue d'ensemble macro et rapports mensuels de base.</p>
-          <Button variant="outline" size="sm" className="w-full text-xs">Actuel</Button>
-        </Card>
-
-        <Card className="p-5 border-2 border-primary bg-primary/5 space-y-3 shadow-lg">
-          <div className="flex justify-between items-center">
-            <Badge className="bg-primary text-primary-foreground text-xs">MARKET PRO</Badge>
-            <span className="text-[10px] font-bold text-orange-500 uppercase">Recommandé</span>
-          </div>
-          <span className="text-xl font-bold text-foreground block">Sur Devis / Mensuel</span>
-          <p className="text-xs text-muted-foreground">Analyses géographiques fines, détection de ruptures, exports Excel et alertes temps réel.</p>
-          <Button size="sm" className="w-full text-xs bg-primary text-primary-foreground font-semibold">Souscrire au Plan Pro</Button>
-        </Card>
-
-        <Card className="p-5 border border-border/80 bg-card/70 space-y-3">
-          <Badge variant="outline" className="text-xs">MARKET ENTERPRISE</Badge>
-          <span className="text-xl font-bold text-foreground block">Accès Illimité & API</span>
-          <p className="text-xs text-muted-foreground">Accès API programmatique, agent IA DeerFlow dédié, rapports sur mesure et conseil FMCG.</p>
-          <Button variant="outline" size="sm" className="w-full text-xs">Contacter l'équipe</Button>
-        </Card>
+      {error && <p className="text-xs text-red-400">{error}</p>}
+      <div className="flex justify-end gap-2">
+        <Button size="sm" variant="outline" onClick={onCancel}>Annuler</Button>
+        <Button size="sm" disabled={save.isPending || !company.trim() || (!partner && !email.trim())} onClick={() => { setError(null); save.mutate(); }}>
+          {save.isPending ? <Loader2 className="size-4 animate-spin" /> : partner ? 'Enregistrer' : 'Créer le compte'}
+        </Button>
       </div>
+    </Card>
+  );
+}
+
+function Header({ title, subtitle }: { title: string; subtitle: string }) {
+  return (
+    <div className="pb-2">
+      <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2"><Building2 className="size-5 text-orange-500" />{title}</h1>
+      <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>
     </div>
   );
 }

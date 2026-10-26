@@ -21,14 +21,18 @@ export async function POST(request: Request) {
   }
 
   const api = apiBaseUrl();
-  const verify = await fetch(`${api}/user/admin/verify-otp`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: email.trim(), otp: otp.trim() }),
-    cache: 'no-store',
-  }).catch(() => null);
+  const payload = JSON.stringify({ email: email.trim(), otp: otp.trim() });
+  const verifyAt = (path: string) =>
+    fetch(`${api}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, cache: 'no-store' }).catch(() => null);
+
+  // Distributeur abonné d'abord, puis administrateur E-Maquis
+  let verify = await verifyAt('/market-intelligence/auth/verify-otp');
+  let data = verify ? await verify.json().catch(() => ({})) : {};
+  if (!verify?.ok || typeof data?.access_token !== 'string') {
+    verify = await verifyAt('/user/admin/verify-otp');
+    data = verify ? await verify.json().catch(() => ({})) : {};
+  }
   if (!verify) return Response.json({ message: 'Serveur injoignable, réessayez.' }, { status: 502 });
-  const data = await verify.json().catch(() => ({}));
   if (!verify.ok || typeof data?.access_token !== 'string') {
     return Response.json({ message: data?.message || 'Code invalide ou expiré.' }, { status: verify.ok ? 401 : verify.status });
   }
