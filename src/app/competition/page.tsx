@@ -66,7 +66,7 @@ export default function CompetitionPage() {
     window.history.replaceState(null, '', url);
   }, [ids]);
 
-  const { data, isLoading } = useCompetitionQuery(ids);
+  const { data, isLoading, isError } = useCompetitionQuery(ids);
   const c = data as Competition | undefined;
   const prods = useMemo(() => ids.map((id) => c?.products.find((p) => p.id === id)).filter(Boolean) as P[], [c, ids]);
   const colorOf = (id: string) => COLORS[Math.max(0, ids.indexOf(id))];
@@ -150,6 +150,8 @@ export default function CompetitionPage() {
         <Empty>Choisissez au moins deux produits à comparer.</Empty>
       ) : isLoading && !c ? (
         <div className="h-96 animate-pulse rounded-xl bg-muted/40" />
+      ) : isError || c?.error ? (
+        <Empty>{c?.error || 'Comparaison momentanément indisponible. Elle se relancera automatiquement à la prochaine mise à jour.'}</Empty>
       ) : !prods.length ? (
         <Empty>Aucune vente pour ces produits sur la période et les filtres choisis.</Empty>
       ) : (
