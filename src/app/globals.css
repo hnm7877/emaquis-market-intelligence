@@ -186,3 +186,15 @@
 .mi-cursor-crosshair .maplibregl-canvas { cursor: crosshair; }
 .maplibregl-ctrl-attrib.maplibregl-compact { background: rgba(2,6,23,0.7); }
 .maplibregl-ctrl-attrib a { color: #94a3b8; }
+
+/* Listes déroulantes natives : options lisibles dans les deux thèmes (fond et texte du thème) */
+.dark { color-scheme: dark; }
+select option,
+select optgroup {
+  background-color: var(--popover);
+  color: var(--popover-foreground);
+}
+select option:checked {
+  background-color: #f59e0b;
+  color: #0b1220;
+}
