@@ -4,6 +4,7 @@ import {
   CompetitionSchema,
   TrendsSchema,
   StockIntelligenceSchema,
+  PromotionsSchema,
   MyAlertsSchema,
   type MyAlerts,
   CategoriesResponseSchema,
@@ -174,7 +175,8 @@ export const fetchStockIntelligenceData = async (filters?: Partial<FilterState>)
 export const fetchPromotionsData = async (filters?: Partial<FilterState>) => {
   const params = buildQueryParams(filters);
   const response = await axiosInstance.get('/market-intelligence/promotions', { params });
-  return response.data;
+  const parsed = PromotionsSchema.safeParse(response.data);
+  return parsed.success ? parsed.data : response.data;
 };
 
 /**

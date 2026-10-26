@@ -651,3 +651,70 @@ export const MyAlertsSchema = z.object({
   breaches: z.array(z.object({ brand: z.string(), zone: z.string(), positions: z.number(), stockoutPos: z.number(), availabilityRate: z.number() })).default([]),
 });
 export type MyAlerts = z.infer<typeof MyAlertsSchema>;
+
+// ==========================================
+// PROMOTIONS & UPLIFT
+// ==========================================
+export const PromotionItemSchema = z.object({
+  id: z.string(),
+  title: z.string().default('Produit'),
+  product: z.string().default('Produit'),
+  brand: z.string().default('Non spécifié'),
+  zone: z.string().default(''),
+  establishmentType: z.string().nullable().optional(),
+  status: z.string().default('ENDED'),
+  startDate: z.string().nullable().optional(),
+  endDate: z.string().nullable().optional(),
+  startApproximate: z.boolean().default(false),
+  period: z.string().default(''),
+  durationDays: z.number().default(0),
+  promoPrice: z.number().default(0),
+  regularPrice: z.number().default(0),
+  discountPercent: nnum,
+  beforeSalesDaily: z.number().default(0),
+  duringSalesDaily: z.number().default(0),
+  afterSalesDaily: nnum,
+  upliftPercent: nnum,
+  retentionPercent: nnum,
+  referenceDays: z.number().default(0),
+});
+export type PromotionItem = z.infer<typeof PromotionItemSchema>;
+
+const promoGroup = z.object({
+  name: z.string(),
+  promotions: z.number(),
+  active: z.number().default(0),
+  measured: z.number().default(0),
+  averageUplift: nnum,
+  averageDiscount: nnum,
+  extraUnits: z.number().default(0),
+});
+export const PromotionsSchema = z.object({
+  kpis: z
+    .object({
+      activeNow: z.number().default(0),
+      ended: z.number().default(0),
+      measured: z.number().default(0),
+      averageUplift: nnum,
+      medianUplift: nnum,
+      winRate: nnum,
+      averageDiscount: nnum,
+      averageRetention: nnum,
+      extraUnits: z.number().default(0),
+      extraRevenue: z.number().default(0),
+      discountCost: z.number().default(0),
+      returnOnDiscount: nnum,
+    })
+    .optional(),
+  discountEffect: z.array(z.object({ key: z.string(), label: z.string(), promotions: z.number(), averageUplift: nnum, averageRetention: nnum })).default([]),
+  byBrand: z.array(promoGroup).default([]),
+  byZone: z.array(promoGroup).default([]),
+  timeline: z.array(z.object({ week: z.string(), started: z.number(), active: z.number() })).default([]),
+  totalPeriods: z.number().default(0),
+  averageUpliftPercent: nnum,
+  measuredPromotions: z.number().default(0),
+  promotions: z.array(PromotionItemSchema).default([]),
+  methodology: z.string().optional(),
+  dataAvailability: z.object({ available: z.boolean().default(false), syncStartedAt: z.string().nullable().optional(), message: z.string().optional() }).optional(),
+});
+export type Promotions = z.infer<typeof PromotionsSchema>;
