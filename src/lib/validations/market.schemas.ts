@@ -324,10 +324,22 @@ export const CategoryItemSchema = z.object({
   activePosCount: z.number().optional(),
   createdAt: z.any().optional(),
   updatedAt: z.any().optional(),
+  avgSalePrice: z.number().nullable().optional(),
+  marginRate: z.number().nullable().optional(),
+  marginCoverage: z.number().optional(),
+  productsAtRisk: z.number().optional(),
+  activeProducts: z.number().optional(),
+  risingProducts: z.number().optional(),
+  fallingProducts: z.number().optional(),
+  leaderShare: z.number().nullable().optional(),
+  topBrands: z.array(z.object({ name: z.string(), volume: z.number(), share: z.number() })).default([]),
+  topProducts: z.array(z.object({ id: z.string(), name: z.string(), brand: z.string(), volume: z.number(), growth: z.number().nullable() })).default([]),
 });
 
 export const CategoriesResponseSchema = z.object({
   totalCategories: z.number().default(0),
+  totalActivePos: z.number().optional(),
+  comparisonLabel: z.string().optional(),
   categories: z.array(CategoryItemSchema).default([]),
 });
 

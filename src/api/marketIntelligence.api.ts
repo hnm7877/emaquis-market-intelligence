@@ -1,6 +1,7 @@
 import { axiosInstance } from './axiosInstance';
 import {
   BrandsResponseSchema,
+  CategoriesResponseSchema,
   ProductDetailSchema,
   MarketOverviewResponseSchema,
   GeographyResponseSchema,
@@ -138,7 +139,8 @@ export const fetchBrandsData = async (filters?: Partial<FilterState>) => {
 export const fetchCategoriesData = async (filters?: Partial<FilterState>) => {
   const params = buildQueryParams(filters);
   const response = await axiosInstance.get('/market-intelligence/categories', { params });
-  return response.data;
+  const parsed = CategoriesResponseSchema.safeParse(response.data);
+  return parsed.success ? parsed.data : response.data;
 };
 
 /**
