@@ -215,10 +215,7 @@ export const requestAdminOtp = async (email: string): Promise<void> => {
   await axiosInstance.post('/user/admin/request-otp', { email });
 };
 
-export const verifyAdminOtp = async (email: string, otp: string): Promise<{ access_token: string }> => {
-  const response = await axiosInstance.post('/user/admin/verify-otp', { email, otp });
-  return response.data;
-};
+// Vérification du code : faite par le serveur du site (/api/session), qui pose le cookie de session
 
 /** Identité de la session courante (vérifie que le token donne accès à Market Intelligence) */
 export const fetchMarketSession = async (): Promise<{ kind: string; subject: string }> => {

@@ -6,8 +6,8 @@ import { Lock, Mail, KeyRound, Loader2, ShieldCheck } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { fetchMarketSession, requestAdminOtp, verifyAdminOtp } from '@/api/marketIntelligence.api';
-import { clearAuthToken, setAuthToken } from '@/lib/auth';
+import { requestAdminOtp } from '@/api/marketIntelligence.api';
+import { loginWithOtp } from '@/lib/auth';
 
 const REASONS: Record<string, string> = {
   expired: 'Votre session a expiré. Reconnectez-vous.',
@@ -16,7 +16,9 @@ const REASONS: Record<string, string> = {
 
 const errorMessage = (err: unknown, fallback: string) => {
   const message = (err as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
-  return Array.isArray(message) ? message.join(', ') : message || fallback;
+  if (Array.isArray(message)) return message.join(', ');
+  // Erreur de la connexion par cookie (/api/session) : message déjà rédigé pour l'utilisateur
+  return message || (err instanceof Error && err.message ? err.message : fallback);
 };
 
 function LoginForm() {
@@ -51,13 +53,10 @@ function LoginForm() {
     setLoading(true);
     setError(null);
     try {
-      const { access_token } = await verifyAdminOtp(email.trim(), otp.trim());
-      setAuthToken(access_token);
-      // Vérifie que ce token ouvre bien l'accès Market Intelligence
-      await fetchMarketSession();
+      // Le serveur du site vérifie le code et l'accès Market Intelligence, puis pose le cookie
+      await loginWithOtp(email.trim(), otp.trim());
       router.replace('/');
     } catch (err) {
-      clearAuthToken();
       setError(errorMessage(err, 'Code invalide ou expiré.'));
     } finally {
       setLoading(false);

@@ -1,45 +1,56 @@
 /**
  * Session Market Intelligence côté navigateur.
- * Le token (JWT admin E-Maquis) est obtenu via la connexion OTP et envoyé à chaque requête.
+ * Le jeton vit dans un cookie httpOnly posé par le serveur du site (/api/session) : aucun script,
+ * y compris une éventuelle injection, ne peut le lire. Le navigateur ne connaît que l'état
+ * « connecté / expiré ».
  */
-const TOKEN_KEY = 'mi_access_token';
-// Anciennes clés : plus lues (un jeton d'une autre application du même domaine ne doit jamais
-// servir ici), seulement effacées à la déconnexion.
-const LEGACY_KEYS = ['access_token', 'token'];
 
-export function getAuthToken(): string | null {
-  if (typeof window === 'undefined') return null;
+// Anciennes clés du jeton en localStorage : effacées (versions précédentes du site)
+const LEGACY_KEYS = ['mi_access_token', 'access_token', 'token'];
+
+export function purgeLegacyTokens() {
   try {
-    return localStorage.getItem(TOKEN_KEY) || null;
+    LEGACY_KEYS.forEach((k) => localStorage.removeItem(k));
   } catch {
-    return null;
+    /* stockage indisponible : rien à effacer */
   }
 }
 
-export function setAuthToken(token: string) {
+export type SessionState = { authenticated: boolean; exp: number | null };
+
+/** État de la session (le jeton lui-même n'est jamais renvoyé). */
+export async function fetchSessionState(): Promise<SessionState> {
   try {
-    localStorage.setItem(TOKEN_KEY, token);
+    const r = await fetch('/api/session', { cache: 'no-store', credentials: 'same-origin' });
+    if (!r.ok) return { authenticated: false, exp: null };
+    return (await r.json()) as SessionState;
   } catch {
-    /* stockage indisponible : la session ne survivra pas au rechargement */
+    return { authenticated: false, exp: null };
   }
 }
 
-export function clearAuthToken() {
-  try {
-    [TOKEN_KEY, ...LEGACY_KEYS].forEach((k) => localStorage.removeItem(k));
-  } catch {
-    /* noop */
+/** Connexion : le serveur du site vérifie le code et pose le cookie de session. */
+export async function loginWithOtp(email: string, otp: string): Promise<void> {
+  const r = await fetch('/api/session', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, otp }),
+  });
+  if (!r.ok) {
+    const data = await r.json().catch(() => ({}));
+    throw new Error(typeof data?.message === 'string' ? data.message : 'Code invalide ou expiré.');
   }
+  purgeLegacyTokens();
 }
 
-/** Expiration lue dans le JWT (sans vérification : la vérification est faite par l'API) */
-export function isTokenExpired(token: string | null): boolean {
-  if (!token) return true;
+/** Déconnexion : le cookie est supprimé par le serveur du site. */
+export async function logoutSession(): Promise<void> {
+  purgeLegacyTokens();
   try {
-    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-    return typeof payload.exp === 'number' && payload.exp * 1000 <= Date.now();
+    await fetch('/api/session', { method: 'DELETE', credentials: 'same-origin' });
   } catch {
-    return true;
+    /* hors ligne : le cookie expirera de lui-même */
   }
 }
 
@@ -48,8 +59,9 @@ export const LOGIN_PATH = '/login';
 /** Redirige vers la page de connexion (session absente, expirée ou refusée) */
 export function redirectToLogin(reason?: string) {
   if (typeof window === 'undefined') return;
-  clearAuthToken();
-  if (window.location.pathname === LOGIN_PATH) return;
-  const url = reason ? `${LOGIN_PATH}?reason=${encodeURIComponent(reason)}` : LOGIN_PATH;
-  window.location.assign(url);
+  void logoutSession().finally(() => {
+    if (window.location.pathname === LOGIN_PATH) return;
+    const url = reason ? `${LOGIN_PATH}?reason=${encodeURIComponent(reason)}` : LOGIN_PATH;
+    window.location.assign(url);
+  });
 }

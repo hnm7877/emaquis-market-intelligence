@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { getAuthToken, redirectToLogin } from '@/lib/auth';
+import { redirectToLogin } from '@/lib/auth';
 
 // Toujours le domaine du site : /api-proxy est relayé vers l'API par le serveur Next
 // (next.config.ts) — l'adresse de l'API n'apparaît ni dans le code ni dans les requêtes.
@@ -13,13 +13,9 @@ export const axiosInstance = axios.create({
   },
 });
 
-// Intercepteur pour injecter automatiquement le token JWT si disponible
+// Le jeton est ajouté par le serveur du site (cookie httpOnly) : rien à injecter ici
 axiosInstance.interceptors.request.use(
   (config) => {
-    const token = getAuthToken();
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
     if (process.env.NODE_ENV !== 'production') {
       console.log(`[API REQUEST] ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`, config.params || '');
     }

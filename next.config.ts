@@ -48,7 +48,7 @@ const nextConfig: NextConfig = {
       // Cartes du code source : jamais servies
       beforeFiles: [{ source: "/:path(.*\\.map)", destination: "/__introuvable" }],
       afterFiles: [
-        { source: "/api-proxy/:path*", destination: `${apiUrl}/:path*` },
+        // /api-proxy : route du serveur Next (src/app/api-proxy) qui ajoute le jeton du cookie
         // Temps réel (socket.io) relayé par le serveur Next
         { source: "/rt", destination: `${realtimeOrigin}/socket.io/` },
       ],

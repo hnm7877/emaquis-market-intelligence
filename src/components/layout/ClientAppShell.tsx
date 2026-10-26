@@ -6,7 +6,7 @@ import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { AiChatDrawer } from '@/components/common/AiChatDrawer';
 import { ExportModal } from '@/components/common/ExportModal';
-import { getAuthToken, isTokenExpired, LOGIN_PATH, clearAuthToken } from '@/lib/auth';
+import { fetchSessionState, LOGIN_PATH, purgeLegacyTokens } from '@/lib/auth';
 import { useMarketLiveSocket } from '@/hooks/market/useMarketQueries';
 
 export function ClientAppShell({ children }: { children: React.ReactNode }) {
@@ -24,14 +24,19 @@ export function ClientAppShell({ children }: { children: React.ReactNode }) {
   // Toutes les pages (hors connexion) exigent une session valide
   useEffect(() => {
     if (isLoginPage) return;
-    const token = getAuthToken();
-    if (isTokenExpired(token)) {
-      clearAuthToken();
-      router.replace(token ? `${LOGIN_PATH}?reason=expired` : LOGIN_PATH);
-      return;
-    }
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- lecture de localStorage, disponible seulement côté client
-    setAuthChecked(true);
+    purgeLegacyTokens();
+    let alive = true;
+    fetchSessionState().then((s) => {
+      if (!alive) return;
+      if (!s.authenticated) {
+        router.replace(`${LOGIN_PATH}?reason=expired`);
+        return;
+      }
+      setAuthChecked(true);
+    });
+    return () => {
+      alive = false;
+    };
   }, [isLoginPage, router]);
 
   if (isLoginPage) return <>{children}</>;

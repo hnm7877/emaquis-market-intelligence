@@ -1,5 +1,4 @@
 import { io, Socket } from 'socket.io-client';
-import { getAuthToken } from '@/lib/auth';
 
 let socket: Socket | null = null;
 
@@ -15,8 +14,8 @@ export const getMarketSocket = (): Socket => {
       autoConnect: true,
       reconnectionAttempts: 10,
       reconnectionDelay: 2000,
-      // Token relu à chaque (re)connexion : le serveur refuse les clients non authentifiés
-      auth: (cb) => cb({ token: getAuthToken() }),
+      // Authentification par le cookie de session httpOnly, envoyé avec la connexion
+      withCredentials: true,
     });
 
     socket.on('unauthorized', () => {
