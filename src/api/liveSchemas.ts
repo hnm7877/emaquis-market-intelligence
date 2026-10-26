@@ -1,5 +1,6 @@
 import type { ZodType } from 'zod';
 import {
+  BrandsResponseSchema,
   GeographyResponseSchema,
   MarketOverviewResponseSchema,
   NetworkCoverageSchema,
@@ -18,6 +19,7 @@ const SCHEMAS: Partial<Record<LiveResource, ZodType>> = {
   products: ProductsResponseSchema,
   coverage: NetworkCoverageSchema,
   productDetail: ProductDetailSchema,
+  brands: BrandsResponseSchema,
 };
 
 export function validateLive<T>(resource: LiveResource, data: unknown): T {

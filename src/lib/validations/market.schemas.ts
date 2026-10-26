@@ -396,3 +396,36 @@ export const ProductDetailSchema = z.object({
     .optional(),
 });
 export type ProductDetail = z.infer<typeof ProductDetailSchema>;
+
+/** Marque (GET /market-intelligence/brands ou WebSocket « brands ») */
+export const BrandRowSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    key: z.string().optional(),
+    logo: z.string().nullable().optional(),
+    volume: z.number().default(0),
+    revenue: z.number().default(0),
+    marketShare: z.number().default(0),
+    growth: z.number().nullable().default(null),
+    penetrationRate: z.number().default(0),
+    activePosCount: z.number().default(0),
+    totalPosCount: z.number().default(0),
+    fiefTerritorial: z.string().nullable().optional(),
+    mainZones: z.array(z.string()).default([]),
+    topCategory: z.string().nullable().optional(),
+    productCount: z.number().default(0),
+    topProducts: z.array(z.object({ name: z.string(), volume: z.number() })).default([]),
+    avgSalePrice: z.number().nullable().optional(),
+    marginRate: z.number().nullable().optional(),
+    marginCoverage: z.number().optional(),
+    productsAtRisk: z.number().optional(),
+    stockExposedShare: z.number().nullable().optional(),
+    activeProducts: z.number().optional(),
+    risingProducts: z.number().optional(),
+    fallingProducts: z.number().optional(),
+    localShares: z.array(z.object({ commune: z.string(), volume: z.number(), localShare: z.number() })).default([]),
+  })
+  .passthrough();
+export type BrandRow = z.infer<typeof BrandRowSchema>;
+export const BrandsResponseSchema = z.object({ brands: z.array(BrandRowSchema).default([]), comparisonLabel: z.string().optional() });

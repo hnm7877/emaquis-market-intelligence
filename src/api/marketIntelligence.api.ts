@@ -1,5 +1,6 @@
 import { axiosInstance } from './axiosInstance';
 import {
+  BrandsResponseSchema,
   ProductDetailSchema,
   MarketOverviewResponseSchema,
   GeographyResponseSchema,
@@ -127,7 +128,8 @@ export const fetchProductsData = async (filters?: Partial<FilterState>): Promise
 export const fetchBrandsData = async (filters?: Partial<FilterState>) => {
   const params = buildQueryParams(filters);
   const response = await axiosInstance.get('/market-intelligence/brands', { params });
-  return response.data;
+  const parsed = BrandsResponseSchema.safeParse(response.data);
+  return parsed.success ? parsed.data : response.data;
 };
 
 /**

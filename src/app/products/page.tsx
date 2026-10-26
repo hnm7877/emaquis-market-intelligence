@@ -26,6 +26,8 @@ import { useProductsUiStore, type ProductSegment, type ProductSort } from '@/sto
 import type { ProductItem } from '@/lib/validations/market.schemas';
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber';
 import { InfoTip } from '@/components/ui/InfoTip';
+import { FilterBar } from '@/components/layout/FilterBar';
+import { useMarketFilterStore } from '@/stores/useMarketFilterStore';
 import { PriceLadder } from '@/components/products/PriceLadder';
 import { ProductDrawer, RISK_META } from '@/components/products/ProductDrawer';
 import { resolveProductImage } from '@/utils/productImages';
@@ -117,6 +119,7 @@ const sortValue = (p: ProductItem, key: ProductSort): number | string => {
  * Recherche, segments, tri et pagination s'appliquent dans le navigateur : aucune requête.
  */
 export default function ProductsPage() {
+  const { filters, setFilter, resetFilters } = useMarketFilterStore();
   const ui = useProductsUiStore();
   useEffect(() => {
     void useProductsUiStore.persist.rehydrate();
@@ -317,6 +320,9 @@ export default function ProductsPage() {
           </button>
         </div>
       </motion.header>
+
+      {/* Filtres globaux (période, pays, ville, statut…) : appliqués par le serveur, données poussées par WebSocket */}
+      <FilterBar filters={filters} onFilterChange={setFilter} onReset={resetFilters} />
 
       {/* Indicateurs */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
