@@ -26,7 +26,7 @@ import {
   useMarketOverview,
   useProductsQuery,
 } from '@/hooks/market/useMarketQueries';
-import { answerMarketQuestion, SUGGESTED_QUESTIONS } from '@/lib/marketAnalyst';
+import { answerMarketQuestion, buildSampleMetadata, SUGGESTED_QUESTIONS } from '@/lib/marketAnalyst';
 import { VOLUME_UNIT_OPTIONS } from '@/utils/volumeUnit';
 import { useDeerFlow } from '@/hooks/useDeerFlow';
 
@@ -144,12 +144,8 @@ export function AiChatDrawer({ open, onClose }: AiChatDrawerProps) {
           content: assistantReply,
           timestamp: "À l'instant",
           toolUsed: activeMode === 'research' ? 'deerflow_deep_research' : 'deerflow_agent',
-          sampleMetadata: {
-            coverage: `${contextualData?.cities?.length || 1} zones observées`,
-            transactions: contextualData?.totalTransactions || 0,
-            posCount: contextualData?.totalTransactions ? Math.max(1, Math.round(contextualData.totalTransactions / 50)) : 10,
-            period: filters.dateRange || '30 derniers jours',
-          },
+          // Échantillon réel de la vue d'ensemble (aucune valeur par défaut inventée)
+          sampleMetadata: buildSampleMetadata(overviewData),
         },
       ]);
     } catch {
@@ -169,6 +165,7 @@ export function AiChatDrawer({ open, onClose }: AiChatDrawerProps) {
           sender: 'agent',
           timestamp: "À l'instant",
           ...fallbackAnswer,
+          content: `⚠ Agent IA indisponible : réponse calculée sans IA, à partir des chiffres affichés.\n\n${fallbackAnswer.content}`,
         },
       ]);
     } finally {

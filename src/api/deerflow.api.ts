@@ -1,4 +1,7 @@
+import { z } from 'zod';
 import { axiosInstance } from './axiosInstance';
+import { buildQueryParams } from './marketIntelligence.api';
+import { useMarketFilterStore } from '@/stores/useMarketFilterStore';
 
 export interface DeerFlowThread {
   _id?: string;
@@ -39,101 +42,82 @@ export interface DeerFlowConversation {
   updatedAt: string;
 }
 
-export interface ChatResponse {
-  success: boolean;
-  threadId: string;
-  reply: string;
-}
 
-export interface ResearchResponse {
-  success: boolean;
-  threadId: string;
-  reply: string;
-  taskId?: string | null;
-}
+/** Réponse de l'agent : texte + faits réels qui lui ont été fournis (contrôlée par Zod) */
+const AskResponseSchema = z.object({
+  success: z.boolean().default(true),
+  threadId: z.string(),
+  reply: z.string().min(1),
+  facts: z.string().default(''),
+  taskId: z.string().nullable().optional(),
+});
+export type ChatResponse = z.infer<typeof AskResponseSchema>;
+export type ResearchResponse = ChatResponse;
 
 export interface DeerFlowStatus {
   threadId: string;
-  status: 'idle' | 'running' | 'completed' | 'error';
+  status: 'idle' | 'running' | 'completed' | 'error' | 'unavailable';
   progress?: number;
   currentStep?: string;
   steps?: string[];
 }
 
+const SAFE_ID = /^[A-Za-z0-9_-]{1,80}$/;
+const threadPath = (id: string) => {
+  if (!SAFE_ID.test(id)) throw new Error('Conversation invalide');
+  return `/market-intelligence/ai/threads/${id}`;
+};
+
+/** Filtres actifs du tableau de bord : l'agent répond sur le même périmètre que les pages */
+const currentFilters = () => buildQueryParams(useMarketFilterStore.getState().filters);
+
+async function ask(message: string, mode: 'chat' | 'research', threadId?: string): Promise<ChatResponse> {
+  const response = await axiosInstance.post('/market-intelligence/ai/ask', {
+    message,
+    mode,
+    threadId: threadId && SAFE_ID.test(threadId) ? threadId : undefined,
+    filters: currentFilters(),
+  });
+  return AskResponseSchema.parse(response.data);
+}
+
+/** Message d'erreur lisible (agent indisponible, quota atteint…) */
+export function aiErrorMessage(e: unknown): string {
+  const status = (e as { response?: { status?: number; data?: { message?: unknown } } })?.response?.status;
+  const msg = (e as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
+  if (status === 429) return 'Trop de questions en peu de temps : patientez quelques minutes.';
+  if (typeof msg === 'string') return msg;
+  return "L'agent IA est indisponible pour le moment.";
+}
+
 export const deerflowApi = {
-  /**
-   * Créer un nouveau thread de conversation
-   */
-  async createThread(title?: string): Promise<{ success: boolean; threadId: string; title: string }> {
-    const response = await axiosInstance.post('/ai/deerflow/threads', { title });
-    return response.data;
-  },
-
-  /**
-   * Lister tous les threads de l'utilisateur
-   */
   async listThreads(): Promise<DeerFlowThread[]> {
-    const response = await axiosInstance.get('/ai/deerflow/threads');
-    return response.data;
+    const response = await axiosInstance.get('/market-intelligence/ai/threads');
+    return Array.isArray(response.data) ? response.data : [];
   },
 
-  /**
-   * Récupérer un thread avec son historique de messages
-   */
   async getThread(threadId: string): Promise<DeerFlowConversation> {
-    const response = await axiosInstance.get(`/ai/deerflow/threads/${threadId}`);
+    const response = await axiosInstance.get(threadPath(threadId));
     return response.data;
   },
 
-  /**
-   * Archiver/supprimer un thread
-   */
   async deleteThread(threadId: string): Promise<{ success: boolean }> {
-    const response = await axiosInstance.delete(`/ai/deerflow/threads/${threadId}`);
+    const response = await axiosInstance.delete(threadPath(threadId));
     return response.data;
   },
 
-  /**
-   * Envoyer un message dans le thread (mode discussion rapide)
-   */
-  async chat(message: string, threadId?: string, context?: string): Promise<ChatResponse> {
-    const response = await axiosInstance.post('/ai/deerflow/chat', {
-      message,
-      threadId,
-      context,
-    });
-    return response.data;
+  /** Réponse rapide (le serveur ajoute les chiffres réels du périmètre filtré) */
+  chat(message: string, threadId?: string): Promise<ChatResponse> {
+    return ask(message, 'chat', threadId);
   },
 
-  /**
-   * Lancer une analyse ou recherche approfondie (mode Deep Research)
-   */
-  async research(
-    query: string,
-    threadId?: string,
-    depth: 'standard' | 'deep' | 'executive' = 'executive'
-  ): Promise<ResearchResponse> {
-    const response = await axiosInstance.post('/ai/deerflow/research', {
-      query,
-      threadId,
-      depth,
-    });
-    return response.data;
+  /** Analyse approfondie */
+  research(query: string, threadId?: string): Promise<ResearchResponse> {
+    return ask(query, 'research', threadId);
   },
 
-  /**
-   * Récupérer le statut d'avancement d'un thread
-   */
-  async getStatus(threadId: string): Promise<DeerFlowStatus> {
-    const response = await axiosInstance.get(`/ai/deerflow/status/${threadId}`);
-    return response.data;
-  },
-
-  /**
-   * Vérifier l'état de la Gateway DeerFlow
-   */
-  async healthCheck(): Promise<{ status: string; gateway?: any; error?: string }> {
-    const response = await axiosInstance.get('/ai/deerflow/health');
+  async healthCheck(): Promise<{ status: string; error?: string }> {
+    const response = await axiosInstance.get('/market-intelligence/ai/health');
     return response.data;
   },
 };

@@ -188,10 +188,9 @@ export default function ReportsPage() {
       const facts = report
         .map((s) => `## ${s.title}\n${s.kpis.map((k) => `- ${k.label} : ${k.value}`).join('\n')}\n${s.highlights.map((h) => `- ${h}`).join('\n')}`)
         .join('\n\n');
-      const res = await deerflowApi.research(
+      // Le serveur ajoute aussi les chiffres réels du périmètre ; la consigne interdit d'inventer
+      const res = await deerflowApi.chat(
         `Rédige en français un commentaire exécutif de 6 à 10 lignes pour ${recipient || 'un distributeur de boissons'}, à partir UNIQUEMENT des chiffres ci-dessous (n'invente aucun chiffre). Termine par 3 recommandations concrètes.\n\n${facts}`,
-        undefined,
-        'executive',
       );
       if (!res?.reply) throw new Error('Réponse vide');
       return res.reply as string;
