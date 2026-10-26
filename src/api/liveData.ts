@@ -18,10 +18,11 @@ export type LiveResource =
   | 'coverage'
   | 'promotions'
   | 'filters'
-  | 'productDetail';
+  | 'productDetail'
+  | 'competition';
 
 /** Même ordre de clés que le serveur (et que les requêtes HTTP) : même clé, même cache */
-const FILTER_KEYS = ['country', 'dateRange', 'startDate', 'endDate', 'city', 'commune', 'category', 'brand', 'posType', 'status', 'product'] as const;
+const FILTER_KEYS = ['country', 'dateRange', 'startDate', 'endDate', 'city', 'commune', 'category', 'brand', 'posType', 'status', 'product', 'compare'] as const;
 
 export function liveFilters(params: Record<string, string> = {}): Record<string, string> {
   const out: Record<string, string> = {};

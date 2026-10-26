@@ -17,6 +17,7 @@ import {
   fetchAuditLogs,
   fetchSyncStatus,
   fetchProductDetail,
+  fetchCompetition,
   buildQueryParams,
 } from '@/api/marketIntelligence.api';
 import { firstLiveValue, isLiveConnected, waitForLive, liveFilters, liveKey, subscribeLive, type LiveResource } from '@/api/liveData';
@@ -131,6 +132,19 @@ export function useProductDetailQuery(productId: string | null) {
     [...marketQueryKeys.all, 'product-detail', id, filters],
     () => fetchProductDetail(id, filters),
     !!productId,
+  );
+}
+
+/** Face-à-face de produits : abonnement ouvert seulement avec au moins deux produits choisis */
+export function useCompetitionQuery(ids: string[]) {
+  const filters = useMarketFilterStore((state) => state.filters);
+  const compare = ids.join(',');
+  return useLiveQuery(
+    'competition',
+    { ...buildQueryParams(filters), compare },
+    [...marketQueryKeys.all, 'competition', compare, filters],
+    () => fetchCompetition(ids, filters),
+    ids.length >= 2,
   );
 }
 

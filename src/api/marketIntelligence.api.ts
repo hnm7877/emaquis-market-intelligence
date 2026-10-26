@@ -1,6 +1,7 @@
 import { axiosInstance } from './axiosInstance';
 import {
   BrandsResponseSchema,
+  CompetitionSchema,
   CategoriesResponseSchema,
   ProductDetailSchema,
   MarketOverviewResponseSchema,
@@ -268,6 +269,14 @@ export const fetchProductDetail = async (productId: string, filters?: Partial<Fi
   const params = { ...buildQueryParams(filters), product: productId };
   const response = await axiosInstance.get('/market-intelligence/products/detail', { params });
   const parsed = ProductDetailSchema.safeParse(response.data);
+  return parsed.success ? parsed.data : response.data;
+};
+
+/** Face-à-face de 2 à 4 produits */
+export const fetchCompetition = async (ids: string[], filters?: Partial<FilterState>) => {
+  const params = { ...buildQueryParams(filters), compare: ids.join(',') };
+  const response = await axiosInstance.get('/market-intelligence/competition', { params });
+  const parsed = CompetitionSchema.safeParse(response.data);
   return parsed.success ? parsed.data : response.data;
 };
 

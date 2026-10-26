@@ -441,3 +441,56 @@ export const BrandRowSchema = z
   .passthrough();
 export type BrandRow = z.infer<typeof BrandRowSchema>;
 export const BrandsResponseSchema = z.object({ brands: z.array(BrandRowSchema).default([]), comparisonLabel: z.string().optional() });
+
+/** Face-à-face de produits (WebSocket « competition ») */
+const PriceDuelSchema = z.object({
+  a: z.string(),
+  b: z.string(),
+  establishments: z.number(),
+  aCheaper: z.number(),
+  bCheaper: z.number(),
+  same: z.number(),
+  avgGap: z.number().nullable(),
+  aVolumeShare: z.number().nullable(),
+});
+export const CompetitionSchema = z.object({
+  comparisonLabel: z.string().optional(),
+  ids: z.array(z.string()).default([]),
+  error: z.string().optional(),
+  products: z
+    .array(
+      z.object({
+        id: z.string(),
+        name: z.string(),
+        brand: z.string(),
+        category: z.string(),
+        image: z.string().nullable(),
+        format: z.string(),
+        volume: z.number(),
+        revenue: z.number(),
+        growth: z.number().nullable(),
+        sellers: z.number(),
+        rotationRate: z.number().nullable(),
+        avgSalePrice: z.number().nullable(),
+        shelfPrice: z.object({ count: z.number(), min: z.number(), p25: z.number(), median: z.number(), p75: z.number(), max: z.number() }).nullable(),
+        unitCost: z.number().nullable(),
+        marginRate: z.number().nullable(),
+        stockoutRisk: z.string(),
+        exposedSalesShare: z.number().nullable(),
+        topCommunes: z.array(z.string()),
+        shareOfDuel: z.number(),
+      }),
+    )
+    .default([]),
+  daily: z.array(z.record(z.string(), z.union([z.string(), z.number()]))).default([]),
+  hourly: z.array(z.record(z.string(), z.union([z.string(), z.number()]))).default([]),
+  overlap: z
+    .object({ per: z.array(z.object({ product: z.string(), sellers: z.number(), exclusive: z.number() })), sharedByAll: z.number(), total: z.number() })
+    .optional(),
+  priceDuels: z.array(PriceDuelSchema).default([]),
+  battles: z
+    .array(z.object({ commune: z.string(), volumes: z.record(z.string(), z.number()), shares: z.record(z.string(), z.number()), leader: z.string(), margin: z.number() }))
+    .default([]),
+  targets: z.array(z.object({ product: z.string(), total: z.number(), communes: z.array(z.object({ commune: z.string(), count: z.number() })) })).default([]),
+});
+export type Competition = z.infer<typeof CompetitionSchema>;
