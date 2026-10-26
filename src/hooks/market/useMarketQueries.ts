@@ -26,10 +26,13 @@ import type { FilterState } from '@/types/market';
 import { useMarketFilterStore } from '@/stores/useMarketFilterStore';
 import { useMarketRealtimeStore } from '@/stores/useMarketRealtimeStore';
 import { getMarketSocket } from '@/api/socket';
-import { useMarketRealtimeStore as realtimeStore, type MarketPulse } from '@/stores/useMarketRealtimeStore';
+import type { MarketPulse } from '@/stores/useMarketRealtimeStore';
 
-/** Direct coupé : rechargement de secours toutes les 60 s ; direct actif : aucune minuterie */
-const fallbackInterval = () => (realtimeStore.getState().isConnected ? false : 60 * 1000);
+/**
+ * Temps réel exclusivement par WebSocket : aucune requête HTTP périodique. Si le direct est
+ * coupé, socket.io se reconnecte tout seul et le serveur repousse les vues suivies.
+ */
+const fallbackInterval = false as const;
 
 export const marketQueryKeys = {
   all: ['market'] as const,
@@ -199,7 +202,7 @@ export function useContextualFiltersQuery(enabled = true) {
  * 12. Hook WebSocket Live Feeds
  */
 export function useMarketLiveSocket(enabled = true) {
-  const { setConnected, addLiveAlert, addLiveTransaction, addPulse } = useMarketRealtimeStore();
+  const { setConnected, addLiveTransaction, addPulse } = useMarketRealtimeStore();
 
   useEffect(() => {
     if (typeof window === 'undefined' || !enabled) return;
@@ -210,7 +213,6 @@ export function useMarketLiveSocket(enabled = true) {
 
     const handleConnect = () => setConnected(true);
     const handleDisconnect = () => setConnected(false);
-    const handleAlert = (data: any) => addLiveAlert(data);
     // Vente en direct : fil d'actualité seulement (aucun rechargement par vente)
     const handleNewSale = (data: any) => addLiveTransaction(data);
 
@@ -219,17 +221,15 @@ export function useMarketLiveSocket(enabled = true) {
 
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
-    socket.on('market:alert', handleAlert);
     socket.on('market:new-sale', handleNewSale);
     socket.on('market:pulse', handlePulse);
     return () => {
       socket.off('market:pulse', handlePulse);
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
-      socket.off('market:alert', handleAlert);
       socket.off('market:new-sale', handleNewSale);
     };
-  }, [enabled, setConnected, addLiveAlert, addLiveTransaction, addPulse]);
+  }, [enabled, setConnected, addLiveTransaction, addPulse]);
 }
 /**
  * 13. Journal d'audit des accès Market Intelligence

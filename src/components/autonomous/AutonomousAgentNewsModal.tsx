@@ -286,34 +286,6 @@ export const AutonomousAgentNewsModal: React.FC<AutonomousAgentNewsModalProps> =
     const socket = getMarketSocket();
     if (!socket) return;
 
-    // A. Événement vente enregistrée avec produit
-    const handleMarketSaleRecorded = (event: any) => {
-      if (!event) return;
-      const prodName = event.productName || 'Boisson fraîche';
-      const qty = Number(event.quantity || event.volume) || 1;
-      const rawEstName = event.establishmentName || event.establishment_name || 'Débit partenaire';
-      const estName = anonymizeEstablishmentName(rawEstName, event.establishmentId || event.establishment_id);
-      const commune = event.commune || event.city || 'Abidjan';
-      const amount = Number(event.amount) || qty * 600;
-
-      const liveBulletin: FieldNewsItem = {
-        id: `news-live-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-        title: `Vente en direct : ${prodName} (+${qty} unité${qty > 1 ? 's' : ''})`,
-        location: `${commune} (${estName})`,
-        country: "🇨🇮 Côte d'Ivoire",
-        timestamp: "À l'instant (Capture POS Directe)",
-        severity: 'opportunity',
-        content: `Encaissement instantané validé sur le terminal POS de ${estName} à ${commune} : ${qty}x ${prodName} servi(s) (${amount.toLocaleString('fr-FR')} FCFA). Transaction intégrée immédiatement sans délai.`,
-        recommendation: `Vélocité mise à jour en temps réel dans la balance des débits.`,
-        offlineGenerated: false,
-        isLive: true,
-      };
-
-      setNews((prev) => [liveBulletin, ...prev.slice(0, 24)]);
-      setLiveEventsCount((c) => c + 1);
-      const now = new Date();
-      setLastLiveSyncTime(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`);
-    };
 
     // B. Événement vente publique générique (market:new-sale)
     const handleNewSale = (event: any) => {
@@ -339,39 +311,11 @@ export const AutonomousAgentNewsModal: React.FC<AutonomousAgentNewsModalProps> =
       setLiveEventsCount((c) => c + 1);
     };
 
-    // C. Événement alerte de marché en direct (market:alert)
-    const handleMarketAlert = (event: any) => {
-      if (!event) return;
-      const isUp = (event.variation || 0) > 0;
-      const absVar = Math.abs(Math.round(event.variation || 12));
-      const zone = event.zone || 'Réseau E-Maquis';
-      const cat = event.category || 'Boissons';
 
-      const alertBulletin: FieldNewsItem = {
-        id: `news-live-alert-${Date.now()}`,
-        title: isUp ? `Surge en direct sur ${cat} (+${absVar}%)` : `Tension sur ${cat} (-${absVar}%)`,
-        location: zone,
-        country: "🇨🇮 Côte d'Ivoire",
-        timestamp: "À l'instant (Alerte Neurale)",
-        severity: isUp ? 'opportunity' : 'critical',
-        content: `Variation rapide détectée en direct sur ${zone} : évolution de ${isUp ? '+' : '-'}${absVar}% calculée sur les dernières sorties d'encaissement.`,
-        recommendation: isUp ? `Assurer la continuité logistique sur les dépôts de ${zone}.` : `Examiner les stocks disponibles sur ${zone}.`,
-        offlineGenerated: false,
-        isLive: true,
-      };
-
-      setNews((prev) => [alertBulletin, ...prev.slice(0, 24)]);
-      setLiveEventsCount((c) => c + 1);
-    };
-
-    socket.on('market_sale_recorded', handleMarketSaleRecorded);
     socket.on('market:new-sale', handleNewSale);
-    socket.on('market:alert', handleMarketAlert);
 
     return () => {
-      socket.off('market_sale_recorded', handleMarketSaleRecorded);
       socket.off('market:new-sale', handleNewSale);
-      socket.off('market:alert', handleMarketAlert);
     };
   }, []);
 

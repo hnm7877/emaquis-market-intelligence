@@ -287,47 +287,8 @@ export const LiveTradingLadder: React.FC<LiveTradingLadderProps> = ({
     }
   }, [apiProducts]);
 
-  // Écoute des véritables ventes WebSocket du réseau E-Maquis (pas d'aléatoire inventé)
-  useEffect(() => {
-    const socket = getMarketSocket();
-    if (!socket) return;
-
-    const handleMarketSale = (event: any) => {
-      if (!event || !event.productName) return;
-
-      setProducts((prev) => {
-        const addedQty = Number(event.quantity || event.volume) || 1;
-        const updated = prev.map((p) => {
-          if (p.name.toLowerCase().includes(event.productName.toLowerCase()) || p.id === event.productId) {
-            const newVol = p.volume + addedQty;
-            const newVel = Math.round(newVol / 24);
-            return {
-              ...p,
-              previousVolume: p.volume,
-              volume: newVol,
-              velocity: newVel,
-              sparkline: [...p.sparkline.slice(1), newVel],
-              recentSaleDelta: addedQty,
-            };
-          }
-          return p;
-        });
-
-        // Re-trier
-        const sorted = [...updated].sort((a, b) => b.volume - a.volume);
-        return sorted.map((p, idx) => ({
-          ...p,
-          previousRank: p.rank,
-          rank: idx + 1,
-        }));
-      });
-    };
-
-    socket.on('market_sale_recorded', handleMarketSale);
-    return () => {
-      socket.off('market_sale_recorded', handleMarketSale);
-    };
-  }, []);
+  // Les volumes se mettent à jour par les données poussées en direct (mi:data) : plus d'écoute
+  // d'un événement « market_sale_recorded » que le serveur n'émet pas.
 
   // Moteur d'Auto-Swipe automatique entre les différentes vues produits (toutes les 8 secondes)
   useEffect(() => {
