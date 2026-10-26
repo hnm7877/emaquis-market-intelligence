@@ -1,15 +1,16 @@
 'use client';
 
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Area, AreaChart, Bar as RBar, BarChart, CartesianGrid, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { BadgePercent, CalendarRange, Coins, Flame, Info, Lightbulb, MapPin, Award, Repeat, Target, TrendingUp, X } from 'lucide-react';
+import { BadgePercent, Calculator, CalendarClock, Swords, CalendarRange, Coins, Flame, Info, Lightbulb, MapPin, Award, Repeat, Target, TrendingUp, X } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber';
 import { InfoTip } from '@/components/ui/InfoTip';
 import { FilterBar } from '@/components/layout/FilterBar';
-import { useMarketSessionQuery, usePromotionsQuery } from '@/hooks/market/useMarketQueries';
+import { useMarketSessionQuery, usePromotionsQuery, useTrendsQuery } from '@/hooks/market/useMarketQueries';
+import { simulatePromotion } from '@/utils/promoSimulator';
 import { usePromotionsUiStore, type PromoTab } from '@/stores/usePromotionsUiStore';
 import type { PromotionItem, Promotions } from '@/lib/validations/market.schemas';
 import { formatGrowth, growthColorClass } from '@/utils/metrics';
@@ -29,6 +30,9 @@ const HELP = {
   roi: 'Francs de ventes supplémentaires obtenus pour 1 franc de remise accordée. Au-dessus de 1, la remise rapporte plus qu’elle ne coûte en chiffre d’affaires.',
   timeline: 'Promotions lancées et promotions actives chaque semaine (12 dernières semaines).',
   bands: 'Uplift moyen selon la profondeur de la remise : la remise la plus forte n’est pas toujours la plus efficace.',
+  rivals: "Pendant une promo, ventes par jour des autres marques de la même catégorie dans la même commune, comparées à juste avant. Négatif = la promo leur prend des ventes.",
+  calendar: "Hausse moyenne des ventes selon le jour où la promo démarre, et heures où le réseau vend le plus (page Tendances).",
+  simulator: 'Estimation à partir des promotions passées comparables (même marque si au moins 3, sinon toutes marques, remise proche à ±8 points). Ce n’est pas une garantie.',
   ranking: 'Promotions regroupées par marque ou par commune. Cliquez une ligne pour filtrer la liste.',
 };
 
@@ -239,6 +243,141 @@ function Ranking({ data, ownBrands }: { data: Promotions; ownBrands: Set<string>
   );
 }
 
+function CompetitorReaction({ data, ownBrands }: { data: Promotions; ownBrands: Set<string> }) {
+  const r = data.competitorReaction;
+  if (!r || !r.measured) return null;
+  return (
+    <Card className="border border-border/80 bg-card/70 backdrop-blur-md p-4 space-y-3 h-full">
+      <div className="flex items-center gap-2 text-sm font-semibold">
+        <Swords className="size-4 text-rose-400" /> Réaction des concurrents <InfoTip text={HELP.rivals} title="Concurrents" />
+      </div>
+      <div className="grid grid-cols-2 gap-3 text-xs">
+        <div className="rounded-lg border border-border/60 p-3">
+          <span className="text-muted-foreground block">Ventes des concurrents pendant</span>
+          <strong className={`text-lg font-mono ${growthColorClass(r.averageCompetitorChange)}`}>{formatGrowth(r.averageCompetitorChange)}</strong>
+        </div>
+        <div className="rounded-lg border border-border/60 p-3">
+          <span className="text-muted-foreground block">Promos qui leur prennent des ventes</span>
+          <strong className="text-lg font-mono">{r.stealRate == null ? '—' : `${r.stealRate} %`}</strong>
+        </div>
+      </div>
+      <div className="space-y-1.5 text-xs">
+        {r.byBrand.map((b) => (
+          <div key={b.brand} className={`flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 ${ownBrands.has(b.brand.toLowerCase()) ? 'ring-1 ring-amber-500/50' : ''}`}>
+            <span className="font-medium truncate">{b.brand} <span className="text-muted-foreground">({b.promotions})</span></span>
+            <span className="tabular-nums shrink-0">
+              elle <strong className={growthColorClass(b.ownUplift)}>{formatGrowth(b.ownUplift)}</strong> · concurrents{' '}
+              <strong className={growthColorClass(b.competitorChange)}>{formatGrowth(b.competitorChange)}</strong>
+            </span>
+          </div>
+        ))}
+      </div>
+      <p className="text-[11px] text-muted-foreground">Mesuré sur {r.measured} promotion(s) récente(s).</p>
+    </Card>
+  );
+}
+
+function LaunchCalendar({ data }: { data: Promotions }) {
+  const { data: trends } = useTrendsQuery();
+  const days = data.launchDays;
+  if (!days.some((d) => d.promotions > 0)) return null;
+  const withData = days.filter((d) => d.promotions > 0 && d.averageUplift != null);
+  const best = withData.length ? [...withData].sort((a, b) => (b.averageUplift as number) - (a.averageUplift as number))[0] : null;
+  const maxAbs = Math.max(...days.map((d) => Math.abs(d.averageUplift ?? 0)), 1);
+  return (
+    <Card className="border border-border/80 bg-card/70 backdrop-blur-md p-4 space-y-3 h-full">
+      <div className="flex items-center gap-2 text-sm font-semibold">
+        <CalendarClock className="size-4 text-sky-400" /> Calendrier conseillé <InfoTip text={HELP.calendar} title="Calendrier" />
+      </div>
+      <div className="grid grid-cols-7 gap-1.5 items-end h-28">
+        {days.map((d, i) => {
+          const u = d.averageUplift ?? 0;
+          const isBest = best?.day === d.day;
+          return (
+            <div key={d.day} className="flex flex-col items-center justify-end h-full gap-1">
+              <span className={`text-[10px] font-mono ${d.promotions ? growthColorClass(u) : 'text-muted-foreground'}`}>{d.promotions ? formatGrowth(d.averageUplift) : '—'}</span>
+              <motion.div
+                className={`w-full rounded-t ${isBest ? 'bg-emerald-500' : u >= 0 ? 'bg-sky-500/60' : 'bg-rose-500/60'}`}
+                initial={{ height: 0 }}
+                animate={{ height: `${d.promotions ? Math.max(4, (Math.abs(u) / maxAbs) * 64) : 2}px` }}
+                transition={{ duration: 0.6, ease: EASE, delay: i * 0.04 }}
+              />
+              <span className={`text-[10px] ${isBest ? 'text-emerald-400 font-semibold' : 'text-muted-foreground'}`}>{d.day.slice(0, 3)}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="text-xs space-y-1">
+        {best && (
+          <p>
+            Lancer le <strong className="text-emerald-400">{best.day.toLowerCase()}</strong> : {signed(best.averageUplift as number)} de ventes en moyenne ({best.promotions} promo(s)).
+          </p>
+        )}
+        {trends?.goldenSlot && (
+          <p className="text-muted-foreground">
+            Moment où le réseau vend le plus : <strong className="text-foreground">{trends.goldenSlot.day} {trends.goldenSlot.hour}</strong>
+            {trends.peakHours.length > 0 && <> · heures fortes {trends.peakHours.slice(0, 3).join(', ')}</>}. Une promo active à ces heures touche le plus de clients.
+          </p>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function Simulator({ data, ownBrands }: { data: Promotions; ownBrands: Set<string> }) {
+  const brands = useMemo(() => [...new Set(data.promotions.map((p) => p.brand))].sort((a, b) => a.localeCompare(b, 'fr')), [data.promotions]);
+  const defaultBrand = brands.find((b) => ownBrands.has(b.toLowerCase())) ?? null;
+  const [brand, setBrand] = useState<string | null>(defaultBrand);
+  const [discount, setDiscount] = useState(15);
+  const [duration, setDuration] = useState(7);
+  const result = useMemo(() => simulatePromotion(data.promotions, { brand, discountPercent: discount, durationDays: duration }), [data.promotions, brand, discount, duration]);
+  return (
+    <Card className="border border-primary/30 bg-card/70 backdrop-blur-md p-4 space-y-4">
+      <div className="flex items-center gap-2 text-sm font-semibold">
+        <Calculator className="size-4 text-orange-400" /> Simulateur de promotion <InfoTip text={HELP.simulator} title="Simulateur" />
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+        <label className="space-y-1.5">
+          <span className="text-muted-foreground">Marque</span>
+          <select value={brand ?? ''} onChange={(e) => setBrand(e.target.value || null)} className="w-full rounded-lg border border-border bg-background px-2 py-1.5">
+            <option value="">Toutes marques</option>
+            {brands.map((b) => <option key={b} value={b}>{b}</option>)}
+          </select>
+        </label>
+        <label className="space-y-1.5">
+          <span className="flex justify-between text-muted-foreground">Remise <strong className="text-foreground">{discount} %</strong></span>
+          <input type="range" min={5} max={50} value={discount} onChange={(e) => setDiscount(Number(e.target.value))} className="w-full accent-orange-500" />
+        </label>
+        <label className="space-y-1.5">
+          <span className="flex justify-between text-muted-foreground">Durée <strong className="text-foreground">{duration} j</strong></span>
+          <input type="range" min={1} max={30} value={duration} onChange={(e) => setDuration(Number(e.target.value))} className="w-full accent-orange-500" />
+        </label>
+      </div>
+      {!result ? (
+        <p className="text-xs text-muted-foreground">Pas assez de promotions passées avec une remise proche pour estimer. Essayez une autre remise.</p>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            ['Hausse attendue', <span key="u" className={growthColorClass(result.expectedUplift)}><AnimatedNumber value={result.expectedUplift} format={signed} /></span>],
+            ['Unités en plus', <AnimatedNumber key="x" value={result.extraUnits} format={int} />],
+            ['Ventes en plus', <AnimatedNumber key="r" value={result.extraRevenue} format={(n) => `${compact(n)} F`} />],
+            ['Coût de la remise', <AnimatedNumber key="c" value={result.discountCost} format={(n) => `${compact(n)} F`} />],
+          ].map(([label, value]) => (
+            <div key={label as string} className="rounded-lg border border-border/60 bg-background/40 p-3">
+              <span className="text-[10px] uppercase tracking-wide text-muted-foreground block">{label}</span>
+              <span className="text-lg font-bold tabular-nums">{value}</span>
+            </div>
+          ))}
+          <p className="col-span-2 md:col-span-4 text-[11px] text-muted-foreground">
+            Par point de vente, sur {result.sample} promotion(s) comparable(s) {result.brandSpecific ? `de ${brand}` : 'toutes marques'} · base {result.baselineDaily} u./jour · fiabilité{' '}
+            <strong className={result.confidence === 'bonne' ? 'text-emerald-400' : result.confidence === 'moyenne' ? 'text-amber-400' : 'text-rose-400'}>{result.confidence}</strong>.
+          </p>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function PromotionList({ data }: { data: Promotions }) {
   const { tab, focus, groupBy, set } = usePromotionsUiStore();
   const list = useMemo(() => {
@@ -302,6 +441,9 @@ function PromotionList({ data }: { data: Promotions }) {
                   <div className="text-right text-[11px] text-muted-foreground">
                     {p.retentionPercent != null && <div>Rémanence <strong className={growthColorClass(p.retentionPercent)}>{formatGrowth(p.retentionPercent)}</strong></div>}
                     <div>Référence : {p.referenceDays} j avant</div>
+                    {p.competitorChangePercent != null && (
+                      <div>Concurrents <strong className={growthColorClass(p.competitorChangePercent)}>{formatGrowth(p.competitorChangePercent)}</strong></div>
+                    )}
                   </div>
                 </div>
                 {p.startApproximate && (
@@ -402,6 +544,13 @@ export default function PromotionsPage() {
             <Reveal delay={0.12}><Timeline data={data} /></Reveal>
             <Reveal delay={0.16}><DiscountEffect data={data} /></Reveal>
           </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <Reveal delay={0.18}><CompetitorReaction data={data} ownBrands={ownBrands} /></Reveal>
+            <Reveal delay={0.2}><LaunchCalendar data={data} /></Reveal>
+          </div>
+
+          <Reveal delay={0.2}><Simulator data={data} ownBrands={ownBrands} /></Reveal>
 
           <Reveal delay={0.2}><Ranking data={data} ownBrands={ownBrands} /></Reveal>
           <Reveal delay={0.24}><PromotionList data={data} /></Reveal>

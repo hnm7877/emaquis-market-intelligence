@@ -647,6 +647,10 @@ export type StockIntelligence = z.infer<typeof StockIntelligenceSchema>;
 export const MyAlertsSchema = z.object({
   alertsEnabled: z.boolean(),
   alertThreshold: z.number().min(50).max(99),
+  promoAlertsEnabled: z.boolean().default(true),
+  competitorPromos: z
+    .array(z.object({ brand: z.string(), product: z.string(), zone: z.string(), establishments: z.number(), discountPercent: nnum, startAt: z.string().nullable().optional() }))
+    .default([]),
   brands: z.array(z.string()).default([]),
   breaches: z.array(z.object({ brand: z.string(), zone: z.string(), positions: z.number(), stockoutPos: z.number(), availabilityRate: z.number() })).default([]),
 });
@@ -677,6 +681,9 @@ export const PromotionItemSchema = z.object({
   upliftPercent: nnum,
   retentionPercent: nnum,
   referenceDays: z.number().default(0),
+  competitorBeforeDaily: nnum,
+  competitorDuringDaily: nnum,
+  competitorChangePercent: nnum,
 });
 export type PromotionItem = z.infer<typeof PromotionItemSchema>;
 
@@ -710,6 +717,15 @@ export const PromotionsSchema = z.object({
   byBrand: z.array(promoGroup).default([]),
   byZone: z.array(promoGroup).default([]),
   timeline: z.array(z.object({ week: z.string(), started: z.number(), active: z.number() })).default([]),
+  competitorReaction: z
+    .object({
+      measured: z.number().default(0),
+      averageCompetitorChange: nnum,
+      stealRate: nnum,
+      byBrand: z.array(z.object({ brand: z.string(), promotions: z.number(), ownUplift: nnum, competitorChange: nnum })).default([]),
+    })
+    .optional(),
+  launchDays: z.array(z.object({ day: z.string(), promotions: z.number(), averageUplift: nnum })).default([]),
   totalPeriods: z.number().default(0),
   averageUpliftPercent: nnum,
   measuredPromotions: z.number().default(0),

@@ -115,6 +115,33 @@ function MyAlerts() {
           </div>
         )}
       </div>
+      <div className="border-t border-border/60 pt-4 space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs font-semibold">Promotions des concurrents dans vos communes</p>
+          <button
+            role="switch"
+            aria-checked={data.promoAlertsEnabled}
+            disabled={save.isPending}
+            onClick={() => save.mutate({ promoAlertsEnabled: !data.promoAlertsEnabled })}
+            className={`relative h-6 w-11 rounded-full transition-colors ${data.promoAlertsEnabled ? 'bg-emerald-500' : 'bg-muted'}`}
+          >
+            <span className={`absolute left-0 top-0.5 size-5 rounded-full bg-white shadow transition-transform ${data.promoAlertsEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+          </button>
+        </div>
+        <p className="text-[11px] text-muted-foreground">Une alerte quand une autre marque lance une promotion dans vos catégories, là où vos produits sont vendus. 7 derniers jours :</p>
+        {data.competitorPromos.length === 0 ? (
+          <p className="text-xs text-muted-foreground">Aucune promotion concurrente récente.</p>
+        ) : (
+          <div className="divide-y divide-border/50 text-xs">
+            {data.competitorPromos.map((p) => (
+              <div key={`${p.brand}|${p.product}|${p.zone}`} className="py-1.5 flex items-center justify-between gap-3">
+                <span><strong>{p.brand}</strong> — {p.product} · {p.zone}</span>
+                <span className="tabular-nums text-orange-400 shrink-0">{p.discountPercent == null ? '' : `−${p.discountPercent} % · `}{p.establishments} établ.</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
       {save.isError && <p className="text-xs text-red-400">{apiMessage(save.error, 'Enregistrement impossible.')}</p>}
     </Card>
   );
