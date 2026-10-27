@@ -69,9 +69,9 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   // Distributeur : tous les menus de consultation, « Mon compte » à la place de la gestion,
   // aucune page d'administration (synchronisation, audit)
   const intelligenceItems = isPartner
-    ? intelligenceNavItems
-        .filter((i) => i.href !== '/settings')
-        .map((i) => (i.href === '/partner' ? { ...i, label: 'Mon compte' } : i))
+    ? intelligenceNavItems.map((i) =>
+        i.href === '/partner' ? { ...i, label: 'Mon compte' } : i.href === '/settings' ? { ...i, label: 'Journal d’activité' } : i,
+      )
     : intelligenceNavItems;
 
   const sidebarContent = (

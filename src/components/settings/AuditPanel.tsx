@@ -33,17 +33,19 @@ const csvCell = (v: unknown) => {
   return `"${s.replace(/"/g, '""')}"`;
 };
 
-export function AuditPanel() {
+/** `own` : journal du compte connecté seulement (distributeur), sans statistiques ni filtres de comptes */
+export function AuditPanel({ mode = 'admin' }: { mode?: 'admin' | 'own' }) {
+  const own = mode === 'own';
   const [days, setDays] = useState(7);
   const [kind, setKind] = useState('');
   const [action, setAction] = useState('');
   const [search, setSearch] = useState('');
   const subject = useDeferredValue(search.trim());
 
-  const stats = useQuery({ queryKey: [...marketQueryKeys.all, 'audit-stats', days], queryFn: () => fetchAuditStats(days), staleTime: 30_000 });
+  const stats = useQuery({ queryKey: [...marketQueryKeys.all, 'audit-stats', days], queryFn: () => fetchAuditStats(days), staleTime: 30_000, enabled: !own });
   const logs = useInfiniteQuery({
-    queryKey: [...marketQueryKeys.auditLogs(), kind, action, subject],
-    queryFn: ({ pageParam }) => fetchAuditLogs({ limit: PAGE, kind, action, subject, before: pageParam }),
+    queryKey: [...marketQueryKeys.auditLogs(), mode, kind, action, subject],
+    queryFn: ({ pageParam }) => fetchAuditLogs(own ? { limit: PAGE, action, before: pageParam } : { limit: PAGE, kind, action, subject, before: pageParam }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => (last.length === PAGE ? last[last.length - 1].created_at : undefined),
     staleTime: 15_000,
@@ -64,7 +66,8 @@ export function AuditPanel() {
 
   return (
     <div className="space-y-4">
-      {/* Activité */}
+      {/* Activité (administrateurs) */}
+      {!own && (
       <Card className="p-5 border border-border/80 bg-card/70 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-sm font-semibold flex items-center gap-2"><Activity className="size-4 text-emerald-400" /> Activité</span>
@@ -138,16 +141,19 @@ export function AuditPanel() {
           </>
         )}
       </Card>
+      )}
 
       {/* Journal */}
       <Card className="p-5 border border-border/80 bg-card/70 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-sm font-semibold flex items-center gap-2"><History className="size-4 text-emerald-500" /> Journal des accès</span>
+          <span className="text-sm font-semibold flex items-center gap-2"><History className="size-4 text-emerald-500" /> {own ? 'Mon journal d’activité' : 'Journal des accès'}</span>
           <button onClick={exportCsv} disabled={!rows.length} className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-lg border border-border hover:bg-accent/40 disabled:opacity-40">
             <Download className="size-3.5" /> Exporter ({rows.length}) en CSV
           </button>
         </div>
+        {own && <p className="text-[11px] text-muted-foreground">Consultations, exports de rapports et questions à l&apos;agent IA faits avec votre compte.</p>}
         <div className="flex flex-wrap items-center gap-2">
+          {!own && (<>
           <div className="relative">
             <Search className="size-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input value={search} onChange={(e) => setSearch(e.target.value.slice(0, 80))} placeholder="Compte (e-mail, identifiant)…" className="h-8 pl-8 text-xs w-56" />
@@ -157,7 +163,13 @@ export function AuditPanel() {
               {k ? label(KIND_LABELS, k) : 'Tous les comptes'}
             </button>
           ))}
-          {action && (
+          </>)}
+          {own && ['', 'MARKET_DATA_QUERY', 'MARKET_REPORT_EXPORT', 'MARKET_AI_QUERY'].map((a) => (
+            <button key={a || 'all'} onClick={() => setAction(a)} className={`text-[11px] px-2.5 py-1 rounded-full border ${action === a ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground'}`}>
+              {a ? label(ACTION_LABELS, a) : 'Tout'}
+            </button>
+          ))}
+          {!own && action && (
             <button onClick={() => setAction('')} className="text-[11px] px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400">{label(ACTION_LABELS, action)} ✕</button>
           )}
         </div>

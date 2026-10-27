@@ -14,8 +14,22 @@ const fmtDate = (d?: string | null) => (d ? new Date(d).toLocaleString('fr-FR') 
 
 /** Page réservée aux administrateurs E-Maquis (le serveur refuse aussi ces données aux distributeurs). */
 export default function SettingsPage() {
-  const { isAdmin, isLoading } = useMarketSessionQuery();
+  const { isAdmin, isPartner, isLoading } = useMarketSessionQuery();
   if (isLoading) return <div className="flex justify-center py-20"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div>;
+  // Distributeur : uniquement le journal de son compte (aucune fonction d'administration)
+  if (isPartner) {
+    return (
+      <div className="space-y-6 max-w-5xl mx-auto">
+        <div className="pb-2 border-b border-border/60">
+          <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
+            <Settings className="size-5 text-orange-500" /> Journal d&apos;activité
+          </h1>
+          <p className="text-xs text-muted-foreground mt-0.5">Traçabilité des consultations faites avec votre compte.</p>
+        </div>
+        <AuditPanel mode="own" />
+      </div>
+    );
+  }
   if (!isAdmin) {
     return (
       <Card className="p-6 max-w-xl mx-auto text-sm text-muted-foreground">
