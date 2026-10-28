@@ -6,6 +6,8 @@ import type { NextRequest } from 'next/server';
  * l'affichage (la validité du jeton reste vérifiée par l'API à chaque appel).
  */
 export function proxy(request: NextRequest) {
+  // Accueil public (classement en direct) : visible sans connexion
+  if (request.nextUrl.pathname === '/') return NextResponse.next();
   if (!request.cookies.has('mi_session')) {
     const url = new URL('/login', request.url);
     return NextResponse.redirect(url);

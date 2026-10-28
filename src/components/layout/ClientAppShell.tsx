@@ -17,13 +17,14 @@ export function ClientAppShell({ children }: { children: React.ReactNode }) {
   const [exportOpen, setExportOpen] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
 
-  const isLoginPage = pathname === LOGIN_PATH;
+  // Connexion et accueil public : sans session, sans menu ni flux authentifié
+  const isPublicPage = pathname === LOGIN_PATH || pathname === '/';
   // Direct : un seul abonnement pour toute l'application (toutes les pages restent à jour)
-  useMarketLiveSocket(!isLoginPage && authChecked);
+  useMarketLiveSocket(!isPublicPage && authChecked);
 
   // Toutes les pages (hors connexion) exigent une session valide
   useEffect(() => {
-    if (isLoginPage) return;
+    if (isPublicPage) return;
     purgeLegacyTokens();
     let alive = true;
     fetchSessionState().then((s) => {
@@ -37,9 +38,9 @@ export function ClientAppShell({ children }: { children: React.ReactNode }) {
     return () => {
       alive = false;
     };
-  }, [isLoginPage, router]);
+  }, [isPublicPage, router]);
 
-  if (isLoginPage) return <>{children}</>;
+  if (isPublicPage) return <>{children}</>;
 
   if (!authChecked) {
     return (

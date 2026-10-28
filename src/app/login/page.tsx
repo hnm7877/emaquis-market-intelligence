@@ -55,7 +55,7 @@ function LoginForm() {
     try {
       // Le serveur du site vérifie le code et l'accès Market Intelligence, puis pose le cookie
       await loginWithOtp(email.trim(), otp.trim());
-      router.replace('/');
+      router.replace('/dashboard');
     } catch (err) {
       setError(errorMessage(err, 'Code invalide ou expiré.'));
     } finally {

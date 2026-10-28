@@ -36,7 +36,7 @@ interface NavItem {
 }
 
 const mainNavItems: NavItem[] = [
-  { label: "Vue d'ensemble", href: '/', icon: LayoutDashboard },
+  { label: "Vue d'ensemble", href: '/dashboard', icon: LayoutDashboard },
   { label: 'Bourse & Dashboard IA', href: '/autonomous-dashboard', icon: Sparkles, badge: 'Live 3D' },
   { label: 'Géographie', href: '/geography', icon: MapPin },
   { label: 'Produits', href: '/products', icon: Package },
@@ -78,7 +78,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     <div className="flex flex-col h-full bg-card/95 backdrop-blur-xl border-r border-border select-none">
       {/* Brand Header */}
       <div className="h-16 px-4 sm:px-5 border-b border-border flex items-center justify-between shrink-0">
-        <Link href="/" onClick={onClose} className="flex items-center gap-3 group">
+        <Link href="/dashboard" onClick={onClose} className="flex items-center gap-3 group">
           <div className="size-9 rounded-xl bg-gradient-to-tr from-amber-500 via-orange-500 to-amber-600 flex items-center justify-center text-white shadow-lg shadow-orange-500/20 group-hover:scale-105 transition-transform duration-300">
             <span className="font-extrabold text-lg tracking-tight">EM</span>
           </div>
