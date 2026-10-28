@@ -42,14 +42,15 @@ const hoursLabel = (h: number) => (h >= 48 ? `${(h / 24).toFixed(1)} j` : `${Mat
 const HELP = {
   availability: 'Part des couples produit × établissement suivis qui ont du stock en ce moment. 100 % = aucun produit en rupture dans le réseau.',
   stockouts: 'Positions (un produit dans un établissement) à zéro maintenant, et nombre de passages à zéro constatés sur la période comparée à la précédente.',
-  lost: "Estimation : pour chaque produit en rupture, ce que ce point de vente en vendait par jour sur la période. C'est le chiffre d'affaires qui échappe chaque jour tant que la rupture dure.",
+  lost: "Estimation : pour chaque produit en rupture, ce que ce point de vente en vendait par jour sur les 28 derniers jours (60 à défaut). C'est le chiffre d'affaires qui échappe chaque jour tant que la rupture dure.",
   value: "Stock en réserve valorisé au prix d'achat déclaré par les établissements. La part indique combien de positions ont un prix d'achat renseigné.",
-  cover: 'Nombre de jours que le stock actuel du réseau peut tenir au rythme de vente observé sur la période.',
+  cover: 'Nombre de jours que le stock actuel du réseau peut tenir au rythme de vente des 28 derniers jours.',
   recovery: 'Temps moyen entre un passage à zéro et le réassort suivant, mesuré sur la période.',
   timeline: 'Chaque jour : ruptures constatées (passage à zéro) et réassorts (hausse de stock) dans le réseau.',
   brands: 'Disponibilité par marque (fabricant) : part des positions de la marque qui ont du stock. Cliquez une marque pour filtrer les listes ci-dessous.',
   map: 'Une bulle par commune, placée au centre de ses établissements. Taille = produits suivis, couleur = part en rupture (vert < 5 %, rouge ≥ 20 %).',
-  forecast: "Produits encore en stock qui seront épuisés d'ici 3 jours au rythme de vente observé dans chaque point de vente.",
+  forecast: "Produits encore en stock qui seront épuisés d'ici 3 jours au rythme de vente des 28 derniers jours de chaque point de vente.",
+  excluded: "Pour rester fiables, les chiffres ignorent : les établissements sans aucune vente depuis 28 jours (leur stock n'est plus tenu à jour), les produits à zéro que l'établissement n'a pas vendus depuis 60 jours (plus au menu : ce n'est pas une rupture) et les quantités impossibles (erreurs de saisie).",
   competition: 'Disponibilité de chaque marque face aux autres marques de la même catégorie. Le trait vertical = moyenne de la catégorie.',
   zones: 'Communes où la part de produits en rupture est la plus élevée (au moins 5 positions suivies).',
 };
@@ -363,7 +364,7 @@ function FocusLists({ data }: { data: StockIntelligence }) {
           <Row key={s.productId ?? s.product} title={s.product} sub={`${s.brand} · ${s.affectedPos} point(s) de vente à zéro`}>
             <span className="text-right">
               <strong className="text-rose-400 tabular-nums block">− {compact(s.lostRevenuePerDay)} F / jour</strong>
-              <span className="text-[10px] text-muted-foreground">{s.lostUnitsPerDay} u. / jour</span>
+              <span className="text-[10px] text-muted-foreground">{s.lostUnitsPerDay} u. / jour (estimation)</span>
             </span>
           </Row>
         ));
@@ -458,7 +459,7 @@ export default function StockIntelligencePage() {
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Stocks synchronisés depuis {int(k?.establishmentsTracked)} établissements ({int(k?.trackedPositions)} produits suivis), mis à jour à chaque vente ou réassort.
+            Stocks de {int(k?.establishmentsTracked)} établissements actifs ({int(k?.trackedPositions)} produits suivis), mis à jour à chaque vente ou réassort.
             {lastSyncAt ? ` Dernier mouvement : ${new Date(lastSyncAt).toLocaleString('fr-FR')}.` : ''}
           </p>
         </div>
@@ -499,6 +500,14 @@ export default function StockIntelligencePage() {
               {k.avgRecoveryHours == null ? '—' : hoursLabel(k.avgRecoveryHours)}
             </Kpi>
           </div>
+
+          {k.excludedPositions && k.excludedPositions.inactiveEstablishment + k.excludedPositions.notCarried + k.excludedPositions.anomalies > 0 && (
+            <p className="flex flex-wrap items-center gap-x-1 text-[11px] text-muted-foreground">
+              Écartés des calculs : {int(k.excludedPositions.notCarried)} produits plus vendus (à zéro, ce ne sont pas des ruptures) ·{' '}
+              {int(k.excludedPositions.inactiveEstablishment)} positions d&apos;établissements sans vente depuis 28 j · {int(k.excludedPositions.anomalies)} quantités aberrantes
+              <InfoTip text={HELP.excluded} title="Positions écartées" />
+            </p>
+          )}
 
           {(data.forecast?.positionsAtRisk ?? 0) > 0 && (
             <Reveal delay={0.08}>
@@ -584,6 +593,8 @@ export default function StockIntelligencePage() {
           </div>
         )}
       </Card>
+
+      {data?.methodology && hasStockLevels && <p className="text-[11px] text-muted-foreground">{data.methodology}</p>}
 
       {/* Repli sans stock synchronisé : vélocité estimée */}
       {!hasStockLevels && highVelocity.length > 0 && (

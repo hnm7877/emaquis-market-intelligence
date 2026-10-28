@@ -595,8 +595,13 @@ export const StockIntelligenceSchema = z.object({
       restockUnits: z.number().default(0),
       avgRecoveryHours: nnum,
       recoveredStockouts: z.number().default(0),
+      /** Positions écartées pour que les chiffres restent crédibles */
+      excludedPositions: z
+        .object({ inactiveEstablishment: z.number().default(0), notCarried: z.number().default(0), anomalies: z.number().default(0) })
+        .optional(),
     })
     .optional(),
+  methodology: z.string().optional(),
   timeline: z.array(z.object({ date: z.string(), stockouts: z.number(), restocks: z.number(), restockUnits: z.number() })).default([]),
   brandAvailability: z
     .array(z.object({ brand: z.string(), positions: z.number(), stockoutPos: z.number(), lowStockPos: z.number(), stockValue: z.number(), availabilityRate: z.number() }))
