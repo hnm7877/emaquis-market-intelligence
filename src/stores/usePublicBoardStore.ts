@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { BoardWindow, PublicBoardItem } from '@/lib/validations/public-board.schema';
+import type { PublicBoardItem } from '@/lib/validations/public-board.schema';
 
 export interface Overtake {
   id: string;
@@ -11,13 +11,11 @@ export interface Overtake {
 
 interface PublicBoardUi {
   scope: string;
-  window: BoardWindow;
   connected: boolean;
   /** Dernier classement reçu par périmètre (pour détecter les dépassements) */
   last: Record<string, PublicBoardItem[]>;
   overtakes: Overtake[];
   setScope: (scope: string) => void;
-  setWindow: (w: BoardWindow) => void;
   setConnected: (c: boolean) => void;
   /** Compare au classement précédent du même périmètre et retient les dépassements */
   ingest: (key: string, items: PublicBoardItem[]) => Overtake[];
@@ -45,12 +43,10 @@ export function detectOvertakes(prev: PublicBoardItem[], next: PublicBoardItem[]
 
 export const usePublicBoardStore = create<PublicBoardUi>((set, get) => ({
   scope: 'all',
-  window: '24h',
   connected: false,
   last: {},
   overtakes: [],
   setScope: (scope) => set({ scope }),
-  setWindow: (window) => set({ window }),
   setConnected: (connected) => set({ connected }),
   ingest: (key, items) => {
     const found = detectOvertakes(get().last[key] ?? [], items);

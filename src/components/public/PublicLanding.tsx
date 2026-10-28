@@ -137,7 +137,7 @@ const FEATURES = [
  * aucun volume ni établissement), pour donner envie d'accéder à la plateforme.
  */
 export function PublicLanding({ initial }: { initial: PublicBoard | null }) {
-  const { scope, window: win, setScope, setWindow, connected, overtakes } = usePublicBoardStore();
+  const { scope, setScope, connected, overtakes } = usePublicBoardStore();
   const { data: board, isError } = usePublicBoard(initial);
   const countries = board?.countries ?? initial?.countries ?? [];
   const now = useNow(1000);
@@ -193,19 +193,7 @@ export function PublicLanding({ initial }: { initial: PublicBoard | null }) {
                 <h2 className="flex items-center gap-2 text-base font-bold text-foreground">
                   <span className="size-2.5 rounded-sm bg-amber-500" /> Classement des produits
                 </h2>
-                <div className="flex rounded-lg border border-border/60 p-0.5 text-xs" role="group" aria-label="Période">
-                  {(['24h', '7d', '14d'] as const).map((w) => (
-                    <button
-                      key={w}
-                      type="button"
-                      aria-pressed={win === w}
-                      onClick={() => setWindow(w)}
-                      className={`rounded-md px-2.5 py-1 transition-colors ${win === w ? 'bg-amber-500/20 text-amber-300' : 'text-muted-foreground hover:text-foreground'}`}
-                    >
-                      {w === '24h' ? '24 heures' : w === '7d' ? '7 jours' : '14 jours'}
-                    </button>
-                  ))}
-                </div>
+                <span className="text-[11px] text-muted-foreground">Toutes les ventes du réseau · variation sur 7 jours</span>
               </div>
 
               {countries.length > 0 && (
@@ -243,12 +231,6 @@ export function PublicLanding({ initial }: { initial: PublicBoard | null }) {
                   )}
                 </AnimatePresence>
               </div>
-
-              {board && board.requestedWindow && board.window !== board.requestedWindow && board.items.length > 0 && (
-                <p className="mb-2 px-1 text-[11px] text-muted-foreground">
-                  Peu de ventes sur {board.requestedWindow === '24h' ? '24 heures' : '7 jours'} : classement calculé sur {board.window === '7d' ? '7 jours' : '14 jours'}.
-                </p>
-              )}
 
               {isError && !board ? (
                 <p className="px-3 py-12 text-center text-xs text-muted-foreground">Classement momentanément indisponible.</p>
@@ -327,10 +309,10 @@ export function PublicLanding({ initial }: { initial: PublicBoard | null }) {
 
           <footer className="flex flex-col items-center gap-2 border-t border-border/60 pt-6 text-center text-[11px] text-muted-foreground">
             <span className="flex items-center gap-1.5">
-              <ShieldCheck className="size-3.5 text-emerald-400" /> Classement calculé sur les unités réellement vendues. Seuls des rangs et des variations sont publiés.
+              <ShieldCheck className="size-3.5 text-emerald-400" /> Classement calculé sur toutes les unités réellement vendues. Seuls des rangs et des variations sont publiés.
             </span>
             <span className="flex items-center gap-1.5">
-              <Globe2 className="size-3.5" /> Un produit n’apparaît que s’il est vendu dans au moins 3 établissements ; courbe = indice base 100 (moyenne sur 14 jours).
+              <Globe2 className="size-3.5" /> Un produit n’apparaît que s’il est vendu dans au moins 3 établissements ; variation = 7 derniers jours contre les 7 précédents ; courbe = indice base 100 sur 14 jours.
             </span>
           </footer>
         </main>

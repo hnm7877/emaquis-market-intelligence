@@ -19,7 +19,7 @@ export const revalidate = 15;
 
 async function initialBoard(): Promise<PublicBoard | null> {
   try {
-    const r = await fetch(`${apiBaseUrl()}/market-public/board?scope=all&window=24h`, { next: { revalidate: 15 } });
+    const r = await fetch(`${apiBaseUrl()}/market-public/board?scope=all`, { next: { revalidate: 15 } });
     return r.ok ? parsePublicBoard(await r.json()) : null;
   } catch {
     return null;

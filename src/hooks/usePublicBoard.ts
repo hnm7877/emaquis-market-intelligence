@@ -3,13 +3,13 @@
 import { useEffect } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { parsePublicBoard, type BoardWindow, type PublicBoard } from '@/lib/validations/public-board.schema';
+import { parsePublicBoard, type PublicBoard } from '@/lib/validations/public-board.schema';
 import { usePublicBoardStore } from '@/stores/usePublicBoardStore';
 
-export const publicBoardKey = (scope: string, window: BoardWindow) => ['public-board', scope, window] as const;
+export const publicBoardKey = (scope: string) => ['public-board', scope] as const;
 
-async function fetchBoard(scope: string, window: BoardWindow): Promise<PublicBoard> {
-  const r = await fetch(`/api-proxy/market-public/board?scope=${encodeURIComponent(scope)}&window=${window}`, { credentials: 'omit' });
+async function fetchBoard(scope: string): Promise<PublicBoard> {
+  const r = await fetch(`/api-proxy/market-public/board?scope=${encodeURIComponent(scope)}`, { credentials: 'omit' });
   if (!r.ok) throw new Error('Classement indisponible');
   const b = parsePublicBoard(await r.json());
   if (!b) throw new Error('Classement invalide');
@@ -37,12 +37,12 @@ function publicSocket(): Socket {
  */
 export function usePublicBoard(initial: PublicBoard | null) {
   const qc = useQueryClient();
-  const { scope, window: win, ingest, setConnected } = usePublicBoardStore();
+  const { scope, ingest, setConnected } = usePublicBoardStore();
 
   const query = useQuery({
-    queryKey: publicBoardKey(scope, win),
-    queryFn: () => fetchBoard(scope, win),
-    initialData: initial && initial.scope === scope && (initial.requestedWindow ?? initial.window) === win ? initial : undefined,
+    queryKey: publicBoardKey(scope),
+    queryFn: () => fetchBoard(scope),
+    initialData: initial && initial.scope === scope ? initial : undefined,
     staleTime: 60_000,
     refetchOnWindowFocus: false,
     placeholderData: (prev) => prev,
@@ -50,18 +50,17 @@ export function usePublicBoard(initial: PublicBoard | null) {
 
   // Classement rendu par le serveur : point de départ pour détecter les dépassements
   useEffect(() => {
-    if (initial) ingest(`${initial.scope}:${initial.requestedWindow ?? initial.window}`, initial.items);
+    if (initial) ingest(initial.scope, initial.items);
   }, [initial, ingest]);
 
   useEffect(() => {
     const s = publicSocket();
-    const watch = () => s.emit('board:watch', { scope, window: win });
+    const watch = () => s.emit('board:watch', { scope });
     const onBoard = (raw: unknown) => {
       const b = parsePublicBoard(raw);
       if (!b) return;
-      const asked = b.requestedWindow ?? b.window;
-      ingest(`${b.scope}:${asked}`, b.items);
-      qc.setQueryData(publicBoardKey(b.scope, asked), b);
+      ingest(b.scope, b.items);
+      qc.setQueryData(publicBoardKey(b.scope), b);
     };
     const onConnect = () => {
       setConnected(true);
@@ -77,7 +76,7 @@ export function usePublicBoard(initial: PublicBoard | null) {
       s.off('connect', onConnect);
       s.off('disconnect', onDisconnect);
     };
-  }, [scope, win, qc, ingest, setConnected]);
+  }, [scope, qc, ingest, setConnected]);
 
   return query;
 }
