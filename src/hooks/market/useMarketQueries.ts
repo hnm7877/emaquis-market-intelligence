@@ -17,6 +17,7 @@ import {
   fetchAuditLogs,
   fetchSyncStatus,
   fetchProductDetail,
+  fetchProductCandles,
   fetchCompetition,
   fetchMarketSession,
   buildQueryParams,
@@ -141,6 +142,19 @@ export function useProductDetailQuery(productId: string | null) {
 }
 
 /** Face-à-face de produits : abonnement ouvert seulement avec au moins deux produits choisis */
+/** Bourse produit : bougies de prix réels (poussées en direct) */
+export function useProductCandlesQuery(productId: string | null, interval: string) {
+  const filters = useMarketFilterStore((state) => state.filters);
+  const id = productId || '';
+  return useLiveQuery(
+    'candles',
+    { ...buildQueryParams(filters), product: id, interval },
+    [...marketQueryKeys.all, 'candles', id, interval, filters],
+    () => fetchProductCandles(id, interval, filters),
+    !!productId,
+  );
+}
+
 export function useCompetitionQuery(ids: string[]) {
   const filters = useMarketFilterStore((state) => state.filters);
   const compare = ids.join(',');

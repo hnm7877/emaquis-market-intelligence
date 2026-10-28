@@ -745,3 +745,18 @@ export const PromotionsSchema = z.object({
   dataAvailability: z.object({ available: z.boolean().default(false), syncStartedAt: z.string().nullable().optional(), message: z.string().optional() }).optional(),
 });
 export type Promotions = z.infer<typeof PromotionsSchema>;
+
+// ==========================================
+// Bourse produit : bougies de prix réels
+// ==========================================
+export const CandlesSchema = z.object({
+  product: z.object({ id: z.string(), name: z.string().nullable(), brand: z.string().nullable().optional(), size: z.string().nullable().optional() }).nullable(),
+  interval: z.enum(['5m', '1h', '1d']),
+  candles: z.array(z.object({ t: z.string(), o: z.number(), h: z.number(), l: z.number(), c: z.number(), v: z.number(), n: z.number() })).default([]),
+  last: z.number().nullable().optional(),
+  changePercent: z.number().nullable().optional(),
+  methodology: z.string().optional(),
+  error: z.string().optional(),
+});
+export type Candles = z.infer<typeof CandlesSchema>;
+export type CandleInterval = Candles['interval'];

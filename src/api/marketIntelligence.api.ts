@@ -4,6 +4,7 @@ import {
   BrandsResponseSchema,
   CompetitionSchema,
   TrendsSchema,
+  CandlesSchema,
   StockIntelligenceSchema,
   PromotionsSchema,
   MyAlertsSchema,
@@ -369,4 +370,11 @@ export const logReportExport = async (input: { format: 'pdf' | 'xlsx'; sections:
   } catch {
     /* journal indisponible : l'export reste possible */
   }
+};
+
+export const fetchProductCandles = async (id: string, interval: string, filters?: Partial<FilterState>) => {
+  const params = { ...buildQueryParams(filters), product: id, interval };
+  const response = await axiosInstance.get('/market-intelligence/products/candles', { params });
+  const parsed = CandlesSchema.safeParse(response.data);
+  return parsed.success ? parsed.data : response.data;
 };

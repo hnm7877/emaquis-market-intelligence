@@ -21,8 +21,7 @@ import {
   ShieldCheck,
   ChevronRight,
   Sparkles,
-  X,
-} from 'lucide-react';
+  X, CandlestickChart } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useDataCoverageQuery, useMarketSessionQuery } from '@/hooks/market/useMarketQueries';
 import { Button } from '@/components/ui/button';
@@ -37,6 +36,7 @@ interface NavItem {
 
 const mainNavItems: NavItem[] = [
   { label: "Vue d'ensemble", href: '/dashboard', icon: LayoutDashboard },
+  { label: 'Bourse produits', href: '/bourse', icon: CandlestickChart, badge: 'Live' },
   { label: 'Bourse & Dashboard IA', href: '/autonomous-dashboard', icon: Sparkles, badge: 'Live 3D' },
   { label: 'Géographie', href: '/geography', icon: MapPin },
   { label: 'Produits', href: '/products', icon: Package },
