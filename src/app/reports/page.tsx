@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { FilterBar } from '@/components/layout/FilterBar';
 import {
   useBrandsQuery,
+  useCategoriesQuery,
   useGeographyQuery,
   useMarketOverview,
   useMarketSessionQuery,
@@ -23,7 +24,7 @@ import { buildReport, SECTION_LABELS, type ReportSection } from '@/lib/reports/b
 import { downloadBlob, exportReportExcel, fileSlug } from '@/lib/reports/exportExcel';
 import { buildQueryParams, logReportExport } from '@/api/marketIntelligence.api';
 import { deerflowApi } from '@/api/deerflow.api';
-import type { BrandRow, IGeographyResponse, IMarketOverview, ProductItem, Trends } from '@/lib/validations/market.schemas';
+import type { BrandRow, ICategoryItem, IGeographyResponse, IMarketOverview, ProductItem, Trends } from '@/lib/validations/market.schemas';
 
 const EASE = [0.23, 1, 0.32, 1] as const;
 
@@ -124,12 +125,13 @@ export default function ReportsPage() {
   const on = (id: (typeof ALL_SECTIONS)[number]) => sections.includes(id);
   const overview = useMarketOverview(on('overview'));
   const brands = useBrandsQuery(on('brands'));
+  const categories = useCategoriesQuery(on('categories'));
   const products = useProductsQuery(on('products'));
   const geography = useGeographyQuery(on('geography'));
   const trends = useTrendsQuery(on('trends'));
   const stock = useStockIntelligenceQuery(on('stock'));
   const promotions = usePromotionsQuery(on('promotions'));
-  const queries = [overview, brands, products, geography, trends, stock, promotions];
+  const queries = [overview, brands, categories, products, geography, trends, stock, promotions];
   const loading = queries.some((q) => q.isLoading && q.fetchStatus !== 'idle');
 
   const report = useMemo(
@@ -138,6 +140,7 @@ export default function ReportsPage() {
         {
           overview: overview.data as IMarketOverview | undefined,
           brands: (brands.data as { brands?: BrandRow[] } | undefined)?.brands,
+          categories: (categories.data as { categories?: ICategoryItem[] } | undefined)?.categories,
           products: (products.data as { products?: ProductItem[] } | undefined)?.products,
           geography: geography.data as IGeographyResponse | undefined,
           trends: trends.data as Trends | undefined,
@@ -147,7 +150,7 @@ export default function ReportsPage() {
         sections,
         ownBrands,
       ),
-    [overview.data, brands.data, products.data, geography.data, trends.data, stock.data, promotions.data, sections, ownBrands],
+    [overview.data, brands.data, categories.data, products.data, geography.data, trends.data, stock.data, promotions.data, sections, ownBrands],
   );
 
   const filterLines = useMemo(
@@ -157,10 +160,20 @@ export default function ReportsPage() {
         .map(([k, v]) => `${FILTER_LABELS[k] ?? k} : ${v}`),
     [filters],
   );
-  const generatedAt = new Date().toLocaleString('fr-FR');
+  // Date de génération lue côté navigateur uniquement (évite un écart entre rendu serveur et navigateur)
+  const [generatedAt, setGeneratedAt] = React.useState('');
+  useEffect(() => {
+    const tick = () => setGeneratedAt(new Date().toLocaleString('fr-FR'));
+    const first = setTimeout(tick, 0);
+    const t = setInterval(tick, 60_000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(t);
+    };
+  }, []);
   const meta = [
     recipient ? `Destinataire : ${recipient}` : '',
-    `Généré le ${generatedAt} — données réelles du réseau E-Maquis`,
+    generatedAt ? `Généré le ${generatedAt} — données réelles du réseau E-Maquis` : 'Données réelles du réseau E-Maquis',
     filterLines.length ? `Filtres : ${filterLines.join(' · ')}` : 'Filtres : aucun (tout le réseau)',
   ].filter(Boolean);
 

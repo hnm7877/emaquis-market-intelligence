@@ -1,5 +1,6 @@
 import type {
   BrandRow,
+  ICategoryItem,
   IGeographyResponse,
   IMarketOverview,
   ProductItem,
@@ -8,11 +9,12 @@ import type {
   Trends,
 } from '@/lib/validations/market.schemas';
 
-export type ReportSectionId = 'overview' | 'brands' | 'products' | 'geography' | 'trends' | 'stock' | 'promotions';
+export type ReportSectionId = 'overview' | 'brands' | 'categories' | 'products' | 'geography' | 'trends' | 'stock' | 'promotions';
 
 export const SECTION_LABELS: Record<ReportSectionId, string> = {
   overview: "Vue d'ensemble",
   brands: 'Marques',
+  categories: 'Catégories',
   products: 'Produits',
   geography: 'Communes',
   trends: 'Tendances & horaires',
@@ -47,6 +49,7 @@ export interface ReportSection {
 export interface ReportData {
   overview?: IMarketOverview;
   brands?: BrandRow[];
+  categories?: ICategoryItem[];
   products?: ProductItem[];
   geography?: IGeographyResponse;
   trends?: Trends;
@@ -103,6 +106,27 @@ function brands(rows: BrandRow[], own: Set<string>): ReportSection {
   };
 }
 
+function categories(rows: ICategoryItem[]): ReportSection {
+  const top = [...rows].filter((c) => c.volume > 0).sort((a, b) => b.volume - a.volume).slice(0, 15);
+  const highlights: string[] = [];
+  if (top[0]) highlights.push(`${top[0].name} est la première catégorie : ${pct(top[0].volumeShare, false)} des volumes.`);
+  const rising = top.filter((c) => c.growth != null).sort((a, b) => (b.growth as number) - (a.growth as number))[0];
+  if (rising && (rising.growth as number) > 0) highlights.push(`Plus forte progression : ${rising.name} (${pct(rising.growth)}).`);
+  const open = top.filter((c) => c.leaderShare != null && c.leaderShare < 40).map((c) => c.name);
+  if (open.length) highlights.push(`Catégories ouvertes (aucune marque au-dessus de 40 %) : ${open.slice(0, 4).join(', ')}.`);
+  return {
+    id: 'categories',
+    title: SECTION_LABELS.categories,
+    kpis: [{ label: 'Catégories vendues', value: int(top.length) }],
+    highlights,
+    table: {
+      columns: ['Catégorie', 'Unités', "Chiffre d'affaires (F)", 'Part (%)', 'Évolution (%)', 'Pénétration (%)', 'Marque n°1'],
+      rows: top.map((c) => [c.name, c.volume, c.revenue, c.volumeShare, c.growth, c.posPenetration, c.topBrands[0]?.name ?? '']),
+    },
+    chart: top.slice(0, 8).map((c) => ({ label: c.name, value: c.volumeShare })),
+  };
+}
+
 function products(rows: ProductItem[], own: Set<string>): ReportSection {
   const mine = own.size ? rows.filter((p) => own.has(lc(p.brand))) : [];
   const base = mine.length ? mine : rows;
@@ -151,7 +175,14 @@ function trends(t: Trends): ReportSection {
   const highlights: string[] = [];
   if (t.goldenSlot) highlights.push(`Moment le plus fort : ${t.goldenSlot.day} ${t.goldenSlot.hour}.`);
   if (t.peakHours.length) highlights.push(`Heures de pointe : ${t.peakHours.slice(0, 3).join(', ')} (${pct(t.peakHoursShare, false)} des volumes).`);
-  if (t.weekendOverWeekdayRatio != null) highlights.push(`Le week-end vend ${t.weekendOverWeekdayRatio.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} fois plus par jour que la semaine.`);
+  if (t.weekendOverWeekdayRatio != null && t.weekendOverWeekdayRatio > 0) {
+    const r = t.weekendOverWeekdayRatio;
+    highlights.push(
+      r >= 1
+        ? `Un jour du vendredi au dimanche vend ${r.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} fois le volume d'un jour du lundi au jeudi.`
+        : `Un jour du vendredi au dimanche vend ${pct(Math.round((1 - r) * 1000) / 10, false)} de moins qu'un jour du lundi au jeudi.`,
+    );
+  }
   if (t.momentum?.growthPercent != null) highlights.push(`7 derniers jours : ${pct(t.momentum.growthPercent)} par rapport aux 7 précédents.`);
   return {
     id: 'trends',
@@ -172,7 +203,7 @@ function trends(t: Trends): ReportSection {
 function stock(s: StockIntelligence, own: Set<string>): ReportSection {
   const k = s.kpis;
   const highlights: string[] = [];
-  if (k?.availabilityRate != null) highlights.push(`Disponibilité du réseau : ${pct(k.availabilityRate, false)} (${int(k.stockoutPositions)} produits en rupture).`);
+  if (k?.availabilityRate != null) highlights.push(`Disponibilité du réseau : ${pct(k.availabilityRate, false)} (${int(k.stockoutPositions)} produits en rupture dans un établissement, sur ${int(k.trackedPositions)} suivis).`);
   if (k?.lostRevenuePerDay) highlights.push(`Ventes manquées estimées : ${money(k.lostRevenuePerDay)} par jour.`);
   if (s.forecast?.positionsAtRisk) highlights.push(`${int(s.forecast.positionsAtRisk)} ruptures attendues d'ici ${s.forecast.horizonDays} jours.`);
   s.brandAvailability.filter((b) => own.has(lc(b.brand))).forEach((b) => highlights.push(`${b.brand} : ${pct(b.availabilityRate, false)} de disponibilité.`));
@@ -230,6 +261,7 @@ export function buildReport(data: ReportData, sections: ReportSectionId[], ownBr
   for (const id of sections) {
     if (id === 'overview' && data.overview) out.push(overview(data.overview));
     if (id === 'brands' && data.brands?.length) out.push(brands(data.brands, own));
+    if (id === 'categories' && data.categories?.some((c) => c.volume > 0)) out.push(categories(data.categories));
     if (id === 'products' && data.products?.length) out.push(products(data.products, own));
     if (id === 'geography' && data.geography?.zones.length) out.push(geography(data.geography));
     if (id === 'trends' && data.trends) out.push(trends(data.trends));

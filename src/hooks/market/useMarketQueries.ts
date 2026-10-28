@@ -168,9 +168,9 @@ export function useCompetitionQuery(ids: string[]) {
 }
 
 /** 5. Catégories */
-export function useCategoriesQuery() {
+export function useCategoriesQuery(enabled = true) {
   const filters = useMarketFilterStore((state) => state.filters);
-  return useLiveQuery('categories', buildQueryParams(filters), marketQueryKeys.categories(filters), () => fetchCategoriesData(filters));
+  return useLiveQuery('categories', buildQueryParams(filters), marketQueryKeys.categories(filters), () => fetchCategoriesData(filters), enabled);
 }
 
 /** 6. Tendances de consommation */
