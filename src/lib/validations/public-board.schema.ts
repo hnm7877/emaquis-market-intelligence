@@ -9,13 +9,15 @@ export const PublicBoardItemSchema = z.object({
   category: z.string().nullable().optional(),
   changePercent: z.number().nullable(),
   spark: z.array(z.number()).default([]),
+  /** Dernière vente (arrondie à la minute) */
+  lastSoldAt: z.string().nullable().optional(),
 });
 
 export const PublicBoardSchema = z.object({
   scope: z.string(),
   updatedAt: z.string(),
   items: z.array(PublicBoardItemSchema).default([]),
-  countries: z.array(z.object({ code: z.string(), name: z.string(), flag: z.string().default('') })).default([]),
+  countries: z.array(z.object({ code: z.string(), name: z.string(), flag: z.string().default(''), iso: z.string().default('') })).default([]),
 });
 
 export type PublicBoard = z.infer<typeof PublicBoardSchema>;

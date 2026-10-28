@@ -15,6 +15,18 @@ const pct = (v: number | null) => (v == null ? '—' : `${v > 0 ? '+' : ''}${v.t
 const tone = (v: number | null) => (v == null || v === 0 ? 'text-muted-foreground' : v > 0 ? 'text-emerald-400' : 'text-red-400');
 
 /** Heure courante, rafraîchie chaque seconde ; 0 au rendu serveur (évite tout écart d'hydratation) */
+/** « il y a 3 min » à partir d'une date (vide tant que l'heure n'est pas connue côté navigateur) */
+function agoLabel(iso: string | null | undefined, now: number) {
+  if (!iso || !now) return '';
+  const min = Math.max(0, Math.round((now - new Date(iso).getTime()) / 60_000));
+  if (min < 1) return "à l'instant";
+  if (min < 60) return `il y a ${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `il y a ${h} h`;
+  const d = Math.floor(h / 24);
+  return d < 30 ? `il y a ${d} j` : '';
+}
+
 function useNow(ms = 1000) {
   const [now, setNow] = useState(0);
   useEffect(() => {
@@ -58,11 +70,11 @@ function RankMove({ item }: { item: PublicBoardItem }) {
   );
 }
 
-function Watchlist({ board, flashing }: { board: PublicBoard | undefined; flashing: Set<string> }) {
+function Watchlist({ board, flashing, sold, now }: { board: PublicBoard | undefined; flashing: Set<string>; sold: Set<string>; now: number }) {
   const items = board?.items ?? [];
   return (
     <div role="table" aria-label="Classement des produits" className="text-sm">
-      <div role="row" className="grid grid-cols-[1.75rem_minmax(0,1fr)_2.75rem_4.75rem] sm:grid-cols-[2.5rem_minmax(0,1fr)_7rem_4rem_5.5rem] items-center gap-2 border-b border-border/60 px-3 pb-2 text-[11px] text-muted-foreground">
+      <div role="row" className="sticky top-0 z-10 grid grid-cols-[1.75rem_minmax(0,1fr)_2.75rem_4.75rem] sm:grid-cols-[2.5rem_minmax(0,1fr)_7rem_4rem_5.5rem] items-center gap-2 border-b border-border/60 px-3 pb-2 text-[11px] text-muted-foreground">
         <span role="columnheader">#</span>
         <span role="columnheader">Produits ({items.length})</span>
         <span role="columnheader" className="hidden text-center sm:block">Tendance 14 j</span>
@@ -72,25 +84,55 @@ function Watchlist({ board, flashing }: { board: PublicBoard | undefined; flashi
       {items.length === 0 ? (
         <p className="px-3 py-12 text-center text-xs text-muted-foreground">Pas encore assez de ventes sur ce périmètre pour publier un classement.</p>
       ) : (
-        <motion.ol layout className="relative">
+        <div className="relative">
+        <motion.ol layout className="scroll-thin relative max-h-[520px] overflow-y-auto overscroll-contain pr-1 pb-6">
           {items.map((it) => {
             const flash = flashing.has(it.name);
+            const justSold = sold.has(it.name);
+            const ago = agoLabel(it.lastSoldAt, now);
+            const fresh = !!it.lastSoldAt && now > 0 && now - new Date(it.lastSoldAt).getTime() < 15 * 60_000;
             return (
               <motion.li
                 key={it.name}
                 role="row"
                 layout="position"
                 transition={{ type: 'spring', stiffness: 380, damping: 34 }}
-                className={`grid grid-cols-[1.75rem_minmax(0,1fr)_2.75rem_4.75rem] sm:grid-cols-[2.5rem_minmax(0,1fr)_7rem_4rem_5.5rem] items-center gap-2 rounded-lg px-3 py-2 transition-colors duration-700 ${flash ? 'bg-emerald-500/15 ring-1 ring-emerald-400/40' : 'hover:bg-white/[0.03]'}`}
+                className={`grid grid-cols-[1.75rem_minmax(0,1fr)_2.75rem_4.75rem] sm:grid-cols-[2.5rem_minmax(0,1fr)_7rem_4rem_5.5rem] items-center gap-2 relative rounded-lg px-3 py-2 transition-colors duration-700 ${flash ? 'bg-emerald-500/15 ring-1 ring-emerald-400/40' : justSold ? 'bg-amber-500/10 ring-1 ring-amber-400/40' : 'hover:bg-white/[0.03]'}`}
               >
                 <span role="cell" className={`text-xs font-bold tabular-nums ${it.rank <= 3 ? 'text-amber-400' : 'text-muted-foreground'}`}>
                   {it.rank === 1 ? <Crown className="size-4 text-amber-400" aria-label="Premier" /> : it.rank}
                 </span>
                 <span role="cell" className="flex min-w-0 items-center gap-2.5">
-                  <ProductAvatar name={it.name} brand={it.brand} />
+                  <span className="relative shrink-0">
+                    <ProductAvatar name={it.name} brand={it.brand} />
+                    {fresh && (
+                      <span className="absolute -right-0.5 -top-0.5 flex size-2.5">
+                        <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-70 motion-reduce:animate-none" />
+                        <span className="relative inline-flex size-2.5 rounded-full border border-background bg-emerald-400" />
+                      </span>
+                    )}
+                  </span>
                   <span className="min-w-0">
-                    <span className="block truncate font-semibold text-foreground">{it.name}</span>
-                    <span className="block truncate text-[11px] text-muted-foreground">{[it.brand, it.category].filter(Boolean).join(' · ') || '—'}</span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="truncate font-semibold text-foreground">{it.name}</span>
+                      <AnimatePresence>
+                        {justSold && (
+                          <motion.span
+                            initial={{ opacity: 0, scale: 0.6 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.6 }}
+                            transition={{ type: 'spring', stiffness: 500, damping: 28 }}
+                            className="shrink-0 rounded-full bg-amber-500 px-1.5 py-px text-[9px] font-bold uppercase text-black"
+                          >
+                            Vente
+                          </motion.span>
+                        )}
+                      </AnimatePresence>
+                    </span>
+                    <span className="block truncate text-[11px] text-muted-foreground">
+                      {[it.brand, it.category].filter(Boolean).join(' · ') || '—'}
+                      {ago && <span className={fresh ? 'text-emerald-400' : ''}> · vendu {ago}</span>}
+                    </span>
                   </span>
                 </span>
                 <span role="cell" className="hidden justify-center sm:flex">
@@ -107,6 +149,9 @@ function Watchlist({ board, flashing }: { board: PublicBoard | undefined; flashi
             );
           })}
         </motion.ol>
+          {/* Fondu en bas : la liste continue */}
+          <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-10 rounded-b-xl bg-gradient-to-t from-card to-transparent" />
+        </div>
       )}
     </div>
   );
@@ -137,13 +182,25 @@ const FEATURES = [
  * aucun volume ni établissement), pour donner envie d'accéder à la plateforme.
  */
 export function PublicLanding({ initial }: { initial: PublicBoard | null }) {
-  const { scope, setScope, connected, overtakes } = usePublicBoardStore();
+  const { scope, setScope, connected, overtakes, sales } = usePublicBoardStore();
   const { data: board, isError } = usePublicBoard(initial);
   const countries = board?.countries ?? initial?.countries ?? [];
   const now = useNow(1000);
 
   const flashing = useMemo(() => new Set(overtakes.filter((o) => now - o.at < 4000).map((o) => o.winner)), [overtakes, now]);
   const latest = overtakes[0] && now - overtakes[0].at < 6000 ? overtakes[0] : null;
+  const sold = useMemo(() => new Set(sales.filter((x) => now - x.at < 5000).map((x) => x.name)), [sales, now]);
+  // Fil d'activité : ventes et dépassements, du plus récent au plus ancien
+  const activity = useMemo(
+    () =>
+      [
+        ...overtakes.map((o) => ({ id: o.id, at: o.at, kind: 'overtake' as const, text: `${o.winner} passe devant ${o.loser}`, rank: o.rank })),
+        ...sales.map((x) => ({ id: x.id, at: x.at, kind: 'sale' as const, text: `${x.name} vient de se vendre`, rank: x.rank })),
+      ]
+        .sort((a, b) => b.at - a.at)
+        .slice(0, 15),
+    [overtakes, sales],
+  );
 
   const highlights = useMemo(() => {
     const items = board?.items ?? [];
@@ -198,7 +255,7 @@ export function PublicLanding({ initial }: { initial: PublicBoard | null }) {
 
               {countries.length > 0 && (
                 <div className="mb-3 flex gap-1.5 overflow-x-auto px-1 pb-1 text-xs" role="group" aria-label="Pays">
-                  {[{ code: 'all', name: 'Tous les pays', flag: '🌍' }, ...countries].map((c) => (
+                  {[{ code: 'all', name: 'Tous les pays', flag: '', iso: '' }, ...countries].map((c) => (
                     <button
                       key={c.code}
                       type="button"
@@ -206,7 +263,12 @@ export function PublicLanding({ initial }: { initial: PublicBoard | null }) {
                       onClick={() => setScope(c.code)}
                       className={`shrink-0 rounded-full border px-3 py-1 transition-colors ${scope === c.code ? 'border-amber-500/60 bg-amber-500/15 text-amber-200' : 'border-border/60 text-muted-foreground hover:text-foreground'}`}
                     >
-                      <span aria-hidden="true">{c.flag}</span> {c.name}
+                      {c.code === 'all' ? (
+                        <Globe2 className="mr-1 inline size-3.5 align-[-2px]" aria-hidden="true" />
+                      ) : (
+                        c.iso && <span aria-hidden="true" className="mr-1 rounded bg-white/10 px-1 py-px text-[9px] font-bold tracking-wide">{c.iso}</span>
+                      )}
+                      {c.name}
                     </button>
                   ))}
                 </div>
@@ -235,7 +297,7 @@ export function PublicLanding({ initial }: { initial: PublicBoard | null }) {
               {isError && !board ? (
                 <p className="px-3 py-12 text-center text-xs text-muted-foreground">Classement momentanément indisponible.</p>
               ) : (
-                <Watchlist board={board} flashing={flashing} />
+                <Watchlist board={board} flashing={flashing} sold={sold} now={now} />
               )}
             </div>
 
@@ -248,16 +310,16 @@ export function PublicLanding({ initial }: { initial: PublicBoard | null }) {
 
               <div className="rounded-2xl border border-border/70 bg-card/70 p-4 backdrop-blur-md">
                 <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
-                  <Sparkles className="size-4 text-amber-400" /> Dépassements en direct
+                  <Sparkles className="size-4 text-amber-400" /> Activité en direct
                 </h2>
-                {overtakes.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">Les prochains dépassements s’afficheront ici dès qu’ils se produisent.</p>
+                {activity.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">Les ventes et les dépassements s’afficheront ici dès qu’ils arrivent, sans recharger la page.</p>
                 ) : (
-                  <ul className="space-y-2">
+                  <ul className="scroll-thin max-h-64 space-y-2 overflow-y-auto pr-1" aria-live="polite">
                     <AnimatePresence initial={false}>
-                      {overtakes.slice(0, 6).map((o) => (
+                      {activity.map((e) => (
                         <motion.li
-                          key={o.id}
+                          key={e.id}
                           layout
                           initial={{ opacity: 0, x: 12 }}
                           animate={{ opacity: 1, x: 0 }}
@@ -265,10 +327,11 @@ export function PublicLanding({ initial }: { initial: PublicBoard | null }) {
                           transition={{ duration: 0.3, ease: EASE }}
                           className="flex items-start gap-2 text-xs"
                         >
-                          <ArrowUp className="mt-0.5 size-3 shrink-0 text-emerald-400" />
-                          <span className="text-muted-foreground">
-                            <strong className="text-foreground">{o.winner}</strong> devant {o.loser} · n°{o.rank}
+                          {e.kind === 'overtake' ? <ArrowUp className="mt-0.5 size-3 shrink-0 text-emerald-400" /> : <Zap className="mt-0.5 size-3 shrink-0 text-amber-400" />}
+                          <span className="min-w-0 flex-1 text-muted-foreground">
+                            <span className={e.kind === 'overtake' ? 'text-foreground' : ''}>{e.text}</span> · n°{e.rank}
                           </span>
+                          <span className="shrink-0 tabular-nums text-[10px] text-muted-foreground/70">{agoLabel(new Date(e.at).toISOString(), now)}</span>
                         </motion.li>
                       ))}
                     </AnimatePresence>
