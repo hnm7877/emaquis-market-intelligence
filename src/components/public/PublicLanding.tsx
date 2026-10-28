@@ -194,7 +194,7 @@ export function PublicLanding({ initial }: { initial: PublicBoard | null }) {
                   <span className="size-2.5 rounded-sm bg-amber-500" /> Classement des produits
                 </h2>
                 <div className="flex rounded-lg border border-border/60 p-0.5 text-xs" role="group" aria-label="Période">
-                  {(['24h', '7d'] as const).map((w) => (
+                  {(['24h', '7d', '14d'] as const).map((w) => (
                     <button
                       key={w}
                       type="button"
@@ -202,7 +202,7 @@ export function PublicLanding({ initial }: { initial: PublicBoard | null }) {
                       onClick={() => setWindow(w)}
                       className={`rounded-md px-2.5 py-1 transition-colors ${win === w ? 'bg-amber-500/20 text-amber-300' : 'text-muted-foreground hover:text-foreground'}`}
                     >
-                      {w === '24h' ? '24 heures' : '7 jours'}
+                      {w === '24h' ? '24 heures' : w === '7d' ? '7 jours' : '14 jours'}
                     </button>
                   ))}
                 </div>
@@ -243,6 +243,12 @@ export function PublicLanding({ initial }: { initial: PublicBoard | null }) {
                   )}
                 </AnimatePresence>
               </div>
+
+              {board && board.requestedWindow && board.window !== board.requestedWindow && board.items.length > 0 && (
+                <p className="mb-2 px-1 text-[11px] text-muted-foreground">
+                  Peu de ventes sur {board.requestedWindow === '24h' ? '24 heures' : '7 jours'} : classement calculé sur {board.window === '7d' ? '7 jours' : '14 jours'}.
+                </p>
+              )}
 
               {isError && !board ? (
                 <p className="px-3 py-12 text-center text-xs text-muted-foreground">Classement momentanément indisponible.</p>

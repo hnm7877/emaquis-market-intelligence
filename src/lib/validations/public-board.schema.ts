@@ -13,7 +13,9 @@ export const PublicBoardItemSchema = z.object({
 
 export const PublicBoardSchema = z.object({
   scope: z.string(),
-  window: z.enum(['24h', '7d']),
+  window: z.enum(['24h', '7d', '14d']),
+  /** Période demandée (window peut avoir été élargie faute de ventes) */
+  requestedWindow: z.enum(['24h', '7d', '14d']).optional(),
   updatedAt: z.string(),
   items: z.array(PublicBoardItemSchema).default([]),
   countries: z.array(z.object({ code: z.string(), name: z.string(), flag: z.string().default('') })).default([]),

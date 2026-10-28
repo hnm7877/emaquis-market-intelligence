@@ -23,6 +23,8 @@ function publicSocket(): Socket {
     path: '/rt',
     addTrailingSlash: false,
     transports: ['websocket', 'polling'],
+    // WebSocket direct parfois impossible derrière le relais /rt : repli automatique en polling
+    tryAllTransports: true,
     withCredentials: false,
     reconnectionDelay: 3000,
   });
@@ -40,7 +42,7 @@ export function usePublicBoard(initial: PublicBoard | null) {
   const query = useQuery({
     queryKey: publicBoardKey(scope, win),
     queryFn: () => fetchBoard(scope, win),
-    initialData: initial && initial.scope === scope && initial.window === win ? initial : undefined,
+    initialData: initial && initial.scope === scope && (initial.requestedWindow ?? initial.window) === win ? initial : undefined,
     staleTime: 60_000,
     refetchOnWindowFocus: false,
     placeholderData: (prev) => prev,
@@ -48,7 +50,7 @@ export function usePublicBoard(initial: PublicBoard | null) {
 
   // Classement rendu par le serveur : point de départ pour détecter les dépassements
   useEffect(() => {
-    if (initial) ingest(`${initial.scope}:${initial.window}`, initial.items);
+    if (initial) ingest(`${initial.scope}:${initial.requestedWindow ?? initial.window}`, initial.items);
   }, [initial, ingest]);
 
   useEffect(() => {
@@ -57,8 +59,9 @@ export function usePublicBoard(initial: PublicBoard | null) {
     const onBoard = (raw: unknown) => {
       const b = parsePublicBoard(raw);
       if (!b) return;
-      ingest(`${b.scope}:${b.window}`, b.items);
-      qc.setQueryData(publicBoardKey(b.scope, b.window), b);
+      const asked = b.requestedWindow ?? b.window;
+      ingest(`${b.scope}:${asked}`, b.items);
+      qc.setQueryData(publicBoardKey(b.scope, asked), b);
     };
     const onConnect = () => {
       setConnected(true);
