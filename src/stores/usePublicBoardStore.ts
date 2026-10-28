@@ -13,7 +13,10 @@ export interface SaleBlip {
   id: string;
   name: string;
   rank: number;
+  /** Réception sur la page (tri du fil) */
   at: number;
+  /** Heure réelle de la vente, lue dans la collection des ventes */
+  soldAt: string;
 }
 
 interface PublicBoardUi {
@@ -36,7 +39,7 @@ export function detectSales(prev: PublicBoardItem[], next: PublicBoardItem[], no
   const before = new Map(prev.map((i) => [i.name, i.lastSoldAt ?? null]));
   return next
     .filter((i) => i.lastSoldAt && before.has(i.name) && before.get(i.name) !== i.lastSoldAt && (before.get(i.name) ?? '') < i.lastSoldAt)
-    .map((i) => ({ id: `sale-${now}-${i.name}`, name: i.name, rank: i.rank, at: now }));
+    .map((i) => ({ id: `sale-${now}-${i.name}`, name: i.name, rank: i.rank, at: now, soldAt: i.lastSoldAt as string }));
 }
 
 /** Produits qui ont gagné des places, et ceux qu'ils ont dépassés */

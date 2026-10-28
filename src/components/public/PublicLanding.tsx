@@ -194,8 +194,9 @@ export function PublicLanding({ initial }: { initial: PublicBoard | null }) {
   const activity = useMemo(
     () =>
       [
-        ...overtakes.map((o) => ({ id: o.id, at: o.at, kind: 'overtake' as const, text: `${o.winner} passe devant ${o.loser}`, rank: o.rank })),
-        ...sales.map((x) => ({ id: x.id, at: x.at, kind: 'sale' as const, text: `${x.name} vient de se vendre`, rank: x.rank })),
+        ...overtakes.map((o) => ({ id: o.id, at: o.at, when: new Date(o.at).toISOString(), kind: 'overtake' as const, text: `${o.winner} passe devant ${o.loser}`, rank: o.rank })),
+        // Heure affichée = heure réelle de la vente (collection des ventes), pas l'heure de réception
+        ...sales.map((x) => ({ id: x.id, at: x.at, when: x.soldAt, kind: 'sale' as const, text: `${x.name} vendu`, rank: x.rank })),
       ]
         .sort((a, b) => b.at - a.at)
         .slice(0, 15),
@@ -331,7 +332,7 @@ export function PublicLanding({ initial }: { initial: PublicBoard | null }) {
                           <span className="min-w-0 flex-1 text-muted-foreground">
                             <span className={e.kind === 'overtake' ? 'text-foreground' : ''}>{e.text}</span> · n°{e.rank}
                           </span>
-                          <span className="shrink-0 tabular-nums text-[10px] text-muted-foreground/70">{agoLabel(new Date(e.at).toISOString(), now)}</span>
+                          <span className="shrink-0 tabular-nums text-[10px] text-muted-foreground/70">{agoLabel(e.when, now)}</span>
                         </motion.li>
                       ))}
                     </AnimatePresence>
@@ -375,7 +376,7 @@ export function PublicLanding({ initial }: { initial: PublicBoard | null }) {
               <ShieldCheck className="size-3.5 text-emerald-400" /> Classement calculé sur toutes les unités réellement vendues. Seuls des rangs et des variations sont publiés.
             </span>
             <span className="flex items-center gap-1.5">
-              <Globe2 className="size-3.5" /> Un produit n’apparaît que s’il est vendu dans au moins 3 établissements ; variation = 7 derniers jours contre les 7 précédents ; courbe = indice base 100 sur 14 jours.
+              <Globe2 className="size-3.5" /> Toutes les ventes enregistrées, regroupées par pays ; heure = dernière vente enregistrée ; variation = 7 derniers jours contre les 7 précédents ; courbe = indice base 100 sur 14 jours.
             </span>
           </footer>
         </main>
