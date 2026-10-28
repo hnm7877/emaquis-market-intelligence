@@ -87,7 +87,19 @@ export default function AiIntelligencePage() {
   const { data: brandsData } = useBrandsQuery();
   const { data: geoData } = useGeographyQuery();
   const ai = useDeerFlow();
+  // Question préparée depuis la console « Bourse & Dashboard IA » (lue une seule fois)
   const [input, setInput] = useState('');
+  useEffect(() => {
+    try {
+      const draft = sessionStorage.getItem('mi-ai-draft');
+      if (!draft) return;
+      sessionStorage.removeItem('mi-ai-draft');
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- lecture du stockage du navigateur, disponible seulement côté client
+      setInput(draft.slice(0, 2000));
+    } catch {
+      /* stockage indisponible */
+    }
+  }, []);
   const [local, setLocal] = useState<Msg[]>([]);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);

@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import { TrendingUp, TrendingDown, Zap, ShieldCheck, Flame, Radio, Package } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { getBrandLogo } from '@/utils/brandLogos';
-import { resolveProductImage, formatProductTicker } from '@/utils/productImages';
+import { formatProductTicker } from '@/utils/productImages';
 
 export interface TickerItem {
   symbol: string;
@@ -13,24 +13,12 @@ export interface TickerItem {
   brand: string;
   price: string;
   volume: string;
-  delta: number;
+  delta: number | null;
   surge?: boolean;
   image?: string | null;
   brandLogo?: string | null;
 }
 
-const DEFAULT_TICKERS: TickerItem[] = [
-  { symbol: 'BCK-65', name: 'Bock 65cl (66)', brand: 'Solibra', price: '500 F', volume: '14,820 c/j', delta: 4.2, image: resolveProductImage(null, 'Bock 65cl', 'Solibra'), brandLogo: getBrandLogo('Solibra') },
-  { symbol: 'HNX-50', name: 'Heineken 50cl', brand: 'Brassivoire', price: '1,000 F', volume: '14,210 c/j', delta: 8.7, surge: true, image: resolveProductImage(null, 'Heineken 50cl', 'Brassivoire'), brandLogo: getBrandLogo('Brassivoire') },
-  { symbol: 'BFT-50', name: 'Beaufort Lager 50cl', brand: 'Solibra', price: '700 F', volume: '11,950 c/j', delta: 2.1, image: resolveProductImage(null, 'Beaufort Lager', 'Solibra'), brandLogo: getBrandLogo('Solibra') },
-  { symbol: 'IVR-65', name: 'Ivoire Spéciale 65cl', brand: 'Brassivoire', price: '600 F', volume: '11,400 c/j', delta: 3.5, image: resolveProductImage(null, 'Ivoire Spéciale', 'Brassivoire'), brandLogo: getBrandLogo('Brassivoire') },
-  { symbol: 'GNS-33', name: 'Guinness Foreign Extra', brand: 'Diageo', price: '800 F', volume: '9,800 c/j', delta: -1.4, image: resolveProductImage(null, 'Guinness', 'Diageo'), brandLogo: getBrandLogo('Diageo') },
-  { symbol: 'CST-50', name: 'Castel Beer 50cl', brand: 'Solibra', price: '600 F', volume: '8,650 c/j', delta: 0.9, image: resolveProductImage(null, 'Castel Beer', 'Solibra'), brandLogo: getBrandLogo('Solibra') },
-  { symbol: 'DSP-33', name: 'Desperados Tequila', brand: 'Brassivoire', price: '1,200 F', volume: '7,890 c/j', delta: 12.4, surge: true, image: resolveProductImage(null, 'Desperados', 'Brassivoire'), brandLogo: getBrandLogo('Brassivoire') },
-  { symbol: 'CLO-50', name: 'Chill Citron 50cl', brand: 'Solibra', price: '600 F', volume: '6,720 c/j', delta: 5.6, image: resolveProductImage(null, 'Chill Citron', 'Solibra'), brandLogo: getBrandLogo('Solibra') },
-  { symbol: 'DOB-50', name: 'Doppel Munich 50cl', brand: 'Solibra', price: '700 F', volume: '5,940 c/j', delta: -2.3, image: resolveProductImage(null, 'Doppel Munich', 'Solibra'), brandLogo: getBrandLogo('Solibra') },
-  { symbol: 'RBL-25', name: 'Red Bull Energy 25cl', brand: 'Import', price: '1,500 F', volume: '4,830 c/j', delta: 7.1, image: resolveProductImage(null, 'Red Bull', 'Import'), brandLogo: null },
-];
 
 import { DisplayVolumeUnit, formatProductVolume } from '@/utils/productVolumeConverter';
 
@@ -48,26 +36,36 @@ export const StockTickerHeader: React.FC<{
         const realName = (p.name || '').trim();
         const realBrand = (p.brand || 'Non spécifié').trim();
         const vol = Number(p.volume) || 0;
-        const price = Number(p.price) || (p.revenue && vol > 0 ? Math.round(p.revenue / vol) : 600);
-        const delta = Number(p.growth) || (idx % 2 === 0 ? +(3.2 + idx * 0.7) : -(1.1 + idx * 0.4));
+        const price = Number(p.pricing?.avgSalePrice) || (p.revenue && vol > 0 ? Math.round(p.revenue / vol) : 0);
+        // Variation réelle uniquement (null : pas d'historique sur la période précédente)
+        const delta: number | null = typeof p.growth === 'number' ? p.growth : null;
         const formattedVol = formatProductVolume(vol, unit, realName, p.format);
 
         return {
           symbol: formatProductTicker(realName),
           name: realName,
           brand: realBrand,
-          price: `${price.toLocaleString('fr-FR')} F`,
+          price: price > 0 ? `${price.toLocaleString('fr-FR')} F` : '—',
           volume: formattedVol.formatted,
-          delta: parseFloat(delta.toFixed(1)),
-          surge: delta > 7,
-          image: resolveProductImage(p.image, realName, realBrand),
+          delta: delta == null ? null : parseFloat(delta.toFixed(1)),
+          surge: delta != null && delta > 7,
+          image: typeof p.image === 'string' && /^(https?:)?\/\//.test(p.image) ? p.image : null,
           brandLogo: getBrandLogo(realBrand),
         };
       });
     }
 
-    return DEFAULT_TICKERS;
+    return [];
   }, [items, apiProducts, unit]);
+
+  // Variation moyenne pondérée par les volumes (produits avec historique uniquement)
+  const avgGrowth = useMemo(() => {
+    const rows = (apiProducts ?? []).filter((p): p is { growth: number; volume: number } => typeof p?.growth === 'number' && Number(p.volume) > 0);
+    const w = rows.reduce((n, p) => n + Number(p.volume), 0);
+    return w > 0 ? Math.round((rows.reduce((n, p) => n + p.growth * Number(p.volume), 0) / w) * 10) / 10 : null;
+  }, [apiProducts]);
+
+  if (!tickerItems.length) return null;
 
   return (
     <div className="w-full bg-slate-950/95 border-y border-slate-800/80 backdrop-blur-md overflow-hidden py-2 px-3 shadow-inner">
@@ -95,7 +93,7 @@ export const StockTickerHeader: React.FC<{
             }}
           >
             {[...tickerItems, ...tickerItems, ...tickerItems].map((item, idx) => {
-              const isPositive = item.delta >= 0;
+              const isPositive = (item.delta ?? 0) >= 0;
               return (
                 <div
                   key={`${item.symbol}-${idx}`}
@@ -121,8 +119,8 @@ export const StockTickerHeader: React.FC<{
                       isPositive ? 'text-emerald-400' : 'text-rose-400'
                     }`}
                   >
-                    {isPositive ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
-                    {isPositive ? `+${item.delta}%` : `${item.delta}%`}
+                    {item.delta == null ? null : isPositive ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
+                    {item.delta == null ? 'n/d' : isPositive ? `+${item.delta}%` : `${item.delta}%`}
                   </span>
 
                   <span className="text-[10px] text-slate-500">[{item.volume}]</span>
@@ -141,10 +139,13 @@ export const StockTickerHeader: React.FC<{
         {/* Télémétrie en direct */}
         <div className="hidden lg:flex items-center gap-3 pl-3 border-l border-slate-800 shrink-0 text-[11px] font-mono">
           <div className="text-muted-foreground">
-            INDEX VÉLOCITÉ : <span className="text-emerald-400 font-bold">+6.4%</span>
+            VARIATION MOYENNE :{' '}
+            <span className={`font-bold ${avgGrowth == null ? 'text-slate-400' : avgGrowth >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+              {avgGrowth == null ? 'n/d' : `${avgGrowth > 0 ? '+' : ''}${avgGrowth}%`}
+            </span>
           </div>
           <div className="text-muted-foreground">
-            LATENCE RÉSEAU : <span className="text-cyan-400 font-bold">14ms</span>
+            PRODUITS : <span className="text-cyan-400 font-bold">{(apiProducts?.length ?? 0).toLocaleString('fr-FR')}</span>
           </div>
         </div>
       </div>

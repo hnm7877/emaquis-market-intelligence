@@ -28,7 +28,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { getBrandLogo } from '@/utils/brandLogos';
-import { resolveProductImage, formatProductTicker } from '@/utils/productImages';
+import { formatProductTicker } from '@/utils/productImages';
 import { DisplayVolumeUnit, formatProductVolume, extractBottleSizeCl } from '@/utils/productVolumeConverter';
 import { getMarketSocket } from '@/api/socket';
 
@@ -39,172 +39,28 @@ export interface LadderProduct {
   brand: string;
   category: string;
   format?: string;
-  price: number;
+  /** Prix de vente moyen réellement payé (null : inconnu) */
+  price: number | null;
   volume: number; // Volume réel de la BD (cols/bouteilles vendues)
   previousVolume: number;
   rank: number;
   previousRank: number;
-  velocity: number; // Cols / heure réels
-  sparkline: number[];
+  velocity: number; // Cols / heure : volume de la période / heures de la période
+  /** Variation réelle vs période précédente (null : pas d'historique) */
+  growth: number | null;
   color: string;
   image: string | null;
   brandLogo: string | null;
   recentSaleDelta?: number;
 }
 
-// Données initiales authentiques de référence
-const FALLBACK_DB_PRODUCTS: LadderProduct[] = [
-  {
-    id: 'bck65',
-    symbol: 'BCK-65',
-    name: 'Bock 65cl (66)',
-    brand: 'Solibra',
-    category: 'Bières Blondes',
-    format: '65cl',
-    price: 650,
-    volume: 14820,
-    previousVolume: 14820,
-    rank: 1,
-    previousRank: 1,
-    velocity: 618,
-    sparkline: [480, 520, 560, 600, 618],
-    color: 'from-amber-500/20 to-orange-500/10 border-amber-500/40 text-amber-400',
-    image: resolveProductImage(null, 'Bock 65cl', 'Solibra'),
-    brandLogo: getBrandLogo('Solibra'),
-  },
-  {
-    id: 'hnx50',
-    symbol: 'HNX-50',
-    name: 'Heineken 50cl',
-    brand: 'Brassivoire',
-    category: 'Bières Blondes',
-    format: '50cl',
-    price: 1000,
-    volume: 14210,
-    previousVolume: 14210,
-    rank: 2,
-    previousRank: 2,
-    velocity: 592,
-    sparkline: [510, 530, 570, 585, 592],
-    color: 'from-emerald-500/20 to-green-500/10 border-emerald-500/40 text-emerald-400',
-    image: resolveProductImage(null, 'Heineken 50cl', 'Brassivoire'),
-    brandLogo: getBrandLogo('Brassivoire'),
-  },
-  {
-    id: 'bft50',
-    symbol: 'BFT-50',
-    name: 'Beaufort Lager 50cl',
-    brand: 'Solibra',
-    category: 'Bières Blondes',
-    format: '50cl',
-    price: 700,
-    volume: 11950,
-    previousVolume: 11950,
-    rank: 3,
-    previousRank: 3,
-    velocity: 498,
-    sparkline: [460, 475, 480, 490, 498],
-    color: 'from-blue-500/20 to-cyan-500/10 border-blue-500/40 text-blue-400',
-    image: resolveProductImage(null, 'Beaufort Lager 50cl', 'Solibra'),
-    brandLogo: getBrandLogo('Solibra'),
-  },
-  {
-    id: 'ivr65',
-    symbol: 'IVR-65',
-    name: 'Ivoire Spéciale 65cl',
-    brand: 'Brassivoire',
-    category: 'Bières Blondes',
-    format: '65cl',
-    price: 600,
-    volume: 11400,
-    previousVolume: 11400,
-    rank: 4,
-    previousRank: 4,
-    velocity: 475,
-    sparkline: [430, 440, 460, 470, 475],
-    color: 'from-orange-500/20 to-amber-500/10 border-orange-500/40 text-orange-400',
-    image: resolveProductImage(null, 'Ivoire Spéciale', 'Brassivoire'),
-    brandLogo: getBrandLogo('Brassivoire'),
-  },
-  {
-    id: 'gns33',
-    symbol: 'GNS-33',
-    name: 'Guinness Foreign Extra 33cl',
-    brand: 'Diageo',
-    category: 'Bières Brunes',
-    format: '33cl',
-    price: 950,
-    volume: 9800,
-    previousVolume: 9800,
-    rank: 5,
-    previousRank: 5,
-    velocity: 408,
-    sparkline: [380, 395, 400, 402, 408],
-    color: 'from-purple-500/20 to-fuchsia-500/10 border-purple-500/40 text-purple-400',
-    image: resolveProductImage(null, 'Guinness Foreign Extra', 'Diageo'),
-    brandLogo: getBrandLogo('Diageo'),
-  },
-  {
-    id: 'cst50',
-    symbol: 'CST-50',
-    name: 'Castel Beer 50cl',
-    brand: 'Solibra',
-    category: 'Bières Blondes',
-    format: '50cl',
-    price: 600,
-    volume: 8650,
-    previousVolume: 8650,
-    rank: 6,
-    previousRank: 6,
-    velocity: 360,
-    sparkline: [340, 350, 355, 358, 360],
-    color: 'from-yellow-500/20 to-amber-500/10 border-yellow-500/40 text-yellow-400',
-    image: resolveProductImage(null, 'Castel Beer', 'Solibra'),
-    brandLogo: getBrandLogo('Solibra'),
-  },
-  {
-    id: 'dsp33',
-    symbol: 'DSP-33',
-    name: 'Desperados Tequila 33cl',
-    brand: 'Brassivoire',
-    category: 'Bières Aromatisées',
-    format: '33cl',
-    price: 1200,
-    volume: 7890,
-    previousVolume: 7890,
-    rank: 7,
-    previousRank: 7,
-    velocity: 328,
-    sparkline: [280, 295, 310, 320, 328],
-    color: 'from-rose-500/20 to-pink-500/10 border-rose-500/40 text-rose-400',
-    image: resolveProductImage(null, 'Desperados Tequila', 'Brassivoire'),
-    brandLogo: getBrandLogo('Brassivoire'),
-  },
-  {
-    id: 'clo50',
-    symbol: 'CLO-50',
-    name: 'Chill Citron 50cl',
-    brand: 'Solibra',
-    category: 'Bières Aromatisées',
-    format: '50cl',
-    price: 600,
-    volume: 6720,
-    previousVolume: 6720,
-    rank: 8,
-    previousRank: 8,
-    velocity: 280,
-    sparkline: [250, 260, 270, 275, 280],
-    color: 'from-lime-500/20 to-emerald-500/10 border-lime-500/40 text-lime-400',
-    image: resolveProductImage(null, 'Chill Citron', 'Solibra'),
-    brandLogo: getBrandLogo('Solibra'),
-  },
-];
-
 interface LiveTradingLadderProps {
   apiProducts?: any[];
   unit?: DisplayVolumeUnit;
   onOpenGlossary?: () => void;
   onOvertakeAlert?: (overtaker: string, overtaken: string) => void;
+  /** Durée réelle de la période analysée, en jours (pour la vitesse horaire) */
+  spanDays?: number;
 }
 
 export type ProductViewMode = 'ladder' | 'showcase' | 'velocity';
@@ -214,8 +70,10 @@ export const LiveTradingLadder: React.FC<LiveTradingLadderProps> = ({
   unit = 'cols',
   onOpenGlossary,
   onOvertakeAlert,
+  spanDays,
 }) => {
-  const [products, setProducts] = useState<LadderProduct[]>(FALLBACK_DB_PRODUCTS);
+  const [products, setProducts] = useState<LadderProduct[]>([]);
+  const prevRanks = useRef<Map<string, number>>(new Map());
   const [viewMode, setViewMode] = useState<ProductViewMode>('ladder');
   const [isAutoSwipeEnabled, setIsAutoSwipeEnabled] = useState(true);
   const [isHovered, setIsHovered] = useState(false);
@@ -232,18 +90,17 @@ export const LiveTradingLadder: React.FC<LiveTradingLadderProps> = ({
       .slice(0, 12);
 
     if (validProds.length >= 2) {
+      const hours = Math.max(1, (spanDays && spanDays > 0 ? spanDays : 1) * 24);
       const mapped: LadderProduct[] = validProds.map((p: any, idx: number) => {
         const realName = (p.name || '').trim();
         const realBrand = (p.brand || 'Non spécifié').trim();
-        const realImage = resolveProductImage(p.image, realName, realBrand);
+        // Image du catalogue uniquement (aucune photo d'illustration)
+        const realImage = typeof p.image === 'string' && /^(https?:)?\/\//.test(p.image) ? p.image : null;
         const brandLogo = getBrandLogo(realBrand);
         const symbol = formatProductTicker(realName);
         // Volume exact de la base de données
         const realVolume = Number(p.volume) || 0;
-        const price = Number(p.price) || (p.revenue && realVolume > 0 ? Math.round(p.revenue / realVolume) : 600);
-        // Vélocité réelle : débit horaire sur 24h
-        const velocity = Math.max(1, Math.round(realVolume / 24));
-
+        const avg = Number(p.pricing?.avgSalePrice) || (p.revenue && realVolume > 0 ? Math.round(p.revenue / realVolume) : 0);
         return {
           id: p.id || `p_${idx}`,
           symbol,
@@ -251,41 +108,42 @@ export const LiveTradingLadder: React.FC<LiveTradingLadderProps> = ({
           brand: realBrand,
           category: p.category || 'Boissons',
           format: p.format || p.size || '',
-          price: price > 0 ? price : 600,
+          price: avg > 0 ? avg : null,
           volume: realVolume,
           previousVolume: realVolume,
           rank: idx + 1,
           previousRank: idx + 1,
-          velocity,
-          sparkline: [
-            Math.round(velocity * 0.75),
-            Math.round(velocity * 0.85),
-            Math.round(velocity * 0.92),
-            Math.round(velocity * 0.98),
-            velocity,
-          ],
-          color: idx === 0
-            ? 'from-amber-500/20 to-orange-500/10 border-amber-500/40 text-amber-400'
-            : idx === 1
-            ? 'from-emerald-500/20 to-green-500/10 border-emerald-500/40 text-emerald-400'
-            : idx === 2
-            ? 'from-blue-500/20 to-cyan-500/10 border-blue-500/40 text-blue-400'
-            : 'from-slate-800/20 to-slate-900/10 border-slate-800 text-slate-300',
+          velocity: Math.round((realVolume / hours) * 10) / 10,
+          growth: typeof p.growth === 'number' ? p.growth : null,
+          color: '',
           image: realImage,
           brandLogo,
         };
       });
 
-      // Tri strict par volume réel décroissant
+      // Tri strict par volume réel décroissant ; rang précédent conservé pour détecter les dépassements
       mapped.sort((a, b) => b.volume - a.volume);
+      const before = prevRanks.current;
       mapped.forEach((p, i) => {
         p.rank = i + 1;
-        p.previousRank = i + 1;
+        p.previousRank = before.get(p.id) ?? i + 1;
       });
+      if (before.size) {
+        for (const p of mapped) {
+          if (p.rank >= p.previousRank) continue;
+          const loser = mapped.find((o) => o.id !== p.id && o.previousRank === p.rank && o.rank > p.rank);
+          if (loser) {
+            setLastOvertake({ winner: p.name, loser: loser.name, time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) });
+            onOvertakeAlert?.(p.name, loser.name);
+            break;
+          }
+        }
+      }
+      prevRanks.current = new Map(mapped.map((p) => [p.id, p.rank]));
 
       setProducts(mapped);
     }
-  }, [apiProducts]);
+  }, [apiProducts, spanDays, onOvertakeAlert]);
 
   // Les volumes se mettent à jour par les données poussées en direct (mi:data) : plus d'écoute
   // d'un événement « market_sale_recorded » que le serveur n'émet pas.
@@ -445,6 +303,19 @@ export const LiveTradingLadder: React.FC<LiveTradingLadderProps> = ({
       {/* CONTENU PRINCIPAL MULTI-VUES */}
       <AnimatePresence mode="wait">
         {/* VUE 1 : TRADING LADDER (Course Boursière Authentique) */}
+        {lastOvertake && (
+          <div role="status" className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
+            <Flame className="size-3.5 shrink-0" />
+            <span>
+              <strong>{lastOvertake.winner}</strong> passe devant <strong>{lastOvertake.loser}</strong> · {lastOvertake.time}
+            </span>
+          </div>
+        )}
+
+        {products.length === 0 && (
+          <p className="py-10 text-center text-xs text-muted-foreground">Chargement des produits du réseau… (aucune donnée affichée tant que les vraies ventes ne sont pas reçues)</p>
+        )}
+
         {viewMode === 'ladder' && (
           <motion.div
             key="ladder-view"
@@ -581,7 +452,7 @@ export const LiveTradingLadder: React.FC<LiveTradingLadderProps> = ({
                         <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground mt-0.5">
                           <span className="text-slate-300 font-medium truncate">{product.brand}</span>
                           <span>•</span>
-                          <span className="font-mono text-orange-400 font-semibold">{product.price.toLocaleString('fr-FR')} FCFA</span>
+                          <span className="font-mono text-orange-400 font-semibold">{product.price != null ? `${product.price.toLocaleString('fr-FR')} FCFA` : 'Prix n/d'}</span>
                           {product.format && (
                             <>
                               <span className="hidden sm:inline">•</span>
@@ -611,14 +482,8 @@ export const LiveTradingLadder: React.FC<LiveTradingLadderProps> = ({
                       <div className="font-mono text-xs font-semibold text-slate-200">
                         {formattedVel.formatted} <span className="text-[10px] text-muted-foreground">/ h</span>
                       </div>
-                      <div className="flex items-center justify-end gap-0.5 mt-1">
-                        {product.sparkline.map((val, idx) => (
-                          <div
-                            key={idx}
-                            className="w-1.5 bg-orange-400/80 rounded-t"
-                            style={{ height: `${Math.max(4, Math.min(18, (val / 700) * 18))}px` }}
-                          />
-                        ))}
+                      <div className={`mt-1 text-[10px] font-mono font-semibold ${product.growth == null ? 'text-slate-500' : product.growth >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {product.growth == null ? 'var. n/d' : `${product.growth > 0 ? '+' : ''}${product.growth} %`}
                       </div>
                     </div>
 
@@ -695,8 +560,8 @@ export const LiveTradingLadder: React.FC<LiveTradingLadderProps> = ({
                     </div>
 
                     <div className="flex items-center justify-between text-xs font-mono">
-                      <span className="text-orange-400 font-bold">{product.price.toLocaleString('fr-FR')} F</span>
-                      <span className="text-slate-400">{product.format || '65cl'}</span>
+                      <span className="text-orange-400 font-bold">{product.price != null ? `${product.price.toLocaleString('fr-FR')} F` : '—'}</span>
+                      <span className="text-slate-400">{product.format || '—'}</span>
                     </div>
 
                     <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] font-mono">
@@ -732,7 +597,7 @@ export const LiveTradingLadder: React.FC<LiveTradingLadderProps> = ({
 
             {products.map((product) => {
               const formattedVel = formatProductVolume(product.velocity, unit, product.name, product.format);
-              const velPct = Math.round((product.velocity / 650) * 100);
+              const velPct = Math.round((product.velocity / Math.max(0.1, ...products.map((x) => x.velocity))) * 100);
 
               return (
                 <div

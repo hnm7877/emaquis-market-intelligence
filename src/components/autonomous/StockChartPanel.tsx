@@ -19,31 +19,15 @@ import {
 import { TrendingUp, Layers, Flame, DollarSign, Activity, PieChart as PieIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-
-const INTRADAY_MARKET_DATA = [
-  { time: '12:00', volume: 2400, velocity: 120, bock: 1100, heineken: 800, beaufort: 500 },
-  { time: '14:00', volume: 3800, velocity: 190, bock: 1600, heineken: 1200, beaufort: 1000 },
-  { time: '16:00', volume: 5200, velocity: 260, bock: 2100, heineken: 1800, beaufort: 1300 },
-  { time: '18:00', volume: 11400, velocity: 570, bock: 4800, heineken: 3900, beaufort: 2700 }, // Happy hour starts
-  { time: '20:00', volume: 18900, velocity: 945, bock: 7900, heineken: 6400, beaufort: 4600 }, // Peak evening
-  { time: '22:00', volume: 22400, velocity: 1120, bock: 9200, heineken: 7800, beaufort: 5400 }, // Ultra peak
-  { time: '00:00', volume: 16200, velocity: 810, bock: 6800, heineken: 5700, beaufort: 3700 }, // Night
-  { time: '02:00', volume: 8100, velocity: 405, bock: 3400, heineken: 2900, beaufort: 1800 },
-];
-
-const CATEGORY_SHARE = [
-  { name: 'Bières', value: 68.4, color: '#f97316', volume: '329 800 cols' },
-  { name: 'Boissons gazeuses', value: 14.2, color: '#2f00bb', volume: '68 450 cols' },
-  { name: 'Eaux', value: 9.8, color: '#ff24d3', volume: '47 250 cols' },
-  { name: 'Boissons énergisantes', value: 5.1, color: '#d17a7a', volume: '24 590 cols' },
-  { name: 'Vin Rouge', value: 2.5, color: '#aa0606', volume: '12 100 cols' },
-];
+import type { Trends } from '@/lib/validations/market.schemas';
 
 export const StockChartPanel: React.FC<{
   selectedCategory?: string;
   onSelectCategory?: (category: string) => void;
   categoriesData?: any;
-}> = ({ selectedCategory, onSelectCategory, categoriesData }) => {
+  /** Tendances réelles (profil horaire calculé par l'API) */
+  trendsData?: Pick<Trends, 'hourlyProfile' | 'byHour'>;
+}> = ({ selectedCategory, onSelectCategory, categoriesData, trendsData }) => {
   const [activeTab, setActiveTab] = useState<'intraday' | 'categories'>('intraday');
 
   // Catégories dynamiques récupérées en temps réel depuis la base MongoDB
@@ -63,8 +47,25 @@ export const StockChartPanel: React.FC<{
         };
       });
     }
-    return CATEGORY_SHARE;
+    return [];
   }, [categoriesData]);
+
+  // Profil horaire réel : unités vendues en moyenne par jour observé, semaine vs week-end
+  const intraday = useMemo(
+    () =>
+      (trendsData?.hourlyProfile ?? []).map((h) => ({
+        time: h.hour,
+        weekday: Number(h.weekdayVolume) || 0,
+        weekend: Number(h.weekendVolume) || 0,
+      })),
+    [trendsData],
+  );
+  const peak = useMemo(() => {
+    const rows = trendsData?.byHour ?? [];
+    const top = rows.reduce<(typeof rows)[number] | null>((best, r) => (!best || r.volume > best.volume ? r : best), null);
+    return top && top.volume > 0 ? top : null;
+  }, [trendsData]);
+  const hasIntraday = intraday.some((d) => d.weekday > 0 || d.weekend > 0);
 
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-950/80 backdrop-blur-xl p-5 shadow-2xl space-y-4">
@@ -76,7 +77,7 @@ export const StockChartPanel: React.FC<{
             Analyse Boursière Intrajournalière & Répartition Catégorielle
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Vélocité des volumes écoulés par créneau horaire et poids des grandes familles de boissons
+            Unités vendues en moyenne par jour observé, heure par heure (fuseau Abidjan), et poids des familles de boissons
           </p>
         </div>
 
@@ -92,7 +93,7 @@ export const StockChartPanel: React.FC<{
             }`}
           >
             <TrendingUp className="size-3.5 mr-1 text-emerald-400" />
-            Courbe Bourse (Intrajournalier)
+            Profil horaire réel
           </Button>
 
           <Button
@@ -117,52 +118,48 @@ export const StockChartPanel: React.FC<{
           <div className="flex items-center justify-between text-xs font-mono text-slate-400 px-1">
             <div className="flex items-center gap-3">
               <span className="flex items-center gap-1.5 text-orange-400">
-                <span className="size-2 rounded-full bg-orange-400" /> Bock 65cl
+                <span className="size-2 rounded-full bg-orange-400" /> Lundi - Jeudi
               </span>
               <span className="flex items-center gap-1.5 text-emerald-400">
-                <span className="size-2 rounded-full bg-emerald-400" /> Heineken 50cl
-              </span>
-              <span className="flex items-center gap-1.5 text-blue-400">
-                <span className="size-2 rounded-full bg-blue-400" /> Beaufort 50cl
+                <span className="size-2 rounded-full bg-emerald-400" /> Vendredi - Dimanche
               </span>
             </div>
-            <Badge variant="outline" className="text-[10px] font-mono text-emerald-400 border-emerald-500/30">
-              Pic Réseau : 22h00 (22 400 c/h)
-            </Badge>
+            {peak && (
+              <Badge variant="outline" className="text-[10px] font-mono text-emerald-400 border-emerald-500/30">
+                Pic réseau : {peak.hour} ({peak.share}% des unités)
+              </Badge>
+            )}
           </div>
 
           <div className="h-[280px] w-full">
+            {!hasIntraday ? (
+              <div className="flex h-full items-center justify-center text-xs text-muted-foreground">Aucune vente observée sur ce périmètre.</div>
+            ) : (
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={INTRADAY_MARKET_DATA} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <AreaChart data={intraday} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
-                  <linearGradient id="colorBock" x1="0" y1="0" x2="0" y2="1">
+                  <linearGradient id="colorWeekday" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#f97316" stopOpacity={0.4} />
                     <stop offset="95%" stopColor="#f97316" stopOpacity={0.0} />
                   </linearGradient>
-                  <linearGradient id="colorHeineken" x1="0" y1="0" x2="0" y2="1">
+                  <linearGradient id="colorWeekend" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
                     <stop offset="95%" stopColor="#10b981" stopOpacity={0.0} />
                   </linearGradient>
-                  <linearGradient id="colorBeaufort" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#38bdf8" stopOpacity={0.4} />
-                    <stop offset="95%" stopColor="#38bdf8" stopOpacity={0.0} />
-                  </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                <XAxis dataKey="time" stroke="#64748b" fontSize={11} fontVariant="mono" />
-                <YAxis stroke="#64748b" fontSize={11} tickFormatter={(val) => `${Math.round(val / 1000)}k`} />
+                <XAxis dataKey="time" stroke="#64748b" fontSize={11} />
+                <YAxis stroke="#64748b" fontSize={11} tickFormatter={(val) => (val >= 1000 ? `${Math.round(val / 1000)}k` : `${val}`)} />
                 <Tooltip
                   content={({ active, payload, label }) => {
                     if (active && payload && payload.length) {
                       return (
                         <div className="bg-slate-950 border border-slate-800 p-3 rounded-xl text-xs font-mono shadow-2xl space-y-1.5">
-                          <div className="font-bold text-foreground border-b border-slate-800 pb-1">
-                            Créneau Horaire : {label}
-                          </div>
-                          {payload.map((entry: any, idx: number) => (
+                          <div className="font-bold text-foreground border-b border-slate-800 pb-1">Créneau horaire : {label}</div>
+                          {payload.map((entry, idx) => (
                             <div key={idx} className="flex items-center justify-between gap-4" style={{ color: entry.color }}>
                               <span>{entry.name} :</span>
-                              <span className="font-bold">{entry.value?.toLocaleString('fr-FR')} c</span>
+                              <span className="font-bold">{Number(entry.value ?? 0).toLocaleString('fr-FR')} u. / jour</span>
                             </div>
                           ))}
                         </div>
@@ -171,11 +168,11 @@ export const StockChartPanel: React.FC<{
                     return null;
                   }}
                 />
-                <Area type="monotone" dataKey="bock" name="Bock 65cl" stroke="#f97316" strokeWidth={2} fillOpacity={1} fill="url(#colorBock)" />
-                <Area type="monotone" dataKey="heineken" name="Heineken 50cl" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorHeineken)" />
-                <Area type="monotone" dataKey="beaufort" name="Beaufort Lager" stroke="#38bdf8" strokeWidth={2} fillOpacity={1} fill="url(#colorBeaufort)" />
+                <Area type="monotone" dataKey="weekday" name="Lundi - Jeudi" stroke="#f97316" strokeWidth={2} fillOpacity={1} fill="url(#colorWeekday)" />
+                <Area type="monotone" dataKey="weekend" name="Vendredi - Dimanche" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorWeekend)" />
               </AreaChart>
             </ResponsiveContainer>
+            )}
           </div>
         </div>
       )}

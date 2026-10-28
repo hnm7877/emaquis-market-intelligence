@@ -26,36 +26,44 @@ export interface AgentDirective {
   prompt: string;
   icon: React.ElementType;
   badge: string;
+  /** Onglet de la page Bourse à ouvrir */
+  tab?: 'ladder' | 'recharts' | 'duel' | 'countries' | 'geography';
+  /** Ou page à ouvrir */
+  href?: string;
 }
 
 const PRESET_DIRECTIVES: AgentDirective[] = [
   {
     id: 'war',
-    label: 'Guerre des Marques (Solibra vs Brassivoire)',
-    prompt: 'Agent, restructure le tableau pour analyser le duel direct entre Solibra (Bock/Beaufort) et Brassivoire (Heineken/Ivoire).',
+    label: 'Duel de marques',
+    prompt: 'Comparer deux marques face à face sur les vrais chiffres du réseau.',
     icon: Zap,
-    badge: 'Choc des Titres',
+    badge: 'Duel',
+    tab: 'duel',
   },
   {
     id: 'yopougon',
-    label: 'Focus Hyper-Consommation (Yopougon)',
-    prompt: 'Agent, focalise toute la spatialisation 3D et le ladder boursier sur les maquis de Yopougon (Rue Princesse, Niangon).',
+    label: 'Territoires les plus actifs',
+    prompt: 'Classer les villes et communes par ventes réelles.',
     icon: Sparkles,
-    badge: 'Hyper-Volume',
+    badge: 'Géographie',
+    tab: 'geography',
   },
   {
     id: 'premium',
-    label: 'Max Marge & Lounges (Cocody / Marcory)',
-    prompt: 'Agent, réordonne les widgets pour valoriser les segments haute marge : bières premium, champagnes et spiritueux.',
+    label: 'Catégories, marques et horaires',
+    prompt: 'Afficher les graphiques réels : catégories, marques, profil horaire.',
     icon: Layers,
-    badge: 'Rentabilité',
+    badge: 'Graphiques',
+    tab: 'recharts',
   },
   {
     id: 'stock',
-    label: 'Alerte Ruptures & Tensions Logistiques',
-    prompt: 'Agent, projette les points de rupture pour le week-end et surligne les références à réapprovisionner d\'urgence.',
+    label: 'Ruptures de stock',
+    prompt: 'Voir les produits en rupture ou à faible couverture (stock réel).',
     icon: ShieldAlert,
-    badge: 'Supply Chain',
+    badge: 'Stock',
+    href: '/stock-intelligence',
   },
 ];
 
@@ -65,11 +73,7 @@ export const AgentHudConsole: React.FC<{
 }> = ({ onApplyDirective, isBuilding = false }) => {
   const [activeDirective, setActiveDirective] = useState<AgentDirective>(PRESET_DIRECTIVES[0]);
   const [logs, setLogs] = useState<string[]>([
-    '🤖 [AUTONOMOUS AGENT DEERFLOW v2.4] Initialisation du moteur de modélisation...',
-    '📡 [RÉSEAU TERRAIN] Synchronisation de 1 420 débits de boissons actifs (E-Maquis POS & Hubs)...',
-    '📈 [TRADING ENGINE] Calibrage des cours intrajournaliers et vélocités horaire...',
-    '🌐 [3D SPATIAL VGPU] Rendu des 4 pôles territoriaux (Abidjan, Bouaké, San Pedro, Yamoussoukro)...',
-    '✅ [CONSTRUCTION COMPLÈTE] Tableau de bord autonome assemblé avec succès.',
+    '🤖 Choisissez une orientation ci-dessus ou posez votre question : elle ouvre la vue correspondante, sur les données réelles.',
   ]);
   const [customInput, setCustomInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -79,10 +83,7 @@ export const AgentHudConsole: React.FC<{
     setIsProcessing(true);
 
     const newLogs = [
-      `🎯 [NOUVELLE DIRECTIVE REÇUE] "${directive.label}"`,
-      `🧠 [RAISONNEMENT IA] Reconfiguration autonome des widgets et des flux de données...`,
-      `📊 [RÉAGENCEMENT] Ajustement dynamique de la course boursière et de la pyramide géographique...`,
-      `✨ [DÉPLOIEMENT] Nouveaux paramètres actifs pour l'équipe exécutive C-Level.`,
+      `🎯 « ${directive.label} » : ${directive.tab ? 'ouverture de l’onglet correspondant' : directive.href === '/ai-intelligence' ? 'question transmise à l’agent IA' : 'ouverture de la vue correspondante'}.`,
     ];
 
     setLogs((prev) => [...newLogs, ...prev.slice(0, 10)]);
@@ -102,6 +103,7 @@ export const AgentHudConsole: React.FC<{
       prompt: customInput,
       icon: Terminal,
       badge: 'Personnalisé',
+      href: '/ai-intelligence',
     };
 
     handleSelectDirective(customDirective);
@@ -132,8 +134,8 @@ export const AgentHudConsole: React.FC<{
         </div>
 
         <div className="flex items-center gap-2 text-xs font-mono">
-          <span className="text-slate-400 hidden md:inline">Confiance Modèle :</span>
-          <span className="text-cyan-400 font-bold">99.4%</span>
+          <span className="text-slate-400 hidden md:inline">Données :</span>
+          <span className="text-cyan-400 font-bold">réelles</span>
           <span className="text-slate-600">•</span>
           <span className="text-slate-400 hidden md:inline">Cycle :</span>
           <span className="text-emerald-400 font-bold">Temps Réel</span>

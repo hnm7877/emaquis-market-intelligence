@@ -73,17 +73,6 @@ interface ThreeVgpuCanvasProps {
 type ViewMode = 'map' | 'ranking' | 'seasonality' | 'mesh3d';
 type MetricMode = 'volume' | 'revenue' | 'pos';
 
-// Communes réelles de référence pour Abidjan et l'intérieur en Côte d'Ivoire
-const FALLBACK_ZONES: ZoneData[] = [
-  { zone: 'Yopougon', city: 'Abidjan', volume: 155300, revenue: 77650000, posCount: 418, latitude: 5.3438, longitude: -4.0725, seasonalVolumes: { festive: 68300, dry: 52800, rainy: 34200 } },
-  { zone: 'Plateau', city: 'Abidjan', volume: 114500, revenue: 57250000, posCount: 98, latitude: 5.3256, longitude: -4.0211, seasonalVolumes: { festive: 50400, dry: 38900, rainy: 25200 } },
-  { zone: 'Marcory', city: 'Abidjan', volume: 88900, revenue: 44450000, posCount: 215, latitude: 5.3045, longitude: -3.9842, seasonalVolumes: { festive: 39100, dry: 30200, rainy: 19600 } },
-  { zone: 'Cocody', city: 'Abidjan', volume: 76200, revenue: 38100000, posCount: 342, latitude: 5.3547, longitude: -3.9783, seasonalVolumes: { festive: 33500, dry: 25900, rainy: 16800 } },
-  { zone: 'Port-Bouët', city: 'Abidjan', volume: 24600, revenue: 12300000, posCount: 112, latitude: 5.2575, longitude: -3.9442, seasonalVolumes: { festive: 10800, dry: 8400, rainy: 5400 } },
-  { zone: 'Treichville', city: 'Abidjan', volume: 18200, revenue: 9100000, posCount: 164, latitude: 5.3006, longitude: -4.0094, seasonalVolumes: { festive: 8000, dry: 6200, rainy: 4000 } },
-  { zone: 'Bingerville', city: 'Abidjan', volume: 12400, revenue: 6200000, posCount: 76, latitude: 5.3567, longitude: -3.8911, seasonalVolumes: { festive: 5500, dry: 4200, rainy: 2700 } },
-  { zone: 'Grand-Bassam', city: 'Grand-Bassam', volume: 8900, revenue: 4450000, posCount: 45, latitude: 5.2117, longitude: -3.7388, seasonalVolumes: { festive: 3900, dry: 3000, rainy: 2000 } },
-];
 
 export const ThreeVgpuCanvas: React.FC<ThreeVgpuCanvasProps> = ({
   activeNode = 'Yopougon',
@@ -114,7 +103,7 @@ export const ThreeVgpuCanvas: React.FC<ThreeVgpuCanvasProps> = ({
   // Extraction et consolidation des zones réelles
   const resolvedZones: ZoneData[] = useMemo(() => {
     const rawZones: any[] = geoData?.zones || [];
-    if (!rawZones.length) return FALLBACK_ZONES;
+    if (!rawZones.length) return [];
 
     return rawZones.map((z, idx) => {
       let lat = Number(z.latitude);
@@ -129,20 +118,17 @@ export const ThreeVgpuCanvas: React.FC<ThreeVgpuCanvasProps> = ({
       return {
         id: z.id || `zone-${idx}`,
         zone: z.zone || 'Commune Inconnue',
-        city: z.city || 'Abidjan',
-        country: z.country || "Côte d'Ivoire",
+        city: z.city || '',
+        country: z.country || '',
         volume: Number(z.volume) || 0,
         revenue: Number(z.revenue) || 0,
-        posCount: Number(z.posCount) || 1,
+        posCount: Number(z.posCount) || 0,
         latitude: lat,
         longitude: lng,
         growth: z.growth ?? null,
         demandIndex: z.demandIndex ?? null,
-        seasonalVolumes: z.seasonalVolumes || {
-          festive: Math.round((Number(z.volume) || 0) * 0.44),
-          dry: Math.round((Number(z.volume) || 0) * 0.34),
-          rainy: Math.round((Number(z.volume) || 0) * 0.22),
-        },
+        // Saisons calculées par l'API uniquement (aucune répartition supposée)
+        seasonalVolumes: z.seasonalVolumes || { festive: 0, dry: 0, rainy: 0 },
       };
     }).sort((a, b) => b.volume - a.volume);
   }, [geoData]);

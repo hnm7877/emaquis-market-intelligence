@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
   Sparkles,
@@ -58,6 +59,7 @@ const NAV_TABS: { id: BourseTab; label: string; icon: typeof Activity }[] = [
  */
 export default function AutonomousDashboardPage() {
   const reduceMotion = useReducedMotion();
+  const router = useRouter();
   const tab = useBourseUiStore((s) => s.tab);
   const setTab = useBourseUiStore((s) => s.setTab);
   const volumeUnit = useBourseUiStore((s) => s.unit);
@@ -94,7 +96,7 @@ export default function AutonomousDashboardPage() {
   const { data: brandsData } = useBrandsQuery();
   const { data: categoriesData } = useCategoriesQuery();
   // Abonnements ouverts seulement quand l'onglet qui les affiche est ouvert
-  const { data: trendsData, isLoading: isTrendsLoading } = useTrendsQuery(tab === 'recharts');
+  const { data: trendsData, isLoading: isTrendsLoading } = useTrendsQuery(tab === 'recharts' || tab === 'ladder');
   const { data: contextualData } = useContextualFiltersQuery(tab === 'countries');
 
   // Catégorie affichée : toujours une catégorie réelle de la base
@@ -155,7 +157,22 @@ export default function AutonomousDashboardPage() {
     window.setTimeout(() => setToastMessage((cur) => (cur === msg ? null : cur)), ms);
   }, []);
 
-  const handleDirectiveApply = (directive: AgentDirective) => showToast(`Directive appliquée : ${directive.label}`);
+  // Orientation choisie : ouvre réellement l'onglet ou la page concernée (question libre → agent IA)
+  const handleDirectiveApply = (directive: AgentDirective) => {
+    if (directive.tab) {
+      setTab(directive.tab);
+      showToast(`Vue ouverte : ${directive.label}`);
+    } else if (directive.href) {
+      if (directive.href === '/ai-intelligence') {
+        try {
+          sessionStorage.setItem('mi-ai-draft', directive.prompt);
+        } catch {
+          /* stockage indisponible : la question sera à ressaisir */
+        }
+      }
+      router.push(directive.href);
+    }
+  };
   const handleOvertakeAlert = (winner: string, loser: string) => showToast(`Bourse : ${winner} a dépassé ${loser} au classement`, 4000);
 
   const copySummary = () => {
@@ -368,6 +385,7 @@ export default function AutonomousDashboardPage() {
             <div className="xl:col-span-5">
               <LiveTradingLadder
                 apiProducts={dbProducts}
+                spanDays={productsData?.analysisSpanDays}
                 unit={volumeUnit}
                 onOpenGlossary={() => setIsGlossaryOpen(true)}
                 onOvertakeAlert={handleOvertakeAlert}
@@ -380,6 +398,7 @@ export default function AutonomousDashboardPage() {
             selectedCategory={selectedCategory}
             onSelectCategory={(cat) => setSelectedCategory(cat)}
             categoriesData={categoriesData}
+            trendsData={trendsData}
           />
         </div>
       )}
