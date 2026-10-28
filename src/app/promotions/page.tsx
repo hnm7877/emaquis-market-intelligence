@@ -447,7 +447,7 @@ function PromotionList({ data }: { data: Promotions }) {
                   </div>
                 </div>
                 {p.startApproximate && (
-                  <p className="text-[10px] text-muted-foreground">Déjà active à la première synchronisation : début inconnu, uplift non calculé.</p>
+                  <p className="text-[10px] text-muted-foreground">Début inconnu : uplift non calculé.</p>
                 )}
               </Card>
             </motion.div>
@@ -485,7 +485,7 @@ export default function PromotionsPage() {
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Ventes par jour avant, pendant et après chaque promotion, pour le même produit dans le même établissement. Mis à jour en direct.
+            Promotions repérées dans toutes les ventes enregistrées (sans filtre de date) : ventes par jour avant, pendant et après, pour le même produit dans le même établissement. Mis à jour en direct.
           </p>
         </div>
       </div>
