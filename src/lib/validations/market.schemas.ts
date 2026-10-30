@@ -265,6 +265,7 @@ export const NetworkHealthSchema = z.object({
   freshness: z.object({ sales24h: z.number(), sales7d: z.number(), activeEstablishments7d: z.number() }),
   monthly: z.array(z.object({ month: z.string(), sales: z.number(), establishments: z.number() })).default([]),
   cities: z.array(z.object({ city: z.string(), establishments: z.number(), communes: z.number(), sales: z.number(), salesShare: z.number() })).default([]),
+  countries: z.array(z.object({ country: z.string(), establishments: z.number(), cities: z.number(), sales: z.number(), salesShare: z.number() })).default([]),
   location: z.object({ exactPosition: z.number(), declaredAddress: z.number(), unlocalized: z.number(), exactShare: z.number(), localizedShare: z.number() }),
   stockSync: z.object({ establishments: z.number(), establishmentsShare: z.number(), positions: z.number(), catalogMappedShare: z.number(), purchasePriceShare: z.number() }),
 });

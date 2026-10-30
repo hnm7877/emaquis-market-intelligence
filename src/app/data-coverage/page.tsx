@@ -3,7 +3,7 @@
 import React from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Activity, Boxes, Calendar, CheckCircle2, Database, Layers, MapPin, Navigation, Receipt, ShieldCheck, Store } from 'lucide-react';
+import { Activity, Boxes, Calendar, CheckCircle2, Database, Layers, MapPin, Navigation, Receipt, ShieldCheck, Store, Globe2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber';
@@ -61,6 +61,7 @@ export default function DataCoveragePage() {
   const o = data?.networkOverview;
   const h = data?.networkHealth;
   const maxCity = Math.max(...(h?.cities ?? []).map((c) => c.salesShare), 1);
+  const maxCountry = Math.max(...(h?.countries ?? []).map((c) => c.salesShare), 1);
   const last = h?.monthly.at(-1);
   const prev = h?.monthly.at(-2);
   const estGrowth = last && prev && prev.establishments > 0 ? Math.round(((last.establishments - prev.establishments) / prev.establishments) * 1000) / 10 : null;
@@ -85,7 +86,7 @@ export default function DataCoveragePage() {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Stat icon={Store} label="Établissements actifs" value={o?.activeEstablishments ?? null} sub={o ? `${int(o.registeredEstablishments)} comptes inscrits` : undefined} help="Établissements ayant enregistré au moins une vente." />
+        <Stat icon={Store} label="Établissements actifs" value={o?.activeEstablishments ?? null} sub={o ? `${int(o.registeredEstablishments)} établissements inscrits` : undefined} help="Établissements ayant enregistré au moins une vente." />
         <Stat icon={Receipt} tone="text-emerald-400" label="Ventes analysées" value={o?.totalAnalyzedTransactions ?? null} sub={o ? `depuis le ${fmtDate(o.firstSaleDate)}` : undefined} delay={0.04} />
         <Stat icon={MapPin} tone="text-sky-400" label="Communes couvertes" value={o?.communesCovered ?? null} sub={o ? `${int(o.citiesCovered)} villes` : undefined} delay={0.08} />
         <Stat icon={Layers} tone="text-amber-400" label="Références catalogue" value={o?.catalogProductsCount ?? null} sub={o ? `${int(o.catalogCategoriesCount)} catégories` : undefined} delay={0.12} />
@@ -164,6 +165,30 @@ export default function DataCoveragePage() {
             </Reveal>
           </div>
 
+          {h.countries.length > 0 && (
+            <Reveal delay={0.18}>
+              <Card className="p-4 border border-border/80 bg-card/70 space-y-3">
+                <span className="flex items-center gap-2 text-sm font-semibold"><Globe2 className="size-4 text-amber-400" /> Répartition par pays</span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
+                  {h.countries.map((c, i) => (
+                    <div key={c.country} className="text-xs">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-medium">{c.country}</span>
+                        <span className="tabular-nums text-muted-foreground">
+                          <strong className="text-foreground">{c.salesShare} %</strong> des ventes · {int(c.establishments)} établ. · {c.cities} ville{c.cities > 1 ? 's' : ''}
+                        </span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-muted/40 overflow-hidden">
+                        <motion.div className="h-full rounded-full bg-amber-500" initial={{ width: 0 }} animate={{ width: `${(c.salesShare / maxCountry) * 100}%` }} transition={{ duration: 0.8, ease: EASE, delay: i * 0.05 }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[10px] text-muted-foreground">Pays déclaré par chaque établissement ayant enregistré au moins une vente ; part calculée sur toutes les ventes.</p>
+              </Card>
+            </Reveal>
+          )}
+
           <Reveal delay={0.2}>
             <Card className="p-4 border border-border/80 bg-card/70 space-y-4">
               <span className="flex items-center gap-2 text-sm font-semibold"><ShieldCheck className="size-4 text-emerald-400" /> Qualité des données</span>
@@ -196,7 +221,7 @@ export default function DataCoveragePage() {
       <Card className="p-5 border border-border/80 bg-card/70 space-y-2 text-xs leading-relaxed">
         <span className="text-sm font-semibold flex items-center gap-2"><CheckCircle2 className="size-4 text-emerald-500" /> Méthode et confidentialité</span>
         <p className="text-muted-foreground">
-          Les indicateurs représentent les <strong className="text-foreground">ventes observées dans le réseau E-Maquis</strong> ({o ? `${o.dateSpanMonths} mois d'historique` : '—'}). Ils ne doivent pas être extrapolés au marché ivoirien entier sans modèle statistique.
+          Les indicateurs représentent les <strong className="text-foreground">ventes observées dans le réseau E-Maquis</strong> ({o ? `${o.dateSpanMonths} mois d'historique` : '—'}). Ils ne doivent pas être extrapolés au marché entier de chaque pays sans modèle statistique.
         </p>
         {o?.methodology && <p className="text-muted-foreground">{o.methodology}</p>}
         <p className="text-muted-foreground flex items-start gap-1.5">
