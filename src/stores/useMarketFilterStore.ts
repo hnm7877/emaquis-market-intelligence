@@ -16,7 +16,8 @@ interface MarketFilterStore {
 }
 
 const defaultFilters: FilterState = {
-  country: 'cote_d_ivoire',
+  // Tous les pays du réseau par défaut (chaque vue s'ouvre sur l'ensemble des pays)
+  country: 'all',
   dateRange: 'all',
   city: 'Toutes les villes',
   commune: 'Toutes les communes',

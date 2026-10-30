@@ -271,13 +271,13 @@ export function GeographicBarChart({ data }: GeographicBarChartProps) {
       return val
         .flatMap((v) => (typeof v === 'string' ? v.split(',') : [v]))
         .map((s) => cleanKey(String(s)))
-        .filter((s) => s && s !== 'all' && s !== 'tous' && !s.startsWith('tout'));
+        .filter((s) => s && s !== 'all' && s !== 'tous' && !s.startsWith('tout') && !s.startsWith('tous'));
     }
     if (typeof val === 'string') {
       return val
         .split(',')
         .map((s) => cleanKey(s))
-        .filter((s) => s && s !== 'all' && s !== 'tous' && !s.startsWith('tout'));
+        .filter((s) => s && s !== 'all' && s !== 'tous' && !s.startsWith('tout') && !s.startsWith('tous'));
     }
     return [];
   };

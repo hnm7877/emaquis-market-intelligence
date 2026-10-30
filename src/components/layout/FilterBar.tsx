@@ -42,6 +42,9 @@ const STATUS_LABELS: Record<string, string> = {
   offered: 'Offertes par le maquis',
 };
 
+/** Choix « tous les pays » du filtre (sans emoji : la valeur est reconnue comme « aucun filtre ») */
+const COUNTRY_ALL_LABEL = 'Tous les pays';
+
 export interface FilterBarProps {
   filters?: FilterState;
   onFilterChange?: <K extends keyof FilterState>(key: K, value: FilterState[K]) => void;
@@ -289,7 +292,7 @@ export function FilterBar(props: FilterBarProps = {}) {
       return val !== def && val !== 'all';
     };
 
-    if (filters.country && filters.country !== 'cote_d_ivoire' && filters.country !== 'all') count++;
+    if (isCustom(filters.country, COUNTRY_ALL_LABEL)) count++;
     if (filters.dateRange && filters.dateRange !== 'all') count++;
     if (isCustom(filters.city, 'Toutes les villes')) count++;
     if (isCustom(filters.commune, 'Toutes les communes')) count++;
@@ -413,8 +416,8 @@ export function FilterBar(props: FilterBarProps = {}) {
               icon={<Globe className="size-3.5" />}
               label="Pays"
               options={countriesOptions}
-              value={filters.country || 'cote_d_ivoire'}
-              allLabel="🌍 Tous les pays"
+              value={filters.country || 'all'}
+              allLabel={COUNTRY_ALL_LABEL}
               contextualItems={contextualData?.countries}
               onChange={(val) => setFilter('country', val)}
               triggerWidth="w-full sm:w-[150px]"

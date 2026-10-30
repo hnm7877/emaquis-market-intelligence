@@ -49,7 +49,15 @@ export const buildQueryParams = (filters?: Partial<FilterState>): Record<string,
   const params: Record<string, string> = {};
   if (!filters) return params;
 
-  const country = serializeValue(filters.country, '');
+  // « Tous les pays » (y compris l'ancien libellé avec emoji) = aucun filtre pays
+  const country = serializeValue(
+    Array.isArray(filters.country)
+      ? filters.country.filter((c) => !String(c).toLowerCase().includes('tous les pays'))
+      : String(filters.country ?? '').toLowerCase().includes('tous les pays')
+        ? 'all'
+        : filters.country,
+    '',
+  );
   if (country) params.country = country;
 
   if (filters.dateRange && filters.dateRange !== 'all') {
