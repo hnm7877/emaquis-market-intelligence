@@ -5,6 +5,7 @@ import { useCallback, useState } from 'react';
 import { deerflowApi } from '@/api/deerflow.api';
 import { useMarketFilterStore } from '@/stores/useMarketFilterStore';
 import { VOLUME_UNIT_OPTIONS } from '@/utils/volumeUnit';
+import { PAYS } from '@/constants/countries';
 
 export const deerflowQueryKeys = {
   all: ['deerflow'] as const,
@@ -18,6 +19,8 @@ export const CEO_PROMPT_SUGGESTIONS = [
   { category: 'Synthèse', title: 'Briefing de la période', prompt: 'Fais-moi un briefing de la période : volumes, chiffre d’affaires, évolution et marques qui tirent le marché.', icon: 'TrendingUp', depth: 'executive' as const },
   { category: 'Stock', title: 'Ruptures et ventes manquées', prompt: 'Où sont les ruptures les plus coûteuses et combien de ventes perdons-nous par jour ? Que faire en priorité ?', icon: 'Package', depth: 'standard' as const },
   { category: 'Concurrence', title: 'Marques qui gagnent ou perdent', prompt: 'Quelles marques gagnent ou perdent du terrain, et dans quelles proportions ?', icon: 'ShieldAlert', depth: 'standard' as const },
+  { category: 'Pays', title: 'Comparer les pays', prompt: 'Compare les pays du réseau : ventes, chiffre d’affaires et part de chacun. Où le marché est-il le plus dynamique ?', icon: 'Globe', depth: 'standard' as const },
+  { category: 'Produits', title: 'Produits qui montent ou baissent', prompt: 'Quels produits montent et lesquels baissent le plus ? Que faut-il mettre en avant ou surveiller ?', icon: 'TrendingUp', depth: 'standard' as const },
   { category: 'Promotions', title: 'Quelle promo lancer ?', prompt: 'D’après les promotions passées, quelle remise et quel moment donnent le meilleur résultat ?', icon: 'MapPin', depth: 'standard' as const },
 ];
 
@@ -33,17 +36,28 @@ export function useDeerFlow() {
   const volumeUnit = useMarketFilterStore((state) => state.volumeUnit || 'cols');
 
   const buildContextString = useCallback(() => {
+    // Seuls les filtres réellement actifs, avec des libellés lisibles
+    const values = (v: unknown): string[] =>
+      (Array.isArray(v) ? v : v ? [v] : [])
+        .map((x) => String(x).trim())
+        .filter((x) => x && x !== 'all' && !x.toLowerCase().startsWith('tou'));
+    const countryName = (code: string) => PAYS.find((p) => p.code === code)?.name.replace(/_/g, ' ') ?? code.replace(/_/g, ' ');
     const parts: string[] = [];
+    const period = values(filters.dateRange);
+    parts.push(`Période : ${period.length ? period.join(', ') : 'toutes les dates'}`);
+    const add = (label: string, v: unknown, map: (x: string) => string = (x) => x) => {
+      const list = values(v);
+      if (list.length) parts.push(`${label} : ${list.map(map).join(', ')}`);
+    };
+    add('Pays', filters.country, countryName);
+    add('Villes', filters.city);
+    add('Communes', filters.commune);
+    add('Catégories', filters.category);
+    add('Marques', filters.brand);
+    add('Type', filters.posType);
     const unitObj = VOLUME_UNIT_OPTIONS.find((u) => u.value === volumeUnit);
-    if (unitObj) parts.push(`Unité de volume: ${unitObj.label}`);
-    if (filters.dateRange) parts.push(`Période: ${filters.dateRange}`);
-    const list = (v: unknown) => (Array.isArray(v) ? v.join(', ') : String(v));
-    if (filters.city && filters.city !== 'all') parts.push(`Villes: ${list(filters.city)}`);
-    if (filters.commune && filters.commune !== 'all') parts.push(`Communes: ${list(filters.commune)}`);
-    if (filters.category && filters.category !== 'all') parts.push(`Catégories: ${list(filters.category)}`);
-    if (filters.brand && filters.brand !== 'all') parts.push(`Marques: ${list(filters.brand)}`);
-    if (filters.posType && filters.posType !== 'all') parts.push(`Type POS: ${filters.posType}`);
-    return parts.length > 0 ? parts.join(' | ') : 'Tout le réseau';
+    if (unitObj) parts.push(`Unité : ${unitObj.label}`);
+    return parts.join(' · ');
   }, [filters, volumeUnit]);
 
   const threadsQuery = useQuery({ queryKey: deerflowQueryKeys.threads(), queryFn: () => deerflowApi.listThreads(), staleTime: 30_000, retry: 1 });

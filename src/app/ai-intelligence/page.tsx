@@ -228,7 +228,7 @@ export default function AiIntelligencePage() {
           </Card>
           <Card className="p-2 border-border/70 bg-card/60">
             <p className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">Mes conversations ({ai.threads.length})</p>
-            <div className="max-h-[50vh] overflow-y-auto space-y-1">
+            <div className="scroll-thin max-h-[40vh] overflow-y-auto space-y-1 pr-1">
               {ai.isLoadingThreads && <p className="px-2 py-2 text-[11px] text-muted-foreground">Chargement…</p>}
               {!ai.isLoadingThreads && ai.threads.length === 0 && <p className="px-2 py-2 text-[11px] text-muted-foreground">Aucune conversation pour l&apos;instant.</p>}
               <AnimatePresence initial={false}>
@@ -253,7 +253,7 @@ export default function AiIntelligencePage() {
         </div>
 
         {/* Discussion */}
-        <Card className="border-border/70 bg-card/50 flex flex-col min-h-[65vh]">
+        <Card className="border-border/70 bg-card/50 flex flex-col h-[72vh] min-h-[480px]">
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/60">
             <span className="text-xs font-semibold truncate">{ai.activeConversation?.title || 'Nouvelle conversation'}</span>
             {messages.length > 0 && (
@@ -263,7 +263,7 @@ export default function AiIntelligencePage() {
             )}
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div className="scroll-thin flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-4">
             {messages.length === 0 && !ai.isProcessing && (
               <div className="py-6 space-y-4">
                 <div className="text-center space-y-1">
