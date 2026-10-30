@@ -328,7 +328,7 @@ export default function CategoriesPage() {
                         <Growth value={c.growth} />
                       </td>
                       <td className="px-3 py-2 text-right">
-                        <div className="font-mono">{c.posPenetration} %</div>
+                        <div className="font-mono">{c.posPenetration.toLocaleString('fr-FR')} %</div>
                         <div className="text-[10px] text-muted-foreground">{int(c.activePosCount)} maquis</div>
                       </td>
                       <td className="px-3 py-2 text-right font-mono font-semibold text-emerald-400">{F(c.avgSalePrice)}</td>
@@ -401,7 +401,7 @@ function CategoryDrawer({ category, products, onClose, onOpenProduct }: { catego
               <Mini label="Part du volume" value={`${category.volumeShare} %`} />
               <Mini label="CA" value={F(category.revenue)} />
               <Mini label="Évolution" value={category.growth == null ? '—' : `${category.growth >= 0 ? '+' : ''}${category.growth} %`} tone={category.growth == null ? undefined : category.growth >= 0 ? 'up' : 'down'} />
-              <Mini label="Présence" value={`${category.posPenetration} %`} hint={`${int(category.activePosCount)} maquis`} />
+              <Mini label="Présence" value={`${category.posPenetration.toLocaleString('fr-FR')} %`} hint={`${int(category.activePosCount)} maquis`} />
               <Mini label="Prix moyen" value={F(category.avgSalePrice)} />
               <Mini label="Marge" value={category.marginRate == null ? '—' : `${category.marginRate} %`} hint={category.marginCoverage ? `sur ${category.marginCoverage} % du volume` : undefined} />
             </div>
