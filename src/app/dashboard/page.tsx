@@ -63,7 +63,7 @@ export default function MarketOverviewPage() {
 
   const rawCountry = Array.isArray(filters.country) ? filters.country[0] : filters.country;
   const selectedCountryObj = PAYS.find((p) => p.code === rawCountry);
-  const currentCountryName = selectedCountryObj?.name || (typeof rawCountry === 'string' ? rawCountry.replace(/_/g, ' ') : "Côte d'Ivoire");
+  const currentCountryName = selectedCountryObj?.name || (typeof rawCountry === 'string' && rawCountry && rawCountry !== 'all' ? rawCountry.replace(/_/g, ' ') : 'Tous les pays');
 
   const formatRevenue = (rev?: number) => {
     if (!rev) return '0 FCFA';

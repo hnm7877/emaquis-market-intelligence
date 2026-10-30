@@ -35,6 +35,12 @@ import {
 } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 
+
+/** Échappe un texte avant de l'insérer dans du HTML (info-bulles et badges Leaflet) */
+function escapeHtml(v: unknown): string {
+  return String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string);
+}
+
 interface GeographicBarChartProps {
   data?: any[];
 }
@@ -284,8 +290,9 @@ export function GeographicBarChart({ data }: GeographicBarChartProps) {
 
     return rawZones.filter((z: any) => {
       // 1. Filtre Pays
-      if (countryFilters.length > 0) {
-        const zCountry = cleanKey(z.country || "Côte d'Ivoire");
+      // Zone sans pays renseigné : conservée (le serveur a déjà appliqué le filtre pays)
+      if (countryFilters.length > 0 && z.country) {
+        const zCountry = cleanKey(z.country);
         const matchesCountry = countryFilters.some((cf) => {
           return (
             zCountry.includes(cf) ||
@@ -340,8 +347,8 @@ export function GeographicBarChart({ data }: GeographicBarChartProps) {
   const zonePoints: ZonePoint[] = useMemo(() => {
     return filteredZones.map((z: any, idx: number) => {
       const commune = (z.zone || z.commune || 'Zone').trim();
-      const city = z.city || 'Abidjan';
-      const country = z.country || "Côte d'Ivoire";
+      const city = z.city || 'Ville non renseignée';
+      const country = z.country || 'Pays non renseigné';
 
       const baseVolume = Math.round(Number(z.volume) || 0);
       const seasonalVolume = seasonalVolumeOf(z);
@@ -493,10 +500,14 @@ export function GeographicBarChart({ data }: GeographicBarChartProps) {
           fillOpacity: 0.85,
         });
 
+        // Libellés venant des adresses déclarées : échappés avant d'être insérés dans le HTML de la carte
+        const commune = escapeHtml(zp.commune);
+        const city = escapeHtml(zp.city);
+        const country = escapeHtml(zp.country);
         const tooltipHtml = `
           <div style="background: rgba(15, 23, 42, 0.96); backdrop-filter: blur(12px); padding: 10px 14px; border-radius: 12px; border: 1px solid ${zp.color}70; color: #fff; font-family: system-ui, -apple-system, sans-serif; box-shadow: 0 12px 30px rgba(0,0,0,0.85); min-width: 200px;">
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px;">
-              <span style="font-weight: 700; font-size: 13px; color: #fff;">📍 ${zp.commune}</span>
+              <span style="font-weight: 700; font-size: 13px; color: #fff;">📍 ${commune}</span>
               <span style="font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 6px; background: ${zp.color}25; color: ${zp.color}; border: 1px solid ${zp.color}50;">
                 ${zp.badgeText}
               </span>
@@ -511,7 +522,7 @@ export function GeographicBarChart({ data }: GeographicBarChartProps) {
               Établissements : <b style="color: #38bdf8;">${zp.posCount} POS</b> · Indice : <b>${zp.demandIndex ?? "n/d"}</b>
             </div>
             <div style="font-size: 10px; color: #a1a1aa; margin-top: 2px;">
-              Région : ${zp.city} · ${zp.country}
+              Région : ${city} · ${country}
             </div>
             <div style="margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.1); font-size: 10px; color: ${zp.color}; font-weight: 600; text-align: center;">
               🎯 Cliquez pour filtrer la commune
@@ -538,7 +549,7 @@ export function GeographicBarChart({ data }: GeographicBarChartProps) {
           html: `
             <div style="transform: translate(-50%, -100%); margin-top: -${zp.coreRadius + 4}px; display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 12px; background: rgba(15, 23, 42, 0.90); backdrop-filter: blur(8px); border: 1px solid ${zp.color}; box-shadow: 0 4px 14px ${zp.color}50; color: #fff; font-size: 10px; font-weight: 700; white-space: nowrap; pointer-events: none;">
               <span style="color: ${zp.color};">${zp.badgeText}</span>
-              <span style="color: #cbd5e1; font-weight: 500;">• ${zp.commune}</span>
+              <span style="color: #cbd5e1; font-weight: 500;">• ${commune}</span>
             </div>
           `,
           iconSize: [0, 0],
@@ -760,28 +771,35 @@ export function GeographicBarChart({ data }: GeographicBarChartProps) {
                 onClick={() => handleQuickZoom(5.35, -4.01, 12)}
                 className="px-2 py-0.5 rounded-md hover:bg-muted/80 text-foreground transition-colors font-medium"
               >
-                🇨🇮 Abidjan
+                Abidjan
               </button>
               <button
                 type="button"
                 onClick={() => handleQuickZoom(7.69, -5.03, 13)}
                 className="px-2 py-0.5 rounded-md hover:bg-muted/80 text-foreground transition-colors font-medium"
               >
-                📍 Bouaké
+                Bouaké
               </button>
               <button
                 type="button"
                 onClick={() => handleQuickZoom(5.21, -3.74, 13)}
                 className="px-2 py-0.5 rounded-md hover:bg-muted/80 text-foreground transition-colors font-medium"
               >
-                🏖️ Bassam
+                Bassam
               </button>
               <button
                 type="button"
                 onClick={() => handleQuickZoom(12.37, -1.52, 12)}
                 className="px-2 py-0.5 rounded-md hover:bg-muted/80 text-foreground transition-colors font-medium"
               >
-                🇧🇫 Ouaga
+                Ouagadougou
+              </button>
+              <button
+                type="button"
+                onClick={() => handleQuickZoom(-4.32, 15.31, 12)}
+                className="px-2 py-0.5 rounded-md hover:bg-muted/80 text-foreground transition-colors font-medium"
+              >
+                Kinshasa
               </button>
             </div>
 
