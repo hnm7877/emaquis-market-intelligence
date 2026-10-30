@@ -15,6 +15,7 @@ import {
   fetchFiltersMetadata,
   fetchContextualFilters,
   fetchAuditLogs,
+  fetchSalesQuality,
   fetchSyncStatus,
   fetchProductDetail,
   fetchProductCandles,
@@ -261,6 +262,11 @@ export function useAuditLogsQuery() {
 /**
  * 14. État de la synchronisation stock / promotions
  */
+/** Qualité de la collection des ventes (administrateurs) */
+export function useSalesQualityQuery(enabled = true) {
+  return useQuery({ queryKey: [...marketQueryKeys.all, 'sales-quality'], queryFn: fetchSalesQuality, staleTime: 5 * 60 * 1000, enabled });
+}
+
 export function useSyncStatusQuery() {
   return useQuery({
     queryKey: marketQueryKeys.syncStatus(),

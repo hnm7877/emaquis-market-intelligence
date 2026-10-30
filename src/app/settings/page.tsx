@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Settings, RefreshCw, Database, Loader2 } from 'lucide-react';
 import { useSyncStatusQuery, useMarketSessionQuery, marketQueryKeys } from '@/hooks/market/useMarketQueries';
 import { AuditPanel } from '@/components/settings/AuditPanel';
+import { SalesQualityCard } from '@/components/settings/SalesQualityCard';
 import { startSyncBackfill } from '@/api/marketIntelligence.api';
 
 const fmtDate = (d?: string | null) => (d ? new Date(d).toLocaleString('fr-FR') : '—');
@@ -109,8 +110,8 @@ function AdminSettings() {
                 ['Produits suivis', sync.productStates.toLocaleString('fr-FR')],
                 ['Dernière synchro', fmtDate(sync.lastSyncAt)],
                 ['Mouvements de stock', sync.stockMovements.toLocaleString('fr-FR')],
-                ['Périodes de promotion', sync.promotionPeriods.toLocaleString('fr-FR')],
-                ['Promotions actives', sync.activePromotions.toLocaleString('fr-FR')],
+                ['Promotions synchronisées', sync.promotionPeriods.toLocaleString('fr-FR')],
+                ['Dont actives', sync.activePromotions.toLocaleString('fr-FR')],
                 ['Achats casier / carton', (sync.purchaseLots ?? 0).toLocaleString('fr-FR')],
               ].map(([label, value]) => (
                 <div key={label} className="p-2.5 rounded-lg border border-border/50 bg-background/50">
@@ -130,6 +131,7 @@ function AdminSettings() {
               Chaque modification de produit (vente, réassort, prix, promotion) et chaque livraison avec prix casier / carton
               est synchronisée automatiquement. L&apos;import initial récupère l&apos;état actuel et les achats déjà enregistrés
               de tous les établissements ; il est à lancer une fois (puis à relancer seulement après une mise à jour qui ajoute des données).
+              La vue Promotions &amp; Uplift lit directement les ventes ; les promotions synchronisées servent aux alertes des distributeurs.
             </p>
           </>
         ) : (
@@ -137,6 +139,8 @@ function AdminSettings() {
         )}
         {startError && <p className="text-xs text-rose-400">{startError}</p>}
       </Card>
+
+      <SalesQualityCard />
 
       <AuditPanel />
     </div>

@@ -766,3 +766,24 @@ export const CandlesSchema = z.object({
 });
 export type Candles = z.infer<typeof CandlesSchema>;
 export type CandleInterval = Candles['interval'];
+
+// ==========================================
+// Qualité de la collection des ventes (Paramètres & Audit)
+// ==========================================
+export const SalesQualitySchema = z.object({
+  sales: z.number().default(0),
+  undated: z.number().default(0),
+  textDates: z.number().default(0),
+  canceled: z.number().default(0),
+  noEstablishment: z.number().default(0),
+  lines: z.number().default(0),
+  linesWithCatalogId: z.number().default(0),
+  linesUnidentified: z.number().default(0),
+  promoLines: z.number().default(0),
+  catalogLinkShare: z.number().default(0),
+  datedShare: z.number().default(0),
+  firstSaleDate: z.string().nullable().default(null),
+  lastSaleDate: z.string().nullable().default(null),
+  checkedAt: z.string().optional(),
+});
+export type SalesQuality = z.infer<typeof SalesQualitySchema>;

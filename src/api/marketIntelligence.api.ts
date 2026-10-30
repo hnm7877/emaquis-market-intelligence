@@ -5,6 +5,7 @@ import {
   CompetitionSchema,
   TrendsSchema,
   CandlesSchema,
+  SalesQualitySchema,
   StockIntelligenceSchema,
   PromotionsSchema,
   MyAlertsSchema,
@@ -350,6 +351,13 @@ export const fetchCompetition = async (ids: string[], filters?: Partial<FilterSt
 export const fetchSyncStatus = async (): Promise<MarketSyncStatus> => {
   const response = await axiosInstance.get('/market-intelligence/sync/status');
   return response.data;
+};
+
+export const fetchSalesQuality = async () => {
+  const response = await axiosInstance.get('/market-intelligence/sync/sales-quality');
+  const parsed = SalesQualitySchema.safeParse(response.data);
+  if (!parsed.success) throw new Error('Qualité des ventes illisible');
+  return parsed.data;
 };
 
 export const startSyncBackfill = async (): Promise<MarketSyncStatus['backfill']> => {
