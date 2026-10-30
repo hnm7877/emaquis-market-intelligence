@@ -19,15 +19,14 @@ import {
   Store,
   Table2,
   TrendingUp,
-  X,
-} from 'lucide-react';
+  X, Globe2 } from 'lucide-react';
 import { LocationPrecisionBar } from '@/components/geography/LocationPrecisionBar';
 import { GeographicBarChart } from '@/components/charts/GeographicBarChart';
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber';
 import { formatGrowth, growthColorClass, isAvailable } from '@/utils/metrics';
 import { useGeographyQuery } from '@/hooks/market/useMarketQueries';
 import { useMarketRealtimeStore } from '@/stores/useMarketRealtimeStore';
-import { PAYS, normalizeCountry } from '@/constants/countries';
+import { PAYS, flagToIso, normalizeCountry } from '@/constants/countries';
 import type { GeoMetric, GeoTool, MapWhiteZone, MapZone } from '@/components/maps/GeoWorldMap';
 import { GEO_TOOLS, GeoToolsPanel } from '@/components/geography/GeoToolsPanel';
 import { CountryCompare } from '@/components/geography/CountryCompare';
@@ -55,7 +54,11 @@ const METRICS: { id: GeoMetric; label: string }[] = [
 
 const int = (n: number) => Math.round(n || 0).toLocaleString('fr-FR');
 const money = (n: number) => (Math.abs(n) >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)} M` : int(n));
-const flagOf = (country: string) => PAYS.find((p) => p.code === normalizeCountry(country))?.flag || '🌍';
+/** Code ISO du pays (CI, BF…) : les drapeaux emoji ne s'affichent pas sous Windows */
+const flagOf = (country: string) => {
+  const p = PAYS.find((x) => x.code === normalizeCountry(country));
+  return p ? flagToIso(p.flag) : '';
+};
 
 /** Préférences partagées par lien (aucune donnée sensible : vue, métrique, pays, recherche) */
 function readUrl() {
@@ -111,7 +114,7 @@ export default function GeographyPage() {
         id: String(z.id),
         zone: String(z.zone || 'Commune'),
         city: String(z.city || ''),
-        country: String(z.country || "Côte d'Ivoire"),
+        country: String(z.country || 'Pays non renseigné'),
         volume: Number(z.volume) || 0,
         revenue: Number(z.revenue) || 0,
         posCount: Number(z.posCount) || 0,
@@ -324,7 +327,7 @@ export default function GeographyPage() {
       {/* Pays du réseau */}
       {countries.length > 0 && (
         <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-          <CountryChip active={!country} onClick={() => setCountry(null)} flag="🌍" name="Tous" sub={`${countries.length} pays`} delay={0} />
+          <CountryChip active={!country} onClick={() => setCountry(null)} flag="" name="Tous" sub={`${countries.length} pays`} delay={0} />
           {countries.map((c, i) => {
             const share = totals.revenue && !country ? ((c.revenue / countries.reduce((s, x) => s + x.revenue, 0)) * 100).toFixed(1) : null;
             return (
@@ -625,7 +628,11 @@ function CountryChip({ active, onClick, flag, name, sub, delay }: { active: bool
         active ? 'border-amber-500/60 bg-amber-500/10' : 'border-border/70 bg-card/60 hover:border-amber-500/30'
       }`}
     >
-      <span className="text-xl leading-none">{flag}</span>
+      {flag ? (
+        <span aria-hidden="true" className="flex size-7 items-center justify-center rounded-md bg-white/10 text-[10px] font-bold tracking-wide">{flag}</span>
+      ) : (
+        <Globe2 aria-hidden="true" className="size-5 text-amber-400" />
+      )}
       <span>
         <span className="block text-xs font-semibold text-foreground">{name}</span>
         <span className="block whitespace-nowrap text-[10px] text-muted-foreground">{sub}</span>
