@@ -322,7 +322,7 @@ export default function BrandsPage() {
                         <Growth value={b.growth} />
                       </td>
                       <td className="px-3 py-2 text-right">
-                        <div className="font-mono">{b.penetrationRate} %</div>
+                        <div className="font-mono">{b.penetrationRate.toLocaleString('fr-FR')} %</div>
                         <div className="text-[10px] text-muted-foreground">{int(b.activePosCount)} maquis</div>
                       </td>
                       <td className="px-3 py-2 text-right font-mono font-semibold text-emerald-400">{F(b.avgSalePrice)}</td>
@@ -402,7 +402,7 @@ function BrandDrawer({ brand, products, onClose, onOpenProduct }: { brand: Brand
               <Mini label="Part de marché" value={`${brand.marketShare} %`} />
               <Mini label="CA" value={F(brand.revenue)} />
               <Mini label="Évolution" value={brand.growth == null ? '—' : `${brand.growth >= 0 ? '+' : ''}${brand.growth} %`} tone={brand.growth == null ? undefined : brand.growth >= 0 ? 'up' : 'down'} />
-              <Mini label="Présence" value={`${brand.penetrationRate} %`} hint={`${int(brand.activePosCount)} / ${int(brand.totalPosCount)} maquis`} />
+              <Mini label="Présence" value={`${brand.penetrationRate.toLocaleString('fr-FR')} %`} hint={`${int(brand.activePosCount)} / ${int(brand.totalPosCount)} maquis`} />
               <Mini label="Prix moyen" value={F(brand.avgSalePrice)} />
               <Mini label="Marge" value={brand.marginRate == null ? '—' : `${brand.marginRate} %`} hint={brand.marginCoverage ? `sur ${brand.marginCoverage} % du volume` : undefined} />
             </div>
