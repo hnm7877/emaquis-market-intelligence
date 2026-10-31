@@ -368,7 +368,7 @@ export default function CompetitionPage() {
                   <Empty small>Pas de ventes datées sur la période.</Empty>
                 )}
               </Panel>
-              <Panel icon={<Swords className="size-4 text-cyan-500" />} title="Heures de vente" help="Unités vendues par heure de la journée, à l’heure d’Abidjan (UTC) pour tous les pays — décalage d’1 à 2 h pour la RD Congo : quand chaque produit l’emporte.">
+              <Panel icon={<Swords className="size-4 text-cyan-500" />} title="Heures de vente" help="Unités vendues par heure de la journée, à l’heure locale du pays de chaque établissement : quand chaque produit l’emporte.">
                 <ResponsiveContainer width="100%" height={240}>
                   <BarChart data={c!.hourly} margin={{ left: -10, right: 8, top: 6 }}>
                     <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" vertical={false} />

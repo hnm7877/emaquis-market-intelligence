@@ -77,7 +77,7 @@ export const StockChartPanel: React.FC<{
             Analyse Boursière Intrajournalière & Répartition Catégorielle
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Unités vendues en moyenne par jour observé, heure par heure (fuseau Abidjan), et poids des familles de boissons
+            Unités vendues en moyenne par jour observé, heure par heure (heure locale de chaque pays), et poids des familles de boissons
           </p>
         </div>
 

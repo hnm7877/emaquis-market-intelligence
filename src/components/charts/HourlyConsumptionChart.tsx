@@ -30,7 +30,7 @@ export function HourlyConsumptionChart({ data = [], isLoading }: HourlyConsumpti
           Pics Horaires de Consommation (Semaine vs Week-end)
         </CardTitle>
         <CardDescription className="text-xs text-muted-foreground">
-          Unités vendues en moyenne par jour observé, par heure (fuseau Abidjan)
+          Unités vendues en moyenne par jour observé, par heure (heure locale de chaque pays)
         </CardDescription>
       </CardHeader>
       <CardContent className="pt-2">

@@ -129,7 +129,7 @@ function Heat({ zones, hour, setHour, onFocusZone }: Props) {
           ))}
         </div>
         <p className="mt-1 text-[11px] text-muted-foreground">
-          Pic du réseau : <b className="text-foreground">{peak} h – {peak + 1} h</b>. Volume cumulé sur la période, fuseau d&apos;Abidjan.
+          Pic du réseau : <b className="text-foreground">{peak} h – {peak + 1} h</b>. Volume cumulé sur la période, à l&apos;heure locale de chaque pays.
         </p>
       </div>
       <div>
