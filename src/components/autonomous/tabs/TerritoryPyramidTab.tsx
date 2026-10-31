@@ -53,7 +53,7 @@ function buildTree(geoData: any): Node {
     const volume = Number(z.volume) || 0;
     const revenue = Number(z.revenue) || 0;
     const pos = Number(z.posCount) || 0;
-    const country = get(root, z.country || "Côte d'Ivoire", 'country');
+    const country = get(root, z.country || 'Pays non renseigné', 'country');
     const city = get(country, z.city || 'Ville inconnue', 'city');
     const commune = get(city, z.zone || 'Commune inconnue', 'commune');
     commune.growth = typeof z.growth === 'number' ? z.growth : null;

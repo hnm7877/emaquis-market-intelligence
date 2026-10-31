@@ -4,7 +4,7 @@ import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Check, Globe2, MapPin, Receipt, Wallet } from 'lucide-react';
-import { PAYS, normalizeCountry } from '@/constants/countries';
+import { PAYS, normalizeCountry, flagToIso } from '@/constants/countries';
 import { AXIS, ChartTip, Empty, GRID, Panel, Segmented, Skeleton, fmtCompact, fmtFcfa, fmtInt, EASE_OUT } from './ui';
 
 interface Props {
@@ -34,7 +34,8 @@ export function CountriesTab({ contextualData, geoData, selectedCountry, onSelec
     for (const c of contextualData?.countries || []) {
       const code = normalizeCountry(c.name) || String(c.name);
       const pays = PAYS.find((p) => p.code === code);
-      const cur = merged.get(code) || { code, name: (pays?.name || c.name).replace(/_/g, ' '), flag: pays?.flag || '🏳️', transactions: 0, revenue: 0 };
+      const cur = merged.get(code) || { code, name: (pays?.name || c.name).replace(/_/g, ' '), // Code ISO (CI, BF…) : les drapeaux emoji ne s'affichent pas sous Windows
+        flag: pays ? flagToIso(pays.flag) : '', transactions: 0, revenue: 0 };
       cur.transactions += Number(c.count) || 0;
       cur.revenue += Number(c.revenue) || 0;
       merged.set(code, cur);
@@ -111,7 +112,7 @@ export function CountriesTab({ contextualData, geoData, selectedCountry, onSelec
               className={`rounded-xl border p-3 text-left transition-colors ${on ? 'border-amber-500/60 bg-amber-500/10' : 'border-slate-800 bg-slate-950/80 hover:border-slate-700'}`}
             >
               <div className="flex items-center gap-2">
-                <span className="text-xl leading-none">{r.flag}</span>
+                <span aria-hidden="true" className="flex size-7 shrink-0 items-center justify-center rounded-md bg-white/10 text-[10px] font-bold tracking-wide text-white">{r.flag || '?'}</span>
                 <span className="truncate text-sm font-semibold text-white">{r.name}</span>
                 {on && <Check className="ml-auto size-4 text-amber-400" />}
               </div>

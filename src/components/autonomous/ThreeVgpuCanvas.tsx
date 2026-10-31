@@ -460,11 +460,12 @@ export const ThreeVgpuCanvas: React.FC<ThreeVgpuCanvasProps> = ({
     [resolvedZones, metricMode, unit],
   );
 
-  // Centrage propre sur Abidjan
+  // Recentrage sur toutes les zones du périmètre (Abidjan seulement s'il n'y a aucune zone)
   const handleRecenter = () => {
     if (mapInstanceRef.current) {
       const pts = resolvedZones.filter((z) => z.latitude && z.longitude).map((z) => [z.latitude, z.longitude] as [number, number]);
       if (pts.length > 1) mapInstanceRef.current.fitBounds(pts, { padding: [30, 30], maxZoom: 13, animate: true });
+      else if (pts.length === 1) mapInstanceRef.current.setView(pts[0], 12, { animate: true });
       else mapInstanceRef.current.setView([5.348, -4.015], 12, { animate: true });
     }
   };

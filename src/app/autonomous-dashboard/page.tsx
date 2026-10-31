@@ -241,7 +241,7 @@ export default function AutonomousDashboardPage() {
                 )}
                 {PAYS.map((p) => (
                   <option key={p.code} value={p.code} className="bg-slate-950">
-                    {p.flag} {p.name.replace(/_/g, ' ')}
+                    {p.name.replace(/_/g, ' ')}
                   </option>
                 ))}
               </select>
