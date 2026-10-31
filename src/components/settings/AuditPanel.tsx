@@ -89,7 +89,7 @@ export function AuditPanel({ mode = 'admin' }: { mode?: 'admin' | 'own' }) {
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
               {[
                 ['Événements', s.total, History, 'text-orange-400'],
-                ['Comptes actifs', s.topSubjects.length, Users, 'text-sky-400'],
+                ['Comptes actifs', s.activeSubjects ?? s.topSubjects.length, Users, 'text-sky-400'],
                 ['Exports', count('MARKET_REPORT_EXPORT'), FileDown, 'text-emerald-400'],
                 ['Questions IA', count('MARKET_AI_QUERY'), Bot, 'text-amber-400'],
                 ['Refus', s.denied, ShieldAlert, s.denied ? 'text-rose-400' : 'text-muted-foreground'],
@@ -103,7 +103,7 @@ export function AuditPanel({ mode = 'admin' }: { mode?: 'admin' | 'own' }) {
                 );
               })}
             </div>
-            {s.topSubjects.length === 10 && <p className="text-[10px] text-muted-foreground -mt-2">Comptes actifs : 10 au moins (classement limité aux 10 premiers).</p>}
+            {s.activeSubjects == null && s.topSubjects.length === 10 && <p className="text-[10px] text-muted-foreground -mt-2">Comptes actifs : 10 au moins (classement limité aux 10 premiers).</p>}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               <div className="lg:col-span-2 h-48">
                 <ResponsiveContainer width="100%" height="100%">
@@ -128,7 +128,7 @@ export function AuditPanel({ mode = 'admin' }: { mode?: 'admin' | 'own' }) {
             </div>
             {s.topSubjects.length > 0 && (
               <div>
-                <p className="text-[11px] text-muted-foreground mb-1.5">Comptes les plus actifs</p>
+                <p className="text-[11px] text-muted-foreground mb-1.5">Comptes les plus actifs (10 premiers)</p>
                 <div className="flex flex-wrap gap-1.5">
                   {s.topSubjects.map((t) => (
                     <button key={`${t.kind}-${t.subject}`} onClick={() => setSearch(t.subject)} className="text-[11px] px-2 py-1 rounded-full border border-border hover:bg-accent/40" title={`Dernière activité : ${fmt(t.lastAt)}`}>

@@ -313,6 +313,8 @@ export const AuditStatsSchema = z.object({
   byAction: z.array(z.object({ action: z.string(), count: z.number() })).default([]),
   byKind: z.array(z.object({ kind: z.string(), count: z.number() })).default([]),
   topSubjects: z.array(z.object({ subject: z.string(), kind: z.string(), count: z.number(), lastAt: z.string().nullable().optional() })).default([]),
+  /** Nombre réel de comptes actifs sur la période (absent sur une ancienne API) */
+  activeSubjects: z.number().optional(),
 });
 export type AuditStats = z.infer<typeof AuditStatsSchema>;
 
