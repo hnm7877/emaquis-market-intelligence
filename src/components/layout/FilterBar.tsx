@@ -29,7 +29,7 @@ import { PeriodPicker, periodLabel } from './PeriodPicker';
 import { useMarketFiltersQuery, useContextualFiltersQuery } from '@/hooks/market/useMarketQueries';
 import { useMarketFilterStore } from '@/stores/useMarketFilterStore';
 import { SmartFilterDropdown, SmartFilterOption } from '@/components/ui/smart-filter-dropdown';
-import { PAYS, normalizeCountry } from '@/constants/countries';
+import { PAYS, normalizeCountry, flagToIso } from '@/constants/countries';
 import { VOLUME_UNIT_OPTIONS } from '@/utils/volumeUnit';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -117,7 +117,8 @@ export function FilterBar(props: FilterBarProps = {}) {
     return PAYS.map((p) => ({
       value: p.code,
       label: p.name.replace(/_/g, ' '),
-      flag: p.flag,
+      // Code ISO (CI, BF…) : les drapeaux emoji ne s'affichent pas sous Windows
+      flag: flagToIso(p.flag),
     }));
   }, []);
 
@@ -128,7 +129,7 @@ export function FilterBar(props: FilterBarProps = {}) {
 
     const cityCountryMap = new Map<string, string>();
     PAYS.forEach((p) => {
-      const groupName = `${p.flag} ${p.name.replace(/_/g, ' ')}`;
+      const groupName = p.name.replace(/_/g, ' ');
       p.cities.forEach((c) => {
         cityCountryMap.set(c.toLowerCase().trim(), groupName);
       });
@@ -141,7 +142,8 @@ export function FilterBar(props: FilterBarProps = {}) {
 
     allCityNames.forEach((city) => {
       if (!city || city === 'Toutes les villes') return;
-      const group = cityCountryMap.get(city.toLowerCase().trim()) || "🇨🇮 Côte d'Ivoire";
+      // Ville absente de la liste des pays : aucun pays supposé
+      const group = cityCountryMap.get(city.toLowerCase().trim()) || 'Autres villes';
       options.push({
         value: city,
         label: city,

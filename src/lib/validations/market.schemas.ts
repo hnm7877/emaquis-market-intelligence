@@ -119,7 +119,8 @@ export const GeoZoneSchema = z.object({
   id: z.string(),
   zone: z.string(),
   city: z.string(),
-  country: z.string().default("Côte d'Ivoire"),
+  // Pays absent : jamais supposé (même libellé que l'API)
+  country: z.string().default('Pays non renseigné'),
   volume: z.number(),
   revenue: z.number().optional(),
   growth: z.number().nullable(),
@@ -131,7 +132,7 @@ export const GeoZoneSchema = z.object({
     .object({ festive: z.number(), dry: z.number(), rainy: z.number() })
     .optional(),
   precision: LocationPrecisionSchema.optional(),
-  /** Volume vendu par heure (0 → 23 h, fuseau Abidjan) */
+  /** Volume vendu par heure (0 → 23 h, heure locale du pays de chaque établissement) */
   hourly: z.array(z.number()).length(24).optional(),
   /** Établissements inscrits dans la commune (avec ou sans ventes) */
   registeredPos: z.number().optional(),
@@ -156,7 +157,8 @@ export const EstablishmentMarkerSchema = z.object({
   name: z.string(),
   zone: z.string(),
   city: z.string(),
-  country: z.string().default("Côte d'Ivoire"),
+  // Pays absent : jamais supposé (même libellé que l'API)
+  country: z.string().default('Pays non renseigné'),
   latitude: z.number(),
   longitude: z.number(),
   hasDirectGps: z.boolean().optional(),
@@ -169,7 +171,8 @@ export const EstablishmentMarkerSchema = z.object({
 export type EstablishmentMarker = z.infer<typeof EstablishmentMarkerSchema>;
 
 export const GeographyResponseSchema = z.object({
-  country: z.string().default("Côte d'Ivoire"),
+  // Pays absent : jamais supposé (même libellé que l'API)
+  country: z.string().default('Pays non renseigné'),
   totalAnalyzedPos: z.number().default(0),
   comparisonLabel: z.string().optional(),
   zones: z.array(GeoZoneSchema).default([]),

@@ -6,7 +6,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { Box, ChevronLeft, ChevronRight, Globe2, Layers, Maximize2, Minimize2, Scan, Store } from 'lucide-react';
 import { anonymizeEstablishmentName } from '@/utils/anonymize';
 import { useMarketRealtimeStore } from '@/stores/useMarketRealtimeStore';
-import { PAYS, normalizeCountry } from '@/constants/countries';
+import { PAYS, normalizeCountry, flagToIso } from '@/constants/countries';
 import { circlePolygon, type LngLat } from '@/lib/geo';
 
 export type GeoMetric = 'volume' | 'revenue' | 'pos' | 'growth';
@@ -113,7 +113,11 @@ const BASEMAPS: { id: string; label: string; style: string | StyleSpecification 
 ];
 const FONT = ['Noto Sans Regular'];
 
-const flagOf = (country: string) => PAYS.find((p) => p.code === normalizeCountry(country))?.flag || '';
+/** Code ISO du pays (CI, BF…) : les drapeaux emoji ne s'affichent pas sous Windows */
+const flagOf = (country: string) => {
+  const p = PAYS.find((x) => x.code === normalizeCountry(country));
+  return p ? flagToIso(p.flag) : '';
+};
 const compact = (n: number) => {
   const v = Math.abs(n);
   if (v >= 1_000_000) return `${(n / 1_000_000).toFixed(1)} M`;

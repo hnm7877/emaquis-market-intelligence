@@ -3,12 +3,16 @@
 import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeftRight, Trophy } from 'lucide-react';
-import { PAYS, normalizeCountry } from '@/constants/countries';
+import { PAYS, normalizeCountry, flagToIso } from '@/constants/countries';
 import type { MapZone } from '@/components/maps/GeoWorldMap';
 
 const int = (n: number) => Math.round(n || 0).toLocaleString('fr-FR');
 const money = (n: number) => (Math.abs(n) >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)} M F` : `${int(n)} F`);
-const flagOf = (c: string) => PAYS.find((p) => p.code === normalizeCountry(c))?.flag || '🌍';
+/** Code ISO du pays (CI, BF…) : les drapeaux emoji ne s'affichent pas sous Windows */
+const flagOf = (c: string) => {
+  const p = PAYS.find((x) => x.code === normalizeCountry(c));
+  return p ? flagToIso(p.flag) : '';
+};
 const SIDE = ['#f59e0b', '#06b6d4'];
 
 interface Stats {
@@ -134,7 +138,7 @@ export function CountryCompare({ zones }: { zones: MapZone[] }) {
 function Picker({ countries, value, other, i, onChange }: { countries: string[]; value: string; other: string; i: 0 | 1; onChange: (v: string) => void }) {
   return (
     <label className="flex min-w-0 items-center gap-2 rounded-xl border bg-card/80 px-3 py-2" style={{ borderColor: `${SIDE[i]}80` }}>
-      <span className="text-xl">{flagOf(value)}</span>
+      {flagOf(value) && <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-white/10 text-[10px] font-bold tracking-wide">{flagOf(value)}</span>}
       <span className="sr-only">Pays</span>
       <select value={value} onChange={(e) => onChange(e.target.value)} className="min-w-0 flex-1 cursor-pointer truncate bg-transparent text-sm font-semibold focus:outline-none">
         {countries
