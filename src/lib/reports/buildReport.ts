@@ -9,10 +9,11 @@ import type {
   Trends,
 } from '@/lib/validations/market.schemas';
 
-export type ReportSectionId = 'overview' | 'brands' | 'categories' | 'products' | 'geography' | 'trends' | 'stock' | 'promotions';
+export type ReportSectionId = 'overview' | 'countries' | 'brands' | 'categories' | 'products' | 'geography' | 'trends' | 'stock' | 'promotions';
 
 export const SECTION_LABELS: Record<ReportSectionId, string> = {
   overview: "Vue d'ensemble",
+  countries: 'Pays',
   brands: 'Marques',
   categories: 'Catégories',
   products: 'Produits',
@@ -46,8 +47,16 @@ export interface ReportSection {
   chart?: { label: string; value: number }[];
 }
 
+export interface CountrySales {
+  name: string;
+  count: number;
+  revenue: number;
+}
+
 export interface ReportData {
   overview?: IMarketOverview;
+  /** Ventes par pays (tous les pays du réseau, mêmes statut et période) */
+  countries?: CountrySales[];
   brands?: BrandRow[];
   categories?: ICategoryItem[];
   products?: ProductItem[];
@@ -79,6 +88,26 @@ function overview(d: IMarketOverview): ReportSection {
     ],
     highlights,
     chart: d.salesEvolution.slice(-30).map((p) => ({ label: p.date.length >= 10 ? `${p.date.slice(8, 10)}/${p.date.slice(5, 7)}` : p.date, value: p.salesVolume })),
+  };
+}
+
+function countries(rows: CountrySales[]): ReportSection {
+  const list = rows.filter((c) => c.count > 0).sort((a, b) => b.count - a.count);
+  const total = list.reduce((n, c) => n + c.count, 0);
+  const share = (c: CountrySales) => (total ? Math.round((c.count / total) * 1000) / 10 : 0);
+  const highlights: string[] = [];
+  if (list[0]) highlights.push(`${list[0].name} concentre ${pct(share(list[0]), false)} des ventes du réseau.`);
+  if (list.length > 1) highlights.push(`${list.length} pays ont enregistré des ventes sur la période.`);
+  return {
+    id: 'countries',
+    title: SECTION_LABELS.countries,
+    kpis: [{ label: 'Pays avec des ventes', value: int(list.length) }],
+    highlights,
+    table: {
+      columns: ['Pays', 'Ventes', "Chiffre d'affaires (F)", 'Part des ventes (%)'],
+      rows: list.map((c) => [c.name, c.count, Math.round(c.revenue), share(c)]),
+    },
+    chart: list.slice(0, 8).map((c) => ({ label: c.name, value: share(c) })),
   };
 }
 
@@ -260,6 +289,7 @@ export function buildReport(data: ReportData, sections: ReportSectionId[], ownBr
   const out: ReportSection[] = [];
   for (const id of sections) {
     if (id === 'overview' && data.overview) out.push(overview(data.overview));
+    if (id === 'countries' && data.countries?.some((c) => c.count > 0)) out.push(countries(data.countries));
     if (id === 'brands' && data.brands?.length) out.push(brands(data.brands, own));
     if (id === 'categories' && data.categories?.some((c) => c.volume > 0)) out.push(categories(data.categories));
     if (id === 'products' && data.products?.length) out.push(products(data.products, own));

@@ -10,6 +10,7 @@ import { FilterBar } from '@/components/layout/FilterBar';
 import {
   useBrandsQuery,
   useCategoriesQuery,
+  useContextualFiltersQuery,
   useGeographyQuery,
   useMarketOverview,
   useMarketSessionQuery,
@@ -20,13 +21,19 @@ import {
 } from '@/hooks/market/useMarketQueries';
 import { useMarketFilterStore } from '@/stores/useMarketFilterStore';
 import { ALL_SECTIONS, TEMPLATES, useReportStore, type ReportTemplate } from '@/stores/useReportStore';
-import { buildReport, SECTION_LABELS, type ReportSection } from '@/lib/reports/buildReport';
+import { buildReport, SECTION_LABELS, type CountrySales, type ReportSection } from '@/lib/reports/buildReport';
 import { downloadBlob, exportReportExcel, fileSlug } from '@/lib/reports/exportExcel';
 import { buildQueryParams, logReportExport } from '@/api/marketIntelligence.api';
 import { deerflowApi } from '@/api/deerflow.api';
+import { PAYS } from '@/constants/countries';
+import { periodLabel } from '@/components/layout/PeriodPicker';
 import type { BrandRow, ICategoryItem, IGeographyResponse, IMarketOverview, ProductItem, Trends } from '@/lib/validations/market.schemas';
 
 const EASE = [0.23, 1, 0.32, 1] as const;
+
+const STATUS_LABELS: Record<string, string> = {
+  all: 'Tous les statuts', success: 'Réglées', pending: 'En attente', return: 'Retours', canceled: 'Annulées', offered: 'Offertes',
+};
 
 const FILTER_LABELS: Record<string, string> = {
   dateRange: 'Période', startDate: 'Du', endDate: 'Au', country: 'Pays', city: 'Ville', commune: 'Commune',
@@ -126,12 +133,13 @@ export default function ReportsPage() {
   const overview = useMarketOverview(on('overview'));
   const brands = useBrandsQuery(on('brands'));
   const categories = useCategoriesQuery(on('categories'));
+  const contextual = useContextualFiltersQuery(on('countries'));
   const products = useProductsQuery(on('products'));
   const geography = useGeographyQuery(on('geography'));
   const trends = useTrendsQuery(on('trends'));
   const stock = useStockIntelligenceQuery(on('stock'));
   const promotions = usePromotionsQuery(on('promotions'));
-  const queries = [overview, brands, categories, products, geography, trends, stock, promotions];
+  const queries = [overview, contextual, brands, categories, products, geography, trends, stock, promotions];
   const loading = queries.some((q) => q.isLoading && q.fetchStatus !== 'idle');
 
   const report = useMemo(
@@ -139,6 +147,7 @@ export default function ReportsPage() {
       buildReport(
         {
           overview: overview.data as IMarketOverview | undefined,
+          countries: (contextual.data as { countries?: CountrySales[] } | undefined)?.countries,
           brands: (brands.data as { brands?: BrandRow[] } | undefined)?.brands,
           categories: (categories.data as { categories?: ICategoryItem[] } | undefined)?.categories,
           products: (products.data as { products?: ProductItem[] } | undefined)?.products,
@@ -150,16 +159,26 @@ export default function ReportsPage() {
         sections,
         ownBrands,
       ),
-    [overview.data, brands.data, categories.data, products.data, geography.data, trends.data, stock.data, promotions.data, sections, ownBrands],
+    [overview.data, contextual.data, brands.data, categories.data, products.data, geography.data, trends.data, stock.data, promotions.data, sections, ownBrands],
   );
 
-  const filterLines = useMemo(
-    () =>
-      Object.entries(buildQueryParams(filters))
-        .filter(([, v]) => v && v !== 'all')
-        .map(([k, v]) => `${FILTER_LABELS[k] ?? k} : ${v}`),
-    [filters],
-  );
+  // Filtres actifs en clair (nom du pays, libellé de la période, statut)
+  const filterLines = useMemo(() => {
+    const params = buildQueryParams(filters);
+    const out: string[] = [];
+    if (params.dateRange) out.push(`Période : ${periodLabel(params.dateRange, params.startDate, params.endDate)}`);
+    for (const [k, v] of Object.entries(params)) {
+      if (!v || v === 'all' || k === 'dateRange' || k === 'startDate' || k === 'endDate') continue;
+      const value =
+        k === 'country'
+          ? v.split(',').map((c) => PAYS.find((p) => p.code === c)?.name.replace(/_/g, ' ') ?? c.replace(/_/g, ' ')).join(', ')
+          : k === 'status'
+            ? STATUS_LABELS[v] ?? v
+            : v.split(',').join(', ');
+      out.push(`${FILTER_LABELS[k] ?? k} : ${value}`);
+    }
+    return out;
+  }, [filters]);
   // Date de génération lue côté navigateur uniquement (évite un écart entre rendu serveur et navigateur)
   const [generatedAt, setGeneratedAt] = React.useState('');
   useEffect(() => {

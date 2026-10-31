@@ -4,10 +4,10 @@ import type { ReportSectionId } from '@/lib/reports/buildReport';
 
 export type ReportTemplate = 'market' | 'brand' | 'stock' | 'promo';
 
-export const ALL_SECTIONS: ReportSectionId[] = ['overview', 'brands', 'categories', 'products', 'geography', 'trends', 'stock', 'promotions'];
+export const ALL_SECTIONS: ReportSectionId[] = ['overview', 'countries', 'brands', 'categories', 'products', 'geography', 'trends', 'stock', 'promotions'];
 
 export const TEMPLATES: Record<ReportTemplate, { label: string; description: string; sections: ReportSectionId[] }> = {
-  market: { label: 'Synthèse marché', description: 'Vue complète du marché sur la période', sections: ['overview', 'brands', 'categories', 'products', 'geography', 'trends'] },
+  market: { label: 'Synthèse marché', description: 'Vue complète du marché sur la période', sections: ['overview', 'countries', 'brands', 'categories', 'products', 'geography', 'trends'] },
   brand: { label: 'Rapport marque', description: 'Vos marques : ventes, stock, promotions', sections: ['overview', 'brands', 'products', 'stock', 'promotions'] },
   stock: { label: 'Stock & ruptures', description: 'Disponibilité et ruptures par marque', sections: ['overview', 'stock'] },
   promo: { label: 'Bilan promotions', description: 'Effet des promotions et remises', sections: ['overview', 'promotions'] },
