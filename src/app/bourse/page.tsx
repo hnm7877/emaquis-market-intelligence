@@ -20,7 +20,7 @@ const tone = (v: number | null | undefined) => (v == null || v === 0 ? 'text-mut
 const INTERVALS: { id: CandleInterval; label: string; hint: string }[] = [
   { id: '5m', label: '5 min', hint: '24 dernières heures' },
   { id: '1h', label: '1 h', hint: '7 derniers jours' },
-  { id: '1d', label: '1 j', hint: '120 derniers jours' },
+  { id: '1d', label: '1 j', hint: '120 derniers jours, au jour local du pays de chaque établissement' },
 ];
 
 /** Rang centile (0-100) d'une valeur parmi celles des autres produits */

@@ -7,11 +7,15 @@ const UP = '#4ade80';
 const DOWN = '#f87171';
 const fmtPrice = (n: number) => n.toLocaleString('fr-FR', { maximumFractionDigits: 0 });
 
+/**
+ * Libellé d'une bougie : 1 jour = jour local déjà calculé par le serveur (affiché tel quel) ;
+ * 5 min / 1 h = instant affiché à l'heure de l'appareil de la personne qui consulte.
+ */
 function label(iso: string, interval: Candles['interval']) {
   const d = new Date(iso);
   return interval === '1d'
-    ? d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })
-    : d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Abidjan' });
+    ? d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', timeZone: 'UTC' })
+    : d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 }
 
 /**
